@@ -8,6 +8,7 @@ import {
   type ProjectId,
   type ServerConfig,
   type ThreadId,
+  type TurnId,
   type WsWelcomePayload,
   WS_CHANNELS,
   WS_METHODS,
@@ -345,11 +346,51 @@ function createSnapshotWithLongProposedPlan(): OrchestrationReadModel {
                 id: "plan-browser-test",
                 turnId: null,
                 planMarkdown,
+                implementedAt: null,
+                implementationThreadId: null,
                 createdAt: isoAt(1_000),
                 updatedAt: isoAt(1_001),
               },
             ],
             updatedAt: isoAt(1_001),
+          })
+        : thread,
+    ),
+  };
+}
+
+function createSnapshotWithImplementedProposedPlan(): OrchestrationReadModel {
+  const snapshot = createSnapshotForTargetUser({
+    targetMessageId: "msg-user-plan-implemented" as MessageId,
+    targetText: "implemented plan thread",
+  });
+
+  return {
+    ...snapshot,
+    threads: snapshot.threads.map((thread) =>
+      thread.id === THREAD_ID
+        ? Object.assign({}, thread, {
+            interactionMode: "plan" as const,
+            latestTurn: {
+              turnId: "turn-plan-implemented" as TurnId,
+              state: "completed" as const,
+              assistantMessageId: null,
+              requestedAt: isoAt(900),
+              startedAt: isoAt(901),
+              completedAt: isoAt(902),
+            },
+            proposedPlans: [
+              {
+                id: "plan-browser-implemented",
+                turnId: "turn-plan-implemented" as TurnId,
+                planMarkdown: "# Already implemented",
+                implementedAt: isoAt(903),
+                implementationThreadId: "thread-implement-copy" as ThreadId,
+                createdAt: isoAt(900),
+                updatedAt: isoAt(903),
+              },
+            ],
+            updatedAt: isoAt(903),
           })
         : thread,
     ),
@@ -1240,6 +1281,28 @@ describe("ChatView timeline estimator parity (full app)", () => {
       await vi.waitFor(
         () => {
           expect(document.body.textContent).toContain("deep hidden detail only after expand");
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("hides plan follow-up actions after the proposed plan was implemented in another thread", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotWithImplementedProposedPlan(),
+    });
+
+    try {
+      await vi.waitFor(
+        () => {
+          const buttonLabels = Array.from(document.querySelectorAll("button")).map((button) =>
+            button.textContent?.trim(),
+          );
+          expect(buttonLabels).not.toContain("Implement in new thread");
+          expect(buttonLabels).not.toContain("Refine");
         },
         { timeout: 8_000, interval: 16 },
       );
