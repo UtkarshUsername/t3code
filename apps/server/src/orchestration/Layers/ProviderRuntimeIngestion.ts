@@ -4,6 +4,7 @@ import {
   CommandId,
   MessageId,
   type OrchestrationEvent,
+  type OrchestrationProposedPlanId,
   CheckpointRef,
   isToolLifecycleItemType,
   ThreadId,
@@ -781,23 +782,34 @@ const make = Effect.gen(function* () {
       ).pipe(Effect.asVoid);
     });
 
-  const markSourceProposedPlanImplementedForStartedTurn = Effect.fnUntraced(function* (
+  const getSourceProposedPlanReferenceForPendingTurnStart = Effect.fnUntraced(function* (
     threadId: ThreadId,
-    implementedAt: string,
   ) {
     const pendingTurnStart = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
       threadId,
     });
     if (Option.isNone(pendingTurnStart)) {
-      return;
+      return null;
     }
 
     const sourceThreadId = pendingTurnStart.value.sourceProposedPlanThreadId;
     const sourcePlanId = pendingTurnStart.value.sourceProposedPlanId;
     if (sourceThreadId === null || sourcePlanId === null) {
-      return;
+      return null;
     }
 
+    return {
+      sourceThreadId,
+      sourcePlanId,
+    } as const;
+  });
+
+  const markSourceProposedPlanImplemented = Effect.fnUntraced(function* (
+    sourceThreadId: ThreadId,
+    sourcePlanId: OrchestrationProposedPlanId,
+    implementationThreadId: ThreadId,
+    implementedAt: string,
+  ) {
     const readModel = yield* orchestrationEngine.getReadModel();
     const sourceThread = readModel.threads.find((entry) => entry.id === sourceThreadId);
     const sourcePlan = sourceThread?.proposedPlans.find((entry) => entry.id === sourcePlanId);
@@ -808,13 +820,13 @@ const make = Effect.gen(function* () {
     yield* orchestrationEngine.dispatch({
       type: "thread.proposed-plan.upsert",
       commandId: CommandId.makeUnsafe(
-        `provider:source-proposed-plan-implemented:${threadId}:${crypto.randomUUID()}`,
+        `provider:source-proposed-plan-implemented:${implementationThreadId}:${crypto.randomUUID()}`,
       ),
       threadId: sourceThread.id,
       proposedPlan: {
         ...sourcePlan,
         implementedAt,
-        implementationThreadId: threadId,
+        implementationThreadId,
         updatedAt: implementedAt,
       },
       createdAt: implementedAt,
@@ -830,10 +842,6 @@ const make = Effect.gen(function* () {
       const now = event.createdAt;
       const eventTurnId = toTurnId(event.turnId);
       const activeTurnId = thread.session?.activeTurnId ?? null;
-
-      if (event.type === "turn.started") {
-        yield* markSourceProposedPlanImplementedForStartedTurn(thread.id, now);
-      }
 
       const conflictsWithActiveTurn =
         activeTurnId !== null && eventTurnId !== undefined && !sameId(activeTurnId, eventTurnId);
@@ -865,6 +873,10 @@ const make = Effect.gen(function* () {
             return true;
         }
       })();
+      const acceptedTurnStartedSourcePlan =
+        event.type === "turn.started" && shouldApplyThreadLifecycle
+          ? yield* getSourceProposedPlanReferenceForPendingTurnStart(thread.id)
+          : null;
 
       if (
         event.type === "session.started" ||
@@ -922,6 +934,15 @@ const make = Effect.gen(function* () {
             },
             createdAt: now,
           });
+
+          if (event.type === "turn.started" && acceptedTurnStartedSourcePlan !== null) {
+            yield* markSourceProposedPlanImplemented(
+              acceptedTurnStartedSourcePlan.sourceThreadId,
+              acceptedTurnStartedSourcePlan.sourcePlanId,
+              thread.id,
+              now,
+            );
+          }
         }
       }
 

@@ -801,6 +801,147 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
+  it("does not mark the source proposed plan implemented for a rejected turn.started event", async () => {
+    const harness = await createHarness();
+    const sourceThreadId = asThreadId("thread-plan");
+    const targetThreadId = asThreadId("thread-1");
+    const sourceTurnId = asTurnId("turn-plan-source");
+    const activeTurnId = asTurnId("turn-already-running");
+    const staleTurnId = asTurnId("turn-stale-start");
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-plan-source-guarded"),
+        threadId: sourceThreadId,
+        projectId: asProjectId("project-1"),
+        title: "Plan Source",
+        model: "gpt-5-codex",
+        interactionMode: "plan",
+        runtimeMode: "approval-required",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-session-set-plan-source-guarded"),
+        threadId: sourceThreadId,
+        session: {
+          threadId: sourceThreadId,
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: createdAt,
+          lastError: null,
+        },
+        createdAt,
+      }),
+    );
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-started-already-running"),
+      provider: "codex",
+      createdAt,
+      threadId: targetThreadId,
+      turnId: activeTurnId,
+    });
+
+    await waitForThread(
+      harness.engine,
+      (thread) =>
+        thread.session?.status === "running" && thread.session?.activeTurnId === activeTurnId,
+      2_000,
+      targetThreadId,
+    );
+
+    harness.emit({
+      type: "turn.proposed.completed",
+      eventId: asEventId("evt-plan-source-completed-guarded"),
+      provider: "codex",
+      createdAt,
+      threadId: sourceThreadId,
+      turnId: sourceTurnId,
+      payload: {
+        planMarkdown: "# Source plan",
+      },
+    });
+
+    const sourceThreadWithPlan = await waitForThread(
+      harness.engine,
+      (thread) =>
+        thread.proposedPlans.some(
+          (proposedPlan: ProviderRuntimeTestProposedPlan) =>
+            proposedPlan.id === "plan:thread-plan:turn:turn-plan-source" &&
+            proposedPlan.implementedAt === null,
+        ),
+      2_000,
+      sourceThreadId,
+    );
+    const sourcePlan = sourceThreadWithPlan.proposedPlans.find(
+      (entry: ProviderRuntimeTestProposedPlan) =>
+        entry.id === "plan:thread-plan:turn:turn-plan-source",
+    );
+    expect(sourcePlan).toBeDefined();
+    if (!sourcePlan) {
+      throw new Error("Expected source plan to exist.");
+    }
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-plan-target-guarded"),
+        threadId: targetThreadId,
+        message: {
+          messageId: asMessageId("msg-plan-target-guarded"),
+          role: "user",
+          text: "PLEASE IMPLEMENT THIS PLAN:\n# Source plan",
+          attachments: [],
+        },
+        sourceProposedPlan: {
+          threadId: sourceThreadId,
+          planId: sourcePlan.id,
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: new Date().toISOString(),
+      }),
+    );
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-started-stale-plan-implementation"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: targetThreadId,
+      turnId: staleTurnId,
+    });
+
+    await harness.drain();
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const sourceThreadAfterRejectedStart = readModel.threads.find(
+      (entry) => entry.id === sourceThreadId,
+    );
+    expect(
+      sourceThreadAfterRejectedStart?.proposedPlans.find((entry) => entry.id === sourcePlan.id),
+    ).toMatchObject({
+      implementedAt: null,
+      implementationThreadId: null,
+    });
+
+    const targetThreadAfterRejectedStart = readModel.threads.find(
+      (entry) => entry.id === targetThreadId,
+    );
+    expect(targetThreadAfterRejectedStart?.session?.status).toBe("running");
+    expect(targetThreadAfterRejectedStart?.session?.activeTurnId).toBe(activeTurnId);
+  });
+
   it("finalizes buffered proposed-plan deltas into a first-class proposed plan on turn completion", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
