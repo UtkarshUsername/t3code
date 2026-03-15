@@ -3,7 +3,6 @@ import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   EventId,
   MessageId,
-  type OrchestrationReadModel,
   ProjectId,
   ThreadId,
   TurnId,
@@ -17,114 +16,6 @@ import { createEmptyReadModel, projectEvent } from "./projector.ts";
 const asEventId = (value: string): EventId => EventId.makeUnsafe(value);
 const asProjectId = (value: string): ProjectId => ProjectId.makeUnsafe(value);
 const asMessageId = (value: string): MessageId => MessageId.makeUnsafe(value);
-
-async function seedProjectReadModel(now: string): Promise<OrchestrationReadModel> {
-  return Effect.runPromise(
-    projectEvent(createEmptyReadModel(now), {
-      sequence: 1,
-      eventId: asEventId("evt-project-create"),
-      aggregateKind: "project",
-      aggregateId: asProjectId("project-1"),
-      type: "project.created",
-      occurredAt: now,
-      commandId: CommandId.makeUnsafe("cmd-project-create"),
-      causationEventId: null,
-      correlationId: CommandId.makeUnsafe("cmd-project-create"),
-      metadata: {},
-      payload: {
-        projectId: asProjectId("project-1"),
-        title: "Project",
-        workspaceRoot: "/tmp/project",
-        defaultModel: null,
-        scripts: [],
-        createdAt: now,
-        updatedAt: now,
-      },
-    }),
-  );
-}
-
-async function appendThreadToReadModel(
-  readModel: OrchestrationReadModel,
-  input: {
-    now: string;
-    sequence: number;
-    eventId: string;
-    commandId: string;
-    threadId: string;
-    title: string;
-    interactionMode: "default" | "plan";
-    runtimeMode: "approval-required" | "full-access";
-  },
-): Promise<OrchestrationReadModel> {
-  return Effect.runPromise(
-    projectEvent(readModel, {
-      sequence: input.sequence,
-      eventId: asEventId(input.eventId),
-      aggregateKind: "thread",
-      aggregateId: ThreadId.makeUnsafe(input.threadId),
-      type: "thread.created",
-      occurredAt: input.now,
-      commandId: CommandId.makeUnsafe(input.commandId),
-      causationEventId: null,
-      correlationId: CommandId.makeUnsafe(input.commandId),
-      metadata: {},
-      payload: {
-        threadId: ThreadId.makeUnsafe(input.threadId),
-        projectId: asProjectId("project-1"),
-        title: input.title,
-        model: "gpt-5-codex",
-        interactionMode: input.interactionMode,
-        runtimeMode: input.runtimeMode,
-        branch: null,
-        worktreePath: null,
-        createdAt: input.now,
-        updatedAt: input.now,
-      },
-    }),
-  );
-}
-
-async function appendProposedPlanToReadModel(
-  readModel: OrchestrationReadModel,
-  input: {
-    now: string;
-    sequence: number;
-    eventId: string;
-    commandId: string;
-    threadId: string;
-    planId: string;
-    turnId: string;
-    planMarkdown: string;
-  },
-): Promise<OrchestrationReadModel> {
-  return Effect.runPromise(
-    projectEvent(readModel, {
-      sequence: input.sequence,
-      eventId: asEventId(input.eventId),
-      aggregateKind: "thread",
-      aggregateId: ThreadId.makeUnsafe(input.threadId),
-      type: "thread.proposed-plan-upserted",
-      occurredAt: input.now,
-      commandId: CommandId.makeUnsafe(input.commandId),
-      causationEventId: null,
-      correlationId: CommandId.makeUnsafe(input.commandId),
-      metadata: {},
-      payload: {
-        threadId: ThreadId.makeUnsafe(input.threadId),
-        proposedPlan: {
-          id: input.planId,
-          turnId: TurnId.makeUnsafe(input.turnId),
-          planMarkdown: input.planMarkdown,
-          implementedAt: null,
-          implementationThreadId: null,
-          createdAt: input.now,
-          updatedAt: input.now,
-        },
-      },
-    }),
-  );
-}
 
 describe("decider project scripts", () => {
   it("emits empty scripts on project.create", async () => {
@@ -206,16 +97,56 @@ describe("decider project scripts", () => {
 
   it("emits user message and turn-start-requested events for thread.turn.start", async () => {
     const now = new Date().toISOString();
-    const readModel = await appendThreadToReadModel(await seedProjectReadModel(now), {
-      now,
-      sequence: 2,
-      eventId: "evt-thread-create",
-      commandId: "cmd-thread-create",
-      threadId: "thread-1",
-      title: "Thread",
-      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-      runtimeMode: "approval-required",
-    });
+    const initial = createEmptyReadModel(now);
+    const withProject = await Effect.runPromise(
+      projectEvent(initial, {
+        sequence: 1,
+        eventId: asEventId("evt-project-create"),
+        aggregateKind: "project",
+        aggregateId: asProjectId("project-1"),
+        type: "project.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-project-create"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-project-create"),
+        metadata: {},
+        payload: {
+          projectId: asProjectId("project-1"),
+          title: "Project",
+          workspaceRoot: "/tmp/project",
+          defaultModel: null,
+          scripts: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const readModel = await Effect.runPromise(
+      projectEvent(withProject, {
+        sequence: 2,
+        eventId: asEventId("evt-thread-create"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-1"),
+        type: "thread.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-thread-create"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-thread-create"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          projectId: asProjectId("project-1"),
+          title: "Thread",
+          model: "gpt-5-codex",
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
 
     const result = await Effect.runPromise(
       decideOrchestrationCommand({
@@ -273,36 +204,108 @@ describe("decider project scripts", () => {
 
   it("carries the source proposed plan reference in turn-start-requested", async () => {
     const now = new Date().toISOString();
-    const withSourceThread = await appendThreadToReadModel(await seedProjectReadModel(now), {
-      now,
-      sequence: 2,
-      eventId: "evt-thread-create-source",
-      commandId: "cmd-thread-create-source",
-      threadId: "thread-plan",
-      title: "Plan Thread",
-      interactionMode: "plan",
-      runtimeMode: "approval-required",
-    });
-    const withTargetThread = await appendThreadToReadModel(withSourceThread, {
-      now,
-      sequence: 3,
-      eventId: "evt-thread-create-target",
-      commandId: "cmd-thread-create-target",
-      threadId: "thread-implement",
-      title: "Implementation Thread",
-      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-      runtimeMode: "approval-required",
-    });
-    const readModel = await appendProposedPlanToReadModel(withTargetThread, {
-      now,
-      sequence: 4,
-      eventId: "evt-plan-upsert",
-      commandId: "cmd-plan-upsert",
-      threadId: "thread-plan",
-      planId: "plan-1",
-      turnId: "turn-1",
-      planMarkdown: "# Plan",
-    });
+    const initial = createEmptyReadModel(now);
+    const withProject = await Effect.runPromise(
+      projectEvent(initial, {
+        sequence: 1,
+        eventId: asEventId("evt-project-create"),
+        aggregateKind: "project",
+        aggregateId: asProjectId("project-1"),
+        type: "project.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-project-create"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-project-create"),
+        metadata: {},
+        payload: {
+          projectId: asProjectId("project-1"),
+          title: "Project",
+          workspaceRoot: "/tmp/project",
+          defaultModel: null,
+          scripts: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const withSourceThread = await Effect.runPromise(
+      projectEvent(withProject, {
+        sequence: 2,
+        eventId: asEventId("evt-thread-create-source"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-plan"),
+        type: "thread.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-thread-create-source"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-thread-create-source"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-plan"),
+          projectId: asProjectId("project-1"),
+          title: "Plan Thread",
+          model: "gpt-5-codex",
+          interactionMode: "plan",
+          runtimeMode: "approval-required",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const withTargetThread = await Effect.runPromise(
+      projectEvent(withSourceThread, {
+        sequence: 3,
+        eventId: asEventId("evt-thread-create-target"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-implement"),
+        type: "thread.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-thread-create-target"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-thread-create-target"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-implement"),
+          projectId: asProjectId("project-1"),
+          title: "Implementation Thread",
+          model: "gpt-5-codex",
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const readModel = await Effect.runPromise(
+      projectEvent(withTargetThread, {
+        sequence: 4,
+        eventId: asEventId("evt-plan-upsert"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-plan"),
+        type: "thread.proposed-plan-upserted",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-plan-upsert"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-plan-upsert"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-plan"),
+          proposedPlan: {
+            id: "plan-1",
+            turnId: TurnId.makeUnsafe("turn-1"),
+            planMarkdown: "# Plan",
+            implementedAt: null,
+            implementationThreadId: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        },
+      }),
+    );
 
     const result = await Effect.runPromise(
       decideOrchestrationCommand({
@@ -343,26 +346,82 @@ describe("decider project scripts", () => {
 
   it("rejects thread.turn.start when the source proposed plan is missing", async () => {
     const now = new Date().toISOString();
-    const withSourceThread = await appendThreadToReadModel(await seedProjectReadModel(now), {
-      now,
-      sequence: 2,
-      eventId: "evt-thread-create-source",
-      commandId: "cmd-thread-create-source",
-      threadId: "thread-plan",
-      title: "Plan Thread",
-      interactionMode: "plan",
-      runtimeMode: "approval-required",
-    });
-    const readModel = await appendThreadToReadModel(withSourceThread, {
-      now,
-      sequence: 3,
-      eventId: "evt-thread-create-target",
-      commandId: "cmd-thread-create-target",
-      threadId: "thread-implement",
-      title: "Implementation Thread",
-      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-      runtimeMode: "approval-required",
-    });
+    const initial = createEmptyReadModel(now);
+    const withProject = await Effect.runPromise(
+      projectEvent(initial, {
+        sequence: 1,
+        eventId: asEventId("evt-project-create"),
+        aggregateKind: "project",
+        aggregateId: asProjectId("project-1"),
+        type: "project.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-project-create"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-project-create"),
+        metadata: {},
+        payload: {
+          projectId: asProjectId("project-1"),
+          title: "Project",
+          workspaceRoot: "/tmp/project",
+          defaultModel: null,
+          scripts: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const withSourceThread = await Effect.runPromise(
+      projectEvent(withProject, {
+        sequence: 2,
+        eventId: asEventId("evt-thread-create-source"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-plan"),
+        type: "thread.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-thread-create-source"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-thread-create-source"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-plan"),
+          projectId: asProjectId("project-1"),
+          title: "Plan Thread",
+          model: "gpt-5-codex",
+          interactionMode: "plan",
+          runtimeMode: "approval-required",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const readModel = await Effect.runPromise(
+      projectEvent(withSourceThread, {
+        sequence: 3,
+        eventId: asEventId("evt-thread-create-target"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-implement"),
+        type: "thread.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-thread-create-target"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-thread-create-target"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-implement"),
+          projectId: asProjectId("project-1"),
+          title: "Implementation Thread",
+          model: "gpt-5-codex",
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
 
     await expect(
       Effect.runPromise(
@@ -393,16 +452,56 @@ describe("decider project scripts", () => {
 
   it("emits thread.runtime-mode-set from thread.runtime-mode.set", async () => {
     const now = new Date().toISOString();
-    const readModel = await appendThreadToReadModel(await seedProjectReadModel(now), {
-      now,
-      sequence: 2,
-      eventId: "evt-thread-create",
-      commandId: "cmd-thread-create",
-      threadId: "thread-1",
-      title: "Thread",
-      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-      runtimeMode: "full-access",
-    });
+    const initial = createEmptyReadModel(now);
+    const withProject = await Effect.runPromise(
+      projectEvent(initial, {
+        sequence: 1,
+        eventId: asEventId("evt-project-create"),
+        aggregateKind: "project",
+        aggregateId: asProjectId("project-1"),
+        type: "project.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-project-create"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-project-create"),
+        metadata: {},
+        payload: {
+          projectId: asProjectId("project-1"),
+          title: "Project",
+          workspaceRoot: "/tmp/project",
+          defaultModel: null,
+          scripts: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const readModel = await Effect.runPromise(
+      projectEvent(withProject, {
+        sequence: 2,
+        eventId: asEventId("evt-thread-create"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-1"),
+        type: "thread.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-thread-create"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-thread-create"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          projectId: asProjectId("project-1"),
+          title: "Thread",
+          model: "gpt-5-codex",
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "full-access",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
 
     const result = await Effect.runPromise(
       decideOrchestrationCommand({
@@ -432,16 +531,56 @@ describe("decider project scripts", () => {
 
   it("emits thread.interaction-mode-set from thread.interaction-mode.set", async () => {
     const now = new Date().toISOString();
-    const readModel = await appendThreadToReadModel(await seedProjectReadModel(now), {
-      now,
-      sequence: 2,
-      eventId: "evt-thread-create",
-      commandId: "cmd-thread-create",
-      threadId: "thread-1",
-      title: "Thread",
-      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-      runtimeMode: "approval-required",
-    });
+    const initial = createEmptyReadModel(now);
+    const withProject = await Effect.runPromise(
+      projectEvent(initial, {
+        sequence: 1,
+        eventId: asEventId("evt-project-create"),
+        aggregateKind: "project",
+        aggregateId: asProjectId("project-1"),
+        type: "project.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-project-create"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-project-create"),
+        metadata: {},
+        payload: {
+          projectId: asProjectId("project-1"),
+          title: "Project",
+          workspaceRoot: "/tmp/project",
+          defaultModel: null,
+          scripts: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const readModel = await Effect.runPromise(
+      projectEvent(withProject, {
+        sequence: 2,
+        eventId: asEventId("evt-thread-create"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-1"),
+        type: "thread.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-thread-create"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-thread-create"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          projectId: asProjectId("project-1"),
+          title: "Thread",
+          model: "gpt-5-codex",
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
 
     const result = await Effect.runPromise(
       decideOrchestrationCommand({
