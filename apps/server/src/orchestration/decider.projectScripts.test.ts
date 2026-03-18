@@ -5,6 +5,7 @@ import {
   MessageId,
   ProjectId,
   ThreadId,
+  TurnId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
@@ -357,5 +358,137 @@ describe("decider project scripts", () => {
         interactionMode: "plan",
       },
     });
+  });
+
+  it("rejects thread.turn.start when the source proposed plan is already implemented", async () => {
+    const now = new Date().toISOString();
+    const initial = createEmptyReadModel(now);
+    const withProject = await Effect.runPromise(
+      projectEvent(initial, {
+        sequence: 1,
+        eventId: asEventId("evt-project-create-plan-used"),
+        aggregateKind: "project",
+        aggregateId: asProjectId("project-1"),
+        type: "project.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-project-create-plan-used"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-project-create-plan-used"),
+        metadata: {},
+        payload: {
+          projectId: asProjectId("project-1"),
+          title: "Project",
+          workspaceRoot: "/tmp/project",
+          defaultModel: null,
+          scripts: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const withSourceThread = await Effect.runPromise(
+      projectEvent(withProject, {
+        sequence: 2,
+        eventId: asEventId("evt-thread-create-plan-used-source"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-plan"),
+        type: "thread.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-thread-create-plan-used-source"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-thread-create-plan-used-source"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-plan"),
+          projectId: asProjectId("project-1"),
+          title: "Plan Thread",
+          model: "gpt-5-codex",
+          interactionMode: "plan",
+          runtimeMode: "approval-required",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const withTargetThread = await Effect.runPromise(
+      projectEvent(withSourceThread, {
+        sequence: 3,
+        eventId: asEventId("evt-thread-create-plan-used-target"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-implement"),
+        type: "thread.created",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-thread-create-plan-used-target"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-thread-create-plan-used-target"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-implement"),
+          projectId: asProjectId("project-1"),
+          title: "Implementation Thread",
+          model: "gpt-5-codex",
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+    const readModel = await Effect.runPromise(
+      projectEvent(withTargetThread, {
+        sequence: 4,
+        eventId: asEventId("evt-plan-upsert-plan-used"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.makeUnsafe("thread-plan"),
+        type: "thread.proposed-plan-upserted",
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-plan-upsert-plan-used"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-plan-upsert-plan-used"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.makeUnsafe("thread-plan"),
+          proposedPlan: {
+            id: "plan-used",
+            turnId: TurnId.makeUnsafe("turn-plan"),
+            planMarkdown: "# Used plan",
+            implementedAt: now,
+            implementationThreadId: ThreadId.makeUnsafe("thread-elsewhere"),
+            createdAt: now,
+            updatedAt: now,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        decideOrchestrationCommand({
+          command: {
+            type: "thread.turn.start",
+            commandId: CommandId.makeUnsafe("cmd-turn-start-plan-used"),
+            threadId: ThreadId.makeUnsafe("thread-implement"),
+            message: {
+              messageId: asMessageId("message-plan-used"),
+              role: "user",
+              text: "PLEASE IMPLEMENT THIS PLAN:\n# Used plan",
+              attachments: [],
+            },
+            sourceProposedPlan: {
+              threadId: ThreadId.makeUnsafe("thread-plan"),
+              planId: "plan-used",
+            },
+            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+            runtimeMode: "approval-required",
+            createdAt: now,
+          },
+          readModel,
+        }),
+      ),
+    ).rejects.toThrow("Proposed plan 'plan-used' has already been implemented.");
   });
 });
