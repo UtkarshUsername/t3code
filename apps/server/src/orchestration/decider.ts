@@ -285,12 +285,6 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           detail: `Proposed plan '${sourceProposedPlan.planId}' does not exist on thread '${sourceProposedPlan.threadId}'.`,
         });
       }
-      if (sourcePlan && sourcePlan.implementedAt !== null) {
-        return yield* new OrchestrationCommandInvariantError({
-          commandType: command.type,
-          detail: `Proposed plan '${sourceProposedPlan?.planId}' has already been implemented.`,
-        });
-      }
       if (sourceThread && sourceThread.projectId !== targetThread.projectId) {
         return yield* new OrchestrationCommandInvariantError({
           commandType: command.type,
