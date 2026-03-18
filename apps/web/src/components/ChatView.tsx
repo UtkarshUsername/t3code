@@ -34,7 +34,15 @@ import {
   resolveModelSlugForProvider,
   supportsClaudeUltrathinkKeyword,
 } from "@t3tools/shared/model";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -93,6 +101,11 @@ import {
 import { basenameOfPath } from "../vscode-icons";
 import { useTheme } from "../hooks/useTheme";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import {
+  RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY,
+  RIGHT_PANEL_SHEET_CLASS_NAME,
+} from "../rightPanelLayout";
 import BranchToolbar from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import PlanSidebar from "./PlanSidebar";
@@ -178,6 +191,7 @@ import {
   SendPhase,
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
+import { Sheet, SheetPopup } from "./ui/sheet";
 
 const ATTACHMENT_PREVIEW_HANDOFF_TTL_MS = 5000;
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
@@ -234,6 +248,28 @@ const terminalContextIdListsEqual = (
 
 interface ChatViewProps {
   threadId: ThreadId;
+}
+
+function PlanSidebarSheet(props: { children: ReactNode; open: boolean; onClose: () => void }) {
+  return (
+    <Sheet
+      open={props.open}
+      onOpenChange={(open) => {
+        if (!open) {
+          props.onClose();
+        }
+      }}
+    >
+      <SheetPopup
+        side="right"
+        showCloseButton={false}
+        keepMounted
+        className={RIGHT_PANEL_SHEET_CLASS_NAME}
+      >
+        {props.children}
+      </SheetPopup>
+    </Sheet>
+  );
 }
 
 export default function ChatView({ threadId }: ChatViewProps) {
@@ -334,6 +370,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     useState<Record<string, number>>({});
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({});
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false);
+  const shouldUsePlanSidebarSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   // Tracks whether the user explicitly dismissed the sidebar for the active turn.
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
@@ -1629,6 +1666,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }
       return !open;
     });
+  }, [activePlan?.turnId, sidebarProposedPlan?.turnId]);
+  const closePlanSidebar = useCallback(() => {
+    setPlanSidebarOpen(false);
+    const turnKey = activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? null;
+    if (turnKey) {
+      planSidebarDismissedForTurnRef.current = turnKey;
+    }
   }, [activePlan?.turnId, sidebarProposedPlan?.turnId]);
 
   const persistThreadSettingsForNextTurn = useCallback(
@@ -4136,25 +4180,33 @@ export default function ChatView({ threadId }: ChatViewProps) {
         {/* end chat column */}
 
         {/* Plan sidebar */}
-        {planSidebarOpen ? (
+        {planSidebarOpen && !shouldUsePlanSidebarSheet ? (
           <PlanSidebar
             activePlan={activePlan}
             activeProposedPlan={sidebarProposedPlan}
             markdownCwd={gitCwd ?? undefined}
             workspaceRoot={activeProject?.cwd ?? undefined}
             timestampFormat={timestampFormat}
-            onClose={() => {
-              setPlanSidebarOpen(false);
-              // Track that the user explicitly dismissed for this turn so auto-open won't fight them.
-              const turnKey = activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? null;
-              if (turnKey) {
-                planSidebarDismissedForTurnRef.current = turnKey;
-              }
-            }}
+            mode="sidebar"
+            onClose={closePlanSidebar}
           />
         ) : null}
       </div>
       {/* end horizontal flex container */}
+
+      {shouldUsePlanSidebarSheet && planSidebarOpen ? (
+        <PlanSidebarSheet open onClose={closePlanSidebar}>
+          <PlanSidebar
+            activePlan={activePlan}
+            activeProposedPlan={activeProposedPlan}
+            markdownCwd={gitCwd ?? undefined}
+            workspaceRoot={activeProject?.cwd ?? undefined}
+            timestampFormat={timestampFormat}
+            mode="sheet"
+            onClose={closePlanSidebar}
+          />
+        </PlanSidebarSheet>
+      ) : null}
 
       {(() => {
         if (!terminalState.terminalOpen || !activeProject) {
