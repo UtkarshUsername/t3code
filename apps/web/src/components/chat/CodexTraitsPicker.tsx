@@ -49,11 +49,11 @@ export const CodexTraitsPicker = memo(function CodexTraitsPicker(props: {
         <span className="flex min-w-0 w-full items-center gap-2 overflow-hidden">
           {props.fastModeEnabled ? (
             <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-              <span className="min-w-0 basis-0 grow truncate">{effortLabel}</span>
+              <span className="min-w-0 flex-1 truncate">{effortLabel}</span>
               <span className="shrink-0 text-muted-foreground/60" aria-hidden="true">
                 ·
               </span>
-              <span className="min-w-0 basis-0 grow truncate">Fast</span>
+              <span className="shrink-0">Fast</span>
             </span>
           ) : (
             <span className="min-w-0 flex-1 truncate">{effortLabel}</span>
