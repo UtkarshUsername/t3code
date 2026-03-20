@@ -1249,7 +1249,9 @@ export default function Sidebar() {
                   }`}
                 />
               </TooltipTrigger>
-              <TooltipPopup side="right">Add project</TooltipPopup>
+              <TooltipPopup side="right">
+                {shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
+              </TooltipPopup>
             </Tooltip>
           </div>
 
