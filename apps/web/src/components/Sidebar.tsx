@@ -1236,7 +1236,7 @@ export default function Sidebar() {
                 render={
                   <button
                     type="button"
-                    aria-label="Add project"
+                    aria-label={shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
                     aria-pressed={shouldShowProjectPathEntry}
                     className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
                     onClick={handleStartAddProject}
@@ -1303,18 +1303,6 @@ export default function Sidebar() {
                   {addProjectError}
                 </p>
               )}
-              <div className="mt-1.5 px-0.5">
-                <button
-                  type="button"
-                  className="text-[11px] text-muted-foreground/50 transition-colors hover:text-muted-foreground"
-                  onClick={() => {
-                    setAddingProject(false);
-                    setAddProjectError(null);
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
             </div>
           )}
 
