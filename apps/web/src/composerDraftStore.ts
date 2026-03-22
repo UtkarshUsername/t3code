@@ -846,6 +846,15 @@ function readPersistedAttachmentIdsFromStorage(threadId: ThreadId): string[] {
   }
 }
 
+function flushComposerDraftStorage(): boolean {
+  try {
+    composerDebouncedStorage.flush();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function hydreatePersistedComposerImageAttachment(
   attachment: PersistedComposerImageAttachment,
 ): File | null {
@@ -1662,7 +1671,10 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
           return { draftsByThreadId: nextDraftsByThreadId };
         });
         Promise.resolve().then(() => {
-          const persistedIdSet = new Set(readPersistedAttachmentIdsFromStorage(threadId));
+          const didFlushPersistedDraft = flushComposerDraftStorage();
+          const persistedIdSet = didFlushPersistedDraft
+            ? new Set(readPersistedAttachmentIdsFromStorage(threadId))
+            : new Set<string>();
           set((state) => {
             const current = state.draftsByThreadId[threadId];
             if (!current) {

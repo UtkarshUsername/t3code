@@ -1,4 +1,3 @@
-import * as Schema from "effect/Schema";
 import { ProjectId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,7 +6,7 @@ import {
   type ComposerImageAttachment,
   useComposerDraftStore,
 } from "./composerDraftStore";
-import { removeLocalStorageItem, setLocalStorageItem } from "./hooks/useLocalStorage";
+import { removeLocalStorageItem } from "./hooks/useLocalStorage";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   insertInlineTerminalContextPlaceholder,
@@ -204,26 +203,49 @@ describe("composerDraftStore syncPersistedAttachments", () => {
     removeLocalStorageItem(COMPOSER_DRAFT_STORAGE_KEY);
   });
 
-  it("treats malformed persisted draft storage as empty", async () => {
+  it("keeps attachments persisted after flushing the pending draft write", async () => {
     const image = makeImage({
       id: "img-persisted",
       previewUrl: "blob:persisted",
     });
     useComposerDraftStore.getState().addImage(threadId, image);
-    setLocalStorageItem(
-      COMPOSER_DRAFT_STORAGE_KEY,
+
+    useComposerDraftStore.getState().syncPersistedAttachments(threadId, [
       {
-        version: 2,
-        state: {
-          draftsByThreadId: {
-            [threadId]: {
-              attachments: "not-an-array",
-            },
-          },
-        },
+        id: image.id,
+        name: image.name,
+        mimeType: image.mimeType,
+        sizeBytes: image.sizeBytes,
+        dataUrl: image.previewUrl,
       },
-      Schema.Unknown,
-    );
+    ]);
+    await Promise.resolve();
+
+    expect(
+      useComposerDraftStore.getState().draftsByThreadId[threadId]?.persistedAttachments,
+    ).toEqual([
+      {
+        id: image.id,
+        name: image.name,
+        mimeType: image.mimeType,
+        sizeBytes: image.sizeBytes,
+        dataUrl: image.previewUrl,
+      },
+    ]);
+    expect(
+      useComposerDraftStore.getState().draftsByThreadId[threadId]?.nonPersistedImageIds,
+    ).toEqual([]);
+  });
+
+  it("marks attachments non-persisted when flushing draft storage fails", async () => {
+    const image = makeImage({
+      id: "img-persisted",
+      previewUrl: "blob:persisted",
+    });
+    useComposerDraftStore.getState().addImage(threadId, image);
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Quota exceeded");
+    });
 
     useComposerDraftStore.getState().syncPersistedAttachments(threadId, [
       {
@@ -242,6 +264,8 @@ describe("composerDraftStore syncPersistedAttachments", () => {
     expect(
       useComposerDraftStore.getState().draftsByThreadId[threadId]?.nonPersistedImageIds,
     ).toEqual([image.id]);
+
+    setItemSpy.mockRestore();
   });
 });
 
