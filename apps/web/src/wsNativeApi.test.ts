@@ -13,7 +13,7 @@ import {
   WS_CHANNELS,
   WS_METHODS,
   type WsPush,
-  type ServerProviderStatus,
+  type ServerProvider,
 } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -92,13 +92,16 @@ function getWindowForTest(): Window & typeof globalThis & { desktopBridge?: unkn
   return testGlobal.window;
 }
 
-const defaultProviders: ReadonlyArray<ServerProviderStatus> = [
+const defaultProviders: ReadonlyArray<ServerProvider> = [
   {
     provider: "codex",
+    enabled: true,
+    installed: true,
+    version: "0.116.0",
     status: "ready",
-    available: true,
     authStatus: "authenticated",
     checkedAt: "2026-01-01T00:00:00.000Z",
+    models: [],
   },
 ];
 
@@ -197,7 +200,6 @@ describe("wsNativeApi", () => {
           message: "Entry at index 1 is invalid.",
         },
       ],
-      providers: defaultProviders,
     } as const;
     emitPush(WS_CHANNELS.serverConfigUpdated, payload);
 
@@ -219,18 +221,36 @@ describe("wsNativeApi", () => {
 
     emitPush(WS_CHANNELS.serverConfigUpdated, {
       issues: [{ kind: "keybindings.malformed-config", message: "bad json" }],
-      providers: defaultProviders,
     });
     emitPush(WS_CHANNELS.serverConfigUpdated, {
       issues: [],
-      providers: defaultProviders,
     });
 
     expect(listener).toHaveBeenCalledTimes(2);
     expect(listener).toHaveBeenLastCalledWith({
       issues: [],
-      providers: defaultProviders,
     });
+  });
+
+  it("delivers and caches valid server.providersUpdated payloads", async () => {
+    const { createWsNativeApi, onServerProvidersUpdated } = await import("./wsNativeApi");
+
+    createWsNativeApi();
+    const listener = vi.fn();
+    onServerProvidersUpdated(listener);
+
+    const payload = {
+      providers: defaultProviders,
+    } as const;
+    emitPush(WS_CHANNELS.serverProvidersUpdated, payload);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(payload);
+
+    const lateListener = vi.fn();
+    onServerProvidersUpdated(lateListener);
+    expect(lateListener).toHaveBeenCalledTimes(1);
+    expect(lateListener).toHaveBeenCalledWith(payload);
   });
 
   it("forwards valid terminal and orchestration events", async () => {
@@ -239,9 +259,11 @@ describe("wsNativeApi", () => {
     const api = createWsNativeApi();
     const onTerminalEvent = vi.fn();
     const onDomainEvent = vi.fn();
+    const onActionProgress = vi.fn();
 
     api.terminal.onEvent(onTerminalEvent);
     api.orchestration.onDomainEvent(onDomainEvent);
+    api.git.onActionProgress(onActionProgress);
 
     const terminalEvent = {
       threadId: "thread-1",
@@ -267,18 +289,35 @@ describe("wsNativeApi", () => {
         projectId: ProjectId.makeUnsafe("project-1"),
         title: "Project",
         workspaceRoot: "/tmp/workspace",
-        defaultModel: null,
+        defaultModelSelection: null,
         scripts: [],
         createdAt: "2026-02-24T00:00:00.000Z",
         updatedAt: "2026-02-24T00:00:00.000Z",
       },
     } satisfies Extract<OrchestrationEvent, { type: "project.created" }>;
     emitPush(ORCHESTRATION_WS_CHANNELS.domainEvent, orchestrationEvent);
+    emitPush(WS_CHANNELS.gitActionProgress, {
+      actionId: "action-1",
+      cwd: "/repo",
+      action: "commit",
+      kind: "phase_started",
+      phase: "commit",
+      label: "Committing...",
+    });
 
     expect(onTerminalEvent).toHaveBeenCalledTimes(1);
     expect(onTerminalEvent).toHaveBeenCalledWith(terminalEvent);
     expect(onDomainEvent).toHaveBeenCalledTimes(1);
     expect(onDomainEvent).toHaveBeenCalledWith(orchestrationEvent);
+    expect(onActionProgress).toHaveBeenCalledTimes(1);
+    expect(onActionProgress).toHaveBeenCalledWith({
+      actionId: "action-1",
+      cwd: "/repo",
+      action: "commit",
+      kind: "phase_started",
+      phase: "commit",
+      label: "Committing...",
+    });
   });
 
   it("wraps orchestration dispatch commands in the command envelope", async () => {
@@ -292,7 +331,10 @@ describe("wsNativeApi", () => {
       projectId: ProjectId.makeUnsafe("project-1"),
       title: "Project",
       workspaceRoot: "/tmp/project",
-      defaultModel: "gpt-5-codex",
+      defaultModelSelection: {
+        provider: "codex",
+        model: "gpt-5-codex",
+      },
       createdAt: "2026-02-24T00:00:00.000Z",
     } as const;
     await api.orchestration.dispatchCommand(command);
@@ -318,6 +360,34 @@ describe("wsNativeApi", () => {
       relativePath: "plan.md",
       contents: "# Plan\n",
     });
+  });
+
+  it("uses no client timeout for git.runStackedAction", async () => {
+    requestMock.mockResolvedValue({
+      action: "commit",
+      branch: { status: "skipped_not_requested" },
+      commit: { status: "created", commitSha: "abc1234", subject: "Test" },
+      push: { status: "skipped_not_requested" },
+      pr: { status: "skipped_not_requested" },
+    });
+    const { createWsNativeApi } = await import("./wsNativeApi");
+
+    const api = createWsNativeApi();
+    await api.git.runStackedAction({
+      actionId: "action-1",
+      cwd: "/repo",
+      action: "commit",
+    });
+
+    expect(requestMock).toHaveBeenCalledWith(
+      WS_METHODS.gitRunStackedAction,
+      {
+        actionId: "action-1",
+        cwd: "/repo",
+        action: "commit",
+      },
+      { timeoutMs: null },
+    );
   });
 
   it("forwards full-thread diff requests to the orchestration websocket method", async () => {

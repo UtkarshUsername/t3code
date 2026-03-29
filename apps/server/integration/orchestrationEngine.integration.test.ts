@@ -11,6 +11,7 @@ import {
   ProjectId,
   ProviderKind,
   ThreadId,
+  ModelSelection,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
@@ -27,6 +28,7 @@ import type {
   CheckpointDiffFinalizedReceipt,
   TurnProcessingQuiescedReceipt,
 } from "../src/orchestration/Services/RuntimeReceiptBus.ts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 
 const asMessageId = (value: string): MessageId => MessageId.makeUnsafe(value);
 const asProjectId = (value: string): ProjectId => ProjectId.makeUnsafe(value);
@@ -51,8 +53,6 @@ class IntegrationWaitTimeoutError extends Schema.TaggedErrorClass<IntegrationWai
   },
 ) {}
 
-const sleep = (ms: number) => Effect.sleep(ms);
-
 function waitForSync<A>(
   read: () => A,
   predicate: (value: A) => boolean,
@@ -70,7 +70,7 @@ function waitForSync<A>(
       if (Date.now() >= deadline) {
         return yield* Effect.die(new IntegrationWaitTimeoutError({ description }));
       }
-      yield* sleep(10);
+      yield* Effect.sleep(10);
     }
   });
 }
@@ -91,7 +91,7 @@ function withHarness<A, E>(
     makeOrchestrationIntegrationHarness({ provider }),
     use,
     (harness) => harness.dispose,
-  );
+  ).pipe(Effect.provide(NodeServices.layer));
 }
 
 function withRealCodexHarness<A, E>(
@@ -101,7 +101,7 @@ function withRealCodexHarness<A, E>(
     makeOrchestrationIntegrationHarness({ provider: "codex", realCodex: true }),
     use,
     (harness) => harness.dispose,
-  );
+  ).pipe(Effect.provide(NodeServices.layer));
 }
 
 const seedProjectAndThread = (harness: OrchestrationIntegrationHarness) =>
@@ -116,7 +116,10 @@ const seedProjectAndThread = (harness: OrchestrationIntegrationHarness) =>
       projectId: PROJECT_ID,
       title: "Integration Project",
       workspaceRoot: harness.workspaceDir,
-      defaultModel,
+      defaultModelSelection: {
+        provider,
+        model: defaultModel,
+      },
       createdAt,
     });
 
@@ -126,7 +129,10 @@ const seedProjectAndThread = (harness: OrchestrationIntegrationHarness) =>
       threadId: THREAD_ID,
       projectId: PROJECT_ID,
       title: "Integration Thread",
-      model: defaultModel,
+      modelSelection: {
+        provider,
+        model: defaultModel,
+      },
       interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
       runtimeMode: "approval-required",
       branch: null,
@@ -140,7 +146,7 @@ const startTurn = (input: {
   readonly commandId: string;
   readonly messageId: string;
   readonly text: string;
-  readonly provider?: IntegrationProvider;
+  readonly modelSelection?: ModelSelection;
 }) =>
   input.harness.engine.dispatch({
     type: "thread.turn.start",
@@ -152,7 +158,11 @@ const startTurn = (input: {
       text: input.text,
       attachments: [],
     },
-    ...(input.provider !== undefined ? { provider: input.provider } : {}),
+    ...(input.modelSelection !== undefined
+      ? {
+          modelSelection: input.modelSelection,
+        }
+      : {}),
     interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
     runtimeMode: "approval-required",
     createdAt: nowIso(),
@@ -255,7 +265,10 @@ it.live.skipIf(!process.env.CODEX_BINARY_PATH)(
           projectId: PROJECT_ID,
           title: "Integration Project",
           workspaceRoot: harness.workspaceDir,
-          defaultModel: "gpt-5.3-codex",
+          defaultModelSelection: {
+            provider: "codex",
+            model: "gpt-5.3-codex",
+          },
           createdAt,
         });
 
@@ -265,7 +278,10 @@ it.live.skipIf(!process.env.CODEX_BINARY_PATH)(
           threadId: THREAD_ID,
           projectId: PROJECT_ID,
           title: "Integration Thread",
-          model: "gpt-5.3-codex",
+          modelSelection: {
+            provider: "codex",
+            model: "gpt-5.3-codex",
+          },
           interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
           runtimeMode: "full-access",
           branch: null,
@@ -923,7 +939,10 @@ it.live("starts a claudeAgent session on first turn when provider is requested",
           commandId: "cmd-turn-start-claude-initial",
           messageId: "msg-user-claude-initial",
           text: "Use Claude",
-          provider: "claudeAgent",
+          modelSelection: {
+            provider: "claudeAgent",
+            model: "claude-sonnet-4-6",
+          },
         });
 
         const thread = yield* harness.waitForThread(
@@ -977,7 +996,10 @@ it.live("recovers claudeAgent sessions after provider stopAll using persisted re
           commandId: "cmd-turn-start-claude-recover-1",
           messageId: "msg-user-claude-recover-1",
           text: "Before restart",
-          provider: "claudeAgent",
+          modelSelection: {
+            provider: "claudeAgent",
+            model: "claude-sonnet-4-6",
+          },
         });
 
         yield* harness.waitForThread(
@@ -1084,7 +1106,10 @@ it.live("forwards claudeAgent approval responses to the provider session", () =>
           commandId: "cmd-turn-start-claude-approval",
           messageId: "msg-user-claude-approval",
           text: "Need approval",
-          provider: "claudeAgent",
+          modelSelection: {
+            provider: "claudeAgent",
+            model: "claude-sonnet-4-6",
+          },
         });
 
         const thread = yield* harness.waitForThread(THREAD_ID, (entry) =>
@@ -1153,7 +1178,10 @@ it.live("forwards thread.turn.interrupt to claudeAgent provider sessions", () =>
           commandId: "cmd-turn-start-claude-interrupt",
           messageId: "msg-user-claude-interrupt",
           text: "Start long turn",
-          provider: "claudeAgent",
+          modelSelection: {
+            provider: "claudeAgent",
+            model: "claude-sonnet-4-6",
+          },
         });
 
         const thread = yield* harness.waitForThread(
@@ -1223,7 +1251,10 @@ it.live("reverts claudeAgent turns and rolls back provider conversation state", 
           commandId: "cmd-turn-start-claude-revert-1",
           messageId: "msg-user-claude-revert-1",
           text: "First Claude edit",
-          provider: "claudeAgent",
+          modelSelection: {
+            provider: "claudeAgent",
+            model: "claude-sonnet-4-6",
+          },
         });
 
         yield* harness.waitForThread(
