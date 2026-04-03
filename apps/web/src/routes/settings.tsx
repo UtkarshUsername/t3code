@@ -1,10 +1,20 @@
-import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { RotateCcwIcon } from "lucide-react";
+import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 
+import { useSettingsRestore } from "../components/settings/SettingsPanels";
+import { Button } from "../components/ui/button";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { isElectron } from "../env";
 
 function SettingsContentLayout() {
+  const location = useLocation();
+  const [restoreSignal, setRestoreSignal] = useState(0);
+  const { changedSettingLabels, restoreDefaults } = useSettingsRestore(() =>
+    setRestoreSignal((value) => value + 1),
+  );
+  const showRestoreDefaults = location.pathname === "/settings/general";
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -28,6 +38,19 @@ function SettingsContentLayout() {
             <div className="flex items-center gap-2">
               <SidebarTrigger className="size-7 shrink-0 md:hidden" />
               <span className="text-sm font-medium text-foreground">Settings</span>
+              {showRestoreDefaults ? (
+                <div className="ms-auto flex items-center gap-2">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    disabled={changedSettingLabels.length === 0}
+                    onClick={() => void restoreDefaults()}
+                  >
+                    <RotateCcwIcon className="size-3.5" />
+                    Restore defaults
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </header>
         )}
@@ -37,10 +60,23 @@ function SettingsContentLayout() {
             <span className="text-xs font-medium tracking-wide text-muted-foreground/70">
               Settings
             </span>
+            {showRestoreDefaults ? (
+              <div className="ms-auto flex items-center gap-2">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={changedSettingLabels.length === 0}
+                  onClick={() => void restoreDefaults()}
+                >
+                  <RotateCcwIcon className="size-3.5" />
+                  Restore defaults
+                </Button>
+              </div>
+            ) : null}
           </div>
         )}
 
-        <div className="min-h-0 flex flex-1 flex-col">
+        <div key={restoreSignal} className="min-h-0 flex flex-1 flex-col">
           <Outlet />
         </div>
       </div>
