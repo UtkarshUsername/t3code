@@ -420,7 +420,7 @@ export function useSettingsRestore(onRestored?: () => void) {
   };
 }
 
-export function GeneralSettingsPanel() {
+export function GeneralSettingsPanel({ headerAction }: { headerAction?: ReactNode }) {
   const { theme, setTheme } = useTheme();
   const settings = useSettings();
   const { updateSettings } = useUpdateSettings();
@@ -684,7 +684,7 @@ export function GeneralSettingsPanel() {
 
   return (
     <SettingsPageContainer>
-      <SettingsSection title="General">
+      <SettingsSection title="General" headerAction={headerAction}>
         <SettingsRow
           title="Theme"
           description="Choose how T3 Code looks across the app."

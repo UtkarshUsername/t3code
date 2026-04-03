@@ -1,18 +1,10 @@
-import { RotateCcwIcon } from "lucide-react";
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
-import { useSettingsRestore } from "../components/settings/SettingsPanels";
-import { Button } from "../components/ui/button";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { isElectron } from "../env";
 
 function SettingsContentLayout() {
-  const [restoreSignal, setRestoreSignal] = useState(0);
-  const { changedSettingLabels, restoreDefaults } = useSettingsRestore(() =>
-    setRestoreSignal((value) => value + 1),
-  );
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -36,17 +28,6 @@ function SettingsContentLayout() {
             <div className="flex items-center gap-2">
               <SidebarTrigger className="size-7 shrink-0 md:hidden" />
               <span className="text-sm font-medium text-foreground">Settings</span>
-              <div className="ms-auto flex items-center gap-2">
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={changedSettingLabels.length === 0}
-                  onClick={() => void restoreDefaults()}
-                >
-                  <RotateCcwIcon className="size-3.5" />
-                  Restore defaults
-                </Button>
-              </div>
             </div>
           </header>
         )}
@@ -56,21 +37,10 @@ function SettingsContentLayout() {
             <span className="text-xs font-medium tracking-wide text-muted-foreground/70">
               Settings
             </span>
-            <div className="ms-auto flex items-center gap-2">
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={changedSettingLabels.length === 0}
-                onClick={() => void restoreDefaults()}
-              >
-                <RotateCcwIcon className="size-3.5" />
-                Restore defaults
-              </Button>
-            </div>
           </div>
         )}
 
-        <div key={restoreSignal} className="min-h-0 flex flex-1 flex-col">
+        <div className="min-h-0 flex flex-1 flex-col">
           <Outlet />
         </div>
       </div>
