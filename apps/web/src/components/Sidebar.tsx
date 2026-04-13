@@ -609,6 +609,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         size="sm"
         isActive={isActive}
         data-testid={`thread-row-${thread.id}`}
+        title={renamingThreadKey === threadKey ? undefined : thread.title}
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
