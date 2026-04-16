@@ -1,4 +1,4 @@
-import { Cause, Effect, Layer, Option, Queue, Ref, Schema, Stream } from "effect";
+import { Cause, Duration, Effect, Layer, Option, Queue, Ref, Schema, Stream } from "effect";
 import {
   type AuthAccessStreamEvent,
   AuthSessionId,
@@ -17,6 +17,7 @@ import {
   ProjectSearchEntriesError,
   ProjectWriteFileError,
   OrchestrationReplayEventsError,
+  FilesystemBrowseError,
   ThreadId,
   type TerminalEvent,
   WS_METHODS,
@@ -84,6 +85,8 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
     event.type === "thread.session-set"
   );
 }
+
+const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
 function toAuthAccessStreamEvent(
   change: BootstrapCredentialChange | SessionCredentialChange,
@@ -464,6 +467,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 branch: worktree.worktree.branch,
                 worktreePath: targetWorktreePath,
               });
+              yield* refreshGitStatus(targetWorktreePath);
             }
 
             yield* runSetupProgram();
@@ -765,6 +769,20 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(WS_METHODS.shellOpenInEditor, open.openInEditor(input), {
             "rpc.aggregate": "workspace",
           }),
+        [WS_METHODS.filesystemBrowse]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.filesystemBrowse,
+            workspaceEntries.browse(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new FilesystemBrowseError({
+                    message: cause.detail,
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
         [WS_METHODS.subscribeGitStatus]: (input) =>
           observeRpcStream(
             WS_METHODS.subscribeGitStatus,
@@ -918,6 +936,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                   type: "providerStatuses" as const,
                   payload: { providers },
                 })),
+                Stream.debounce(Duration.millis(PROVIDER_STATUS_DEBOUNCE_MS)),
               );
               const settingsUpdates = serverSettings.streamChanges.pipe(
                 Stream.map((settings) => ({
@@ -927,13 +946,26 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 })),
               );
 
+              yield* Effect.all(
+                [providerRegistry.refresh("codex"), providerRegistry.refresh("claudeAgent")],
+                {
+                  concurrency: "unbounded",
+                  discard: true,
+                },
+              ).pipe(Effect.ignoreCause({ log: true }), Effect.forkScoped);
+
+              const liveUpdates = Stream.merge(
+                keybindingsUpdates,
+                Stream.merge(providerStatuses, settingsUpdates),
+              );
+
               return Stream.concat(
                 Stream.make({
                   version: 1 as const,
                   type: "snapshot" as const,
                   config: yield* loadServerConfig,
                 }),
-                Stream.merge(keybindingsUpdates, Stream.merge(providerStatuses, settingsUpdates)),
+                liveUpdates,
               );
             }),
             { "rpc.aggregate": "server" },
