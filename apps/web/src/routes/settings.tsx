@@ -54,7 +54,7 @@ function SettingsContentLayout() {
               <span className="text-sm font-medium text-foreground">Settings</span>
               {showRestoreDefaults ? (
                 <div className="ms-auto flex items-center gap-2">
-                  <RestoreDefaultsButton onRestored={handleRestored} />
+                  <RestoreDefaultsButton key={restoreSignal} onRestored={handleRestored} />
                 </div>
               ) : null}
             </div>
@@ -68,7 +68,7 @@ function SettingsContentLayout() {
             </span>
             {showRestoreDefaults ? (
               <div className="ms-auto flex items-center gap-2">
-                <RestoreDefaultsButton onRestored={handleRestored} />
+                <RestoreDefaultsButton key={restoreSignal} onRestored={handleRestored} />
               </div>
             ) : null}
           </div>
