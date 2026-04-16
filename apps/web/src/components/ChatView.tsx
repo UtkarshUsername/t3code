@@ -1903,10 +1903,8 @@ export default function ChatView(props: ChatViewProps) {
   }, [activePlan?.turnId, sidebarProposedPlan?.turnId]);
   const closePlanSidebar = useCallback(() => {
     setPlanSidebarOpen(false);
-    const turnKey = activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? null;
-    if (turnKey) {
-      planSidebarDismissedForTurnRef.current = turnKey;
-    }
+    planSidebarDismissedForTurnRef.current =
+      activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
   }, [activePlan?.turnId, sidebarProposedPlan?.turnId]);
 
   const persistThreadSettingsForNextTurn = useCallback(
