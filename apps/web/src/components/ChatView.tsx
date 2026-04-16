@@ -29,7 +29,7 @@ import { applyClaudePromptEffortPrefix } from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
 import { Debouncer } from "@tanstack/react-pacer";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 import { useGitStatus } from "~/lib/gitStatusState";
@@ -93,10 +93,7 @@ import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useCommandPaletteStore } from "../commandPaletteStore";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import { useMediaQuery } from "../hooks/useMediaQuery";
-import {
-  RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY,
-  RIGHT_PANEL_SHEET_CLASS_NAME,
-} from "../rightPanelLayout";
+import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
 import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import PlanSidebar from "./PlanSidebar";
@@ -176,7 +173,7 @@ import {
 } from "~/rpc/serverState";
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { retainThreadDetailSubscription } from "../environments/runtime/service";
-import { Sheet, SheetPopup } from "./ui/sheet";
+import { RightPanelSheet } from "./RightPanelSheet";
 
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
@@ -581,28 +578,6 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     </div>
   );
 });
-
-function PlanSidebarSheet(props: { children: ReactNode; open: boolean; onClose: () => void }) {
-  return (
-    <Sheet
-      open={props.open}
-      onOpenChange={(open) => {
-        if (!open) {
-          props.onClose();
-        }
-      }}
-    >
-      <SheetPopup
-        side="right"
-        showCloseButton={false}
-        keepMounted
-        className={RIGHT_PANEL_SHEET_CLASS_NAME}
-      >
-        {props.children}
-      </SheetPopup>
-    </Sheet>
-  );
-}
 
 export default function ChatView(props: ChatViewProps) {
   const {
@@ -3463,10 +3438,11 @@ export default function ChatView(props: ChatViewProps) {
         />
       ))}
       {shouldUsePlanSidebarSheet ? (
-        <PlanSidebarSheet open={planSidebarOpen} onClose={closePlanSidebar}>
+        <RightPanelSheet open={planSidebarOpen} onClose={closePlanSidebar}>
           <PlanSidebar
             activePlan={activePlan}
             activeProposedPlan={sidebarProposedPlan}
+            label={planSidebarLabel}
             environmentId={environmentId}
             markdownCwd={gitCwd ?? undefined}
             workspaceRoot={activeWorkspaceRoot}
@@ -3474,7 +3450,7 @@ export default function ChatView(props: ChatViewProps) {
             mode="sheet"
             onClose={closePlanSidebar}
           />
-        </PlanSidebarSheet>
+        </RightPanelSheet>
       ) : null}
 
       {expandedImage && (
