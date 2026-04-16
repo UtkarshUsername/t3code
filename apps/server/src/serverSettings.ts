@@ -79,11 +79,20 @@ export class ServerSettingsService extends Context.Service<
           start: Effect.void,
           ready: Effect.void,
           getSettings: Ref.get(currentSettingsRef),
-updateSettings: (patch) =>
+          updateSettings: (patch) =>
             Ref.get(currentSettingsRef).pipe(
               Effect.flatMap((currentSettings) =>
                 Schema.decodeEffect(ServerSettings)(
                   applyServerSettingsPatch(currentSettings, patch),
+                ).pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ServerSettingsError({
+                        settingsPath: "<memory>",
+                        detail: `failed to normalize server settings: ${SchemaIssue.makeFormatterDefault()(cause.issue)}`,
+                        cause,
+                      }),
+                  ),
                 ),
               ),
               Effect.tap((nextSettings) => Ref.set(currentSettingsRef, nextSettings)),
