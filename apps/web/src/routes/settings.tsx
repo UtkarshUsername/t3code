@@ -7,13 +7,27 @@ import { Button } from "../components/ui/button";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { isElectron } from "../env";
 
+function RestoreDefaultsButton({ onRestored }: { onRestored: () => void }) {
+  const { changedSettingLabels, restoreDefaults } = useSettingsRestore(onRestored);
+
+  return (
+    <Button
+      size="xs"
+      variant="outline"
+      disabled={changedSettingLabels.length === 0}
+      onClick={() => void restoreDefaults()}
+    >
+      <RotateCcwIcon className="size-3.5" />
+      Restore defaults
+    </Button>
+  );
+}
+
 function SettingsContentLayout() {
   const location = useLocation();
   const [restoreSignal, setRestoreSignal] = useState(0);
-  const { changedSettingLabels, restoreDefaults } = useSettingsRestore(() =>
-    setRestoreSignal((value) => value + 1),
-  );
   const showRestoreDefaults = location.pathname === "/settings/general";
+  const handleRestored = () => setRestoreSignal((value) => value + 1);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -40,15 +54,7 @@ function SettingsContentLayout() {
               <span className="text-sm font-medium text-foreground">Settings</span>
               {showRestoreDefaults ? (
                 <div className="ms-auto flex items-center gap-2">
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    disabled={changedSettingLabels.length === 0}
-                    onClick={() => void restoreDefaults()}
-                  >
-                    <RotateCcwIcon className="size-3.5" />
-                    Restore defaults
-                  </Button>
+                  <RestoreDefaultsButton onRestored={handleRestored} />
                 </div>
               ) : null}
             </div>
@@ -62,15 +68,7 @@ function SettingsContentLayout() {
             </span>
             {showRestoreDefaults ? (
               <div className="ms-auto flex items-center gap-2">
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={changedSettingLabels.length === 0}
-                  onClick={() => void restoreDefaults()}
-                >
-                  <RotateCcwIcon className="size-3.5" />
-                  Restore defaults
-                </Button>
+                <RestoreDefaultsButton onRestored={handleRestored} />
               </div>
             ) : null}
           </div>
