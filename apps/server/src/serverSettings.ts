@@ -81,8 +81,10 @@ export class ServerSettingsService extends Context.Service<
           getSettings: Ref.get(currentSettingsRef),
           updateSettings: (patch) =>
             Ref.get(currentSettingsRef).pipe(
-              Effect.map((currentSettings) => applyServerSettingsPatch(currentSettings, patch)),
-              Effect.map((next) => Schema.decodeSync(ServerSettings)(next)),
+              Effect.flatMap((currentSettings) =>
+                applyServerSettingsPatch(currentSettings, patch),
+              ),
+              Schema.decodeEffect(ServerSettings),
               Effect.tap((nextSettings) => Ref.set(currentSettingsRef, nextSettings)),
             ),
           streamChanges: Stream.empty,
