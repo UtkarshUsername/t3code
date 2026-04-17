@@ -124,12 +124,19 @@ describe("MessagesTimeline", () => {
 
   it("reschedules the initial bottom snap if rows update before the first frame lands", async () => {
     let nextFrameId = 1;
+    const scheduledFrames = new Map<number, FrameRequestCallback>();
     const requestAnimationFrameSpy = vi
       .spyOn(window, "requestAnimationFrame")
-      .mockImplementation(() => nextFrameId++);
+      .mockImplementation((callback: FrameRequestCallback) => {
+        const frameId = nextFrameId++;
+        scheduledFrames.set(frameId, callback);
+        return frameId;
+      });
     const cancelAnimationFrameSpy = vi
       .spyOn(window, "cancelAnimationFrame")
-      .mockImplementation(() => undefined);
+      .mockImplementation((frameId: number) => {
+        scheduledFrames.delete(frameId);
+      });
 
     const props = buildProps();
     const screen = await render(
@@ -190,9 +197,14 @@ describe("MessagesTimeline", () => {
       );
 
       await vi.waitFor(() => {
-        expect(cancelAnimationFrameSpy).toHaveBeenCalledTimes(1);
+        expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(2);
+        expect(scheduledFrames.size).toBe(1);
       });
-      expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(2);
+      for (const callback of scheduledFrames.values()) {
+        callback(0);
+      }
+      expect(cancelAnimationFrameSpy).toHaveBeenCalledTimes(1);
+      expect(scrollToEndSpy).toHaveBeenCalledTimes(1);
       expect(props.onIsAtEndChange).toHaveBeenCalledWith(true);
     } finally {
       await screen.unmount();
