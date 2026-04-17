@@ -188,22 +188,28 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 
   const didReconcileInitialScrollRef = useRef(false);
+  const didRequestInitialScrollRef = useRef(false);
   useEffect(() => {
     if (rows.length === 0) {
       didReconcileInitialScrollRef.current = false;
+      didRequestInitialScrollRef.current = false;
       return;
     }
-    if (didReconcileInitialScrollRef.current) {
+    if (didRequestInitialScrollRef.current) {
       return;
     }
-    didReconcileInitialScrollRef.current = true;
+    didRequestInitialScrollRef.current = true;
 
     onIsAtEndChange(true);
     const frameId = window.requestAnimationFrame(() => {
+      didReconcileInitialScrollRef.current = true;
       void listRef.current?.scrollToEnd?.({ animated: false });
     });
     return () => {
       window.cancelAnimationFrame(frameId);
+      if (!didReconcileInitialScrollRef.current) {
+        didRequestInitialScrollRef.current = false;
+      }
     };
   }, [listRef, onIsAtEndChange, rows.length]);
 

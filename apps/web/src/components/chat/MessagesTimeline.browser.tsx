@@ -121,6 +121,76 @@ describe("MessagesTimeline", () => {
     }
   });
 
+  it("reschedules the initial bottom snap if rows update before the first frame lands", async () => {
+    const requestAnimationFrameSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation(() => 1);
+    const cancelAnimationFrameSpy = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => undefined);
+
+    const props = buildProps();
+    const screen = await render(
+      <MessagesTimeline
+        {...props}
+        timelineEntries={[
+          {
+            id: "work-1",
+            kind: "work",
+            createdAt: "2026-04-13T12:00:00.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-04-13T12:00:00.000Z",
+              label: "thinking",
+              detail: "Inspecting repository state",
+              tone: "thinking",
+            },
+          },
+        ]}
+      />,
+    );
+
+    try {
+      await screen.rerender(
+        <MessagesTimeline
+          {...props}
+          timelineEntries={[
+            {
+              id: "work-1",
+              kind: "work",
+              createdAt: "2026-04-13T12:00:00.000Z",
+              entry: {
+                id: "work-1",
+                createdAt: "2026-04-13T12:00:00.000Z",
+                label: "thinking",
+                detail: "Inspecting repository state",
+                tone: "thinking",
+              },
+            },
+            {
+              id: "work-2",
+              kind: "work",
+              createdAt: "2026-04-13T12:00:01.000Z",
+              entry: {
+                id: "work-2",
+                createdAt: "2026-04-13T12:00:01.000Z",
+                label: "thinking",
+                detail: "Streaming update arrived",
+                tone: "thinking",
+              },
+            },
+          ]}
+        />,
+      );
+
+      expect(requestAnimationFrameSpy).toHaveBeenCalled();
+      expect(cancelAnimationFrameSpy).toHaveBeenCalled();
+      expect(props.onIsAtEndChange).toHaveBeenCalledWith(true);
+    } finally {
+      await screen.unmount();
+    }
+  });
+
   it("renders activity rows instead of the empty placeholder when a thread has non-message timeline data", async () => {
     const screen = await render(
       <MessagesTimeline

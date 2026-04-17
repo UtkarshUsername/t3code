@@ -1974,6 +1974,9 @@ export default function ChatView(props: ChatViewProps) {
 
   // Scroll helpers — LegendList handles auto-scroll via maintainScrollAtEnd.
   const scrollToEnd = useCallback((animated = false) => {
+    isAtEndRef.current = true;
+    showScrollDebouncer.current.cancel();
+    setShowScrollToBottom(false);
     legendListRef.current?.scrollToEnd?.({ animated });
   }, []);
 
