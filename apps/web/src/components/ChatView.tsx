@@ -1983,7 +1983,7 @@ export default function ChatView(props: ChatViewProps) {
   const scrollToEnd = useCallback(
     (animated = false) => {
       beginProgrammaticScroll();
-      legendListRef.current?.scrollToEnd?.({ animated });
+      return legendListRef.current?.scrollToEnd?.({ animated });
     },
     [beginProgrammaticScroll],
   );
