@@ -113,6 +113,7 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
+  onProgrammaticScrollStart: () => void;
   onIsAtEndChange: (isAtEnd: boolean) => void;
 }
 
@@ -141,6 +142,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   resolvedTheme,
   timestampFormat,
   workspaceRoot,
+  onProgrammaticScrollStart,
   onIsAtEndChange,
 }: MessagesTimelineProps) {
   const rawRows = useMemo(
@@ -200,6 +202,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     didRequestInitialScrollRef.current = true;
 
+    onProgrammaticScrollStart();
     onIsAtEndChange(true);
     const frameId = window.requestAnimationFrame(() => {
       didReconcileInitialScrollRef.current = true;
@@ -211,7 +214,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         didRequestInitialScrollRef.current = false;
       }
     };
-  }, [listRef, onIsAtEndChange, rows.length]);
+  }, [listRef, onIsAtEndChange, onProgrammaticScrollStart, rows.length]);
 
   // Memoised context value — only changes on state transitions, NOT on
   // every streaming chunk. Callbacks from ChatView are useCallback-stable.

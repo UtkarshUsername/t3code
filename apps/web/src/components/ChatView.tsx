@@ -703,6 +703,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const legendListRef = useRef<LegendListRef | null>(null);
   const isAtEndRef = useRef(true);
+  const isProgrammaticScrollPendingRef = useRef(false);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
   const attachmentPreviewPromotionInFlightByMessageIdRef = useRef<Record<string, true>>({});
   const sendInFlightRef = useRef(false);
@@ -1973,12 +1974,19 @@ export default function ChatView(props: ChatViewProps) {
   );
 
   // Scroll helpers — LegendList handles auto-scroll via maintainScrollAtEnd.
-  const scrollToEnd = useCallback((animated = false) => {
+  const beginProgrammaticScroll = useCallback(() => {
+    isProgrammaticScrollPendingRef.current = true;
     isAtEndRef.current = true;
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
-    legendListRef.current?.scrollToEnd?.({ animated });
   }, []);
+  const scrollToEnd = useCallback(
+    (animated = false) => {
+      beginProgrammaticScroll();
+      legendListRef.current?.scrollToEnd?.({ animated });
+    },
+    [beginProgrammaticScroll],
+  );
 
   // Debounce *showing* the scroll-to-bottom pill so it doesn't flash during
   // thread switches. LegendList can emit transient mount-time scroll events
@@ -1987,6 +1995,13 @@ export default function ChatView(props: ChatViewProps) {
     new Debouncer(() => setShowScrollToBottom(true), { wait: 150 }),
   );
   const onIsAtEndChange = useCallback((isAtEnd: boolean) => {
+    if (isProgrammaticScrollPendingRef.current) {
+      if (isAtEnd) {
+        isProgrammaticScrollPendingRef.current = false;
+      } else {
+        return;
+      }
+    }
     if (isAtEndRef.current === isAtEnd) return;
     isAtEndRef.current = isAtEnd;
     if (isAtEnd) {
@@ -3277,6 +3292,7 @@ export default function ChatView(props: ChatViewProps) {
               resolvedTheme={resolvedTheme}
               timestampFormat={timestampFormat}
               workspaceRoot={activeWorkspaceRoot}
+              onProgrammaticScrollStart={beginProgrammaticScroll}
               onIsAtEndChange={onIsAtEndChange}
             />
 
