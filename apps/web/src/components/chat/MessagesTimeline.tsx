@@ -113,7 +113,7 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
-  onProgrammaticScrollStart: () => void;
+  onProgrammaticScrollStart: (animated?: boolean) => void;
   onIsAtEndChange: (isAtEnd: boolean) => void;
 }
 
@@ -203,7 +203,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     didRequestInitialScrollRef.current = true;
 
     onIsAtEndChange(true);
-    onProgrammaticScrollStart();
+    onProgrammaticScrollStart(false);
     const frameId = window.requestAnimationFrame(() => {
       didReconcileInitialScrollRef.current = true;
       void listRef.current?.scrollToEnd?.({ animated: false });

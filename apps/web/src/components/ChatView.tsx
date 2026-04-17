@@ -704,6 +704,7 @@ export default function ChatView(props: ChatViewProps) {
   const legendListRef = useRef<LegendListRef | null>(null);
   const isAtEndRef = useRef(true);
   const isProgrammaticScrollPendingRef = useRef(false);
+  const programmaticScrollFallbackTimerRef = useRef<number | null>(null);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
   const attachmentPreviewPromotionInFlightByMessageIdRef = useRef<Record<string, true>>({});
   const sendInFlightRef = useRef(false);
@@ -1974,15 +1975,32 @@ export default function ChatView(props: ChatViewProps) {
   );
 
   // Scroll helpers — LegendList handles auto-scroll via maintainScrollAtEnd.
-  const beginProgrammaticScroll = useCallback(() => {
-    isProgrammaticScrollPendingRef.current = true;
-    isAtEndRef.current = true;
-    showScrollDebouncer.current.cancel();
-    setShowScrollToBottom(false);
+  const clearProgrammaticScrollPending = useCallback(() => {
+    isProgrammaticScrollPendingRef.current = false;
+    if (programmaticScrollFallbackTimerRef.current !== null) {
+      window.clearTimeout(programmaticScrollFallbackTimerRef.current);
+      programmaticScrollFallbackTimerRef.current = null;
+    }
   }, []);
+  const beginProgrammaticScroll = useCallback(
+    (animated = false) => {
+      clearProgrammaticScrollPending();
+      isProgrammaticScrollPendingRef.current = true;
+      programmaticScrollFallbackTimerRef.current = window.setTimeout(
+        () => {
+          clearProgrammaticScrollPending();
+        },
+        animated ? 1000 : 150,
+      );
+      isAtEndRef.current = true;
+      showScrollDebouncer.current.cancel();
+      setShowScrollToBottom(false);
+    },
+    [clearProgrammaticScrollPending],
+  );
   const scrollToEnd = useCallback(
     (animated = false) => {
-      beginProgrammaticScroll();
+      beginProgrammaticScroll(animated);
       return legendListRef.current?.scrollToEnd?.({ animated });
     },
     [beginProgrammaticScroll],
@@ -1994,26 +2012,30 @@ export default function ChatView(props: ChatViewProps) {
   const showScrollDebouncer = useRef(
     new Debouncer(() => setShowScrollToBottom(true), { wait: 150 }),
   );
-  const onIsAtEndChange = useCallback((isAtEnd: boolean) => {
-    if (isProgrammaticScrollPendingRef.current) {
-      if (isAtEnd) {
-        isProgrammaticScrollPendingRef.current = false;
-      } else {
-        return;
+  const onIsAtEndChange = useCallback(
+    (isAtEnd: boolean) => {
+      if (isProgrammaticScrollPendingRef.current) {
+        if (isAtEnd) {
+          clearProgrammaticScrollPending();
+        } else {
+          return;
+        }
       }
-    }
-    if (isAtEndRef.current === isAtEnd) return;
-    isAtEndRef.current = isAtEnd;
-    if (isAtEnd) {
-      showScrollDebouncer.current.cancel();
-      setShowScrollToBottom(false);
-    } else {
-      showScrollDebouncer.current.maybeExecute();
-    }
-  }, []);
+      if (isAtEndRef.current === isAtEnd) return;
+      isAtEndRef.current = isAtEnd;
+      if (isAtEnd) {
+        showScrollDebouncer.current.cancel();
+        setShowScrollToBottom(false);
+      } else {
+        showScrollDebouncer.current.maybeExecute();
+      }
+    },
+    [clearProgrammaticScrollPending],
+  );
 
   useEffect(() => {
     setPullRequestDialogState(null);
+    clearProgrammaticScrollPending();
     isAtEndRef.current = true;
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
@@ -2024,7 +2046,13 @@ export default function ChatView(props: ChatViewProps) {
       setPlanSidebarOpen(false);
     }
     planSidebarDismissedForTurnRef.current = null;
-  }, [activeThread?.id]);
+  }, [activeThread?.id, clearProgrammaticScrollPending]);
+
+  useEffect(() => {
+    return () => {
+      clearProgrammaticScrollPending();
+    };
+  }, [clearProgrammaticScrollPending]);
 
   // Auto-open the plan sidebar when plan/todo steps arrive for the current turn.
   // Don't auto-open for plans carried over from a previous turn (the user can open manually).
