@@ -113,6 +113,7 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
+  onStickToBottom: (animated?: boolean) => void | Promise<void>;
   onIsAtEndChange: (isAtEnd: boolean) => void;
 }
 
@@ -141,6 +142,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   resolvedTheme,
   timestampFormat,
   workspaceRoot,
+  onStickToBottom,
   onIsAtEndChange,
 }: MessagesTimelineProps) {
   const rawRows = useMemo(
@@ -171,23 +173,25 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
   }, [listRef, onIsAtEndChange]);
 
-  const previousRowCountRef = useRef(rows.length);
+  const didReconcileInitialScrollRef = useRef(false);
   useEffect(() => {
-    const previousRowCount = previousRowCountRef.current;
-    previousRowCountRef.current = rows.length;
-
-    if (previousRowCount > 0 || rows.length === 0) {
+    if (rows.length === 0) {
+      didReconcileInitialScrollRef.current = false;
       return;
     }
+    if (didReconcileInitialScrollRef.current) {
+      return;
+    }
+    didReconcileInitialScrollRef.current = true;
 
     onIsAtEndChange(true);
     const frameId = window.requestAnimationFrame(() => {
-      void listRef.current?.scrollToEnd?.({ animated: false });
+      void onStickToBottom(false);
     });
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [listRef, onIsAtEndChange, rows.length]);
+  }, [onIsAtEndChange, onStickToBottom, rows.length]);
 
   // Memoised context value — only changes on state transitions, NOT on
   // every streaming chunk. Callbacks from ChatView are useCallback-stable.
