@@ -1980,6 +1980,11 @@ export default function ChatView(props: ChatViewProps) {
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
   }, []);
+  const hideScrollPillImmediately = useCallback(() => {
+    isAtEndRef.current = true;
+    showScrollDebouncer.current.cancel();
+    setShowScrollToBottom(false);
+  }, []);
   const scrollToEnd = useCallback(
     (animated = false) => {
       beginProgrammaticScroll();
@@ -2495,6 +2500,7 @@ export default function ChatView(props: ChatViewProps) {
     // Scroll to the current end *before* adding the optimistic message.
     // This sets LegendList's internal isAtEnd=true so maintainScrollAtEnd
     // automatically pins to the new item when the data changes.
+    hideScrollPillImmediately();
     await scrollToEnd(false);
 
     setOptimisticUserMessages((existing) => [
@@ -2890,6 +2896,7 @@ export default function ChatView(props: ChatViewProps) {
       setThreadError(threadIdForSend, null);
 
       // Scroll to the current end *before* adding the optimistic message.
+      hideScrollPillImmediately();
       await scrollToEnd(false);
 
       setOptimisticUserMessages((existing) => [
