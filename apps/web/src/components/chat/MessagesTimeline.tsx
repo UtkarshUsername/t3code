@@ -202,8 +202,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     didRequestInitialScrollRef.current = true;
 
-    onProgrammaticScrollStart();
     onIsAtEndChange(true);
+    onProgrammaticScrollStart();
     const frameId = window.requestAnimationFrame(() => {
       didReconcileInitialScrollRef.current = true;
       void listRef.current?.scrollToEnd?.({ animated: false });
