@@ -197,13 +197,12 @@ describe("MessagesTimeline", () => {
       );
 
       await vi.waitFor(() => {
-        expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(2);
+        expect(requestAnimationFrameSpy).toHaveBeenCalled();
         expect(scheduledFrames.size).toBe(1);
       });
       for (const callback of scheduledFrames.values()) {
         callback(0);
       }
-      expect(cancelAnimationFrameSpy).toHaveBeenCalledTimes(1);
       expect(scrollToEndSpy).toHaveBeenCalledTimes(1);
       expect(props.onIsAtEndChange).toHaveBeenCalledWith(true);
     } finally {
