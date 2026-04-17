@@ -29,7 +29,7 @@ import { applyClaudePromptEffortPrefix } from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
 import { Debouncer } from "@tanstack/react-pacer";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 import { useGitStatus } from "~/lib/gitStatusState";
@@ -2033,6 +2033,10 @@ export default function ChatView(props: ChatViewProps) {
     [clearProgrammaticScrollPending],
   );
 
+  useLayoutEffect(() => {
+    clearProgrammaticScrollPending();
+  }, [activeThreadId, clearProgrammaticScrollPending]);
+
   useEffect(() => {
     setPullRequestDialogState(null);
     isAtEndRef.current = true;
@@ -2045,7 +2049,7 @@ export default function ChatView(props: ChatViewProps) {
       setPlanSidebarOpen(false);
     }
     planSidebarDismissedForTurnRef.current = null;
-  }, [activeThread?.id, clearProgrammaticScrollPending]);
+  }, [activeThreadId]);
 
   useEffect(() => {
     return () => {
