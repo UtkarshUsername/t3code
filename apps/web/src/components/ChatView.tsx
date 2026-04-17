@@ -1972,33 +1972,18 @@ export default function ChatView(props: ChatViewProps) {
     [environmentId, serverThread],
   );
 
-  const scrollToEndSettleUntilRef = useRef(0);
-  const beginStickToBottom = useCallback(() => {
-    isAtEndRef.current = true;
-    scrollToEndSettleUntilRef.current = Date.now() + 400;
-    showScrollDebouncer.current.cancel();
-    setShowScrollToBottom(false);
+  // Scroll helpers — LegendList handles auto-scroll via maintainScrollAtEnd.
+  const scrollToEnd = useCallback((animated = false) => {
+    legendListRef.current?.scrollToEnd?.({ animated });
   }, []);
 
-  // Scroll helpers — LegendList handles auto-scroll via maintainScrollAtEnd.
-  const scrollToEnd = useCallback(
-    async (animated = false) => {
-      beginStickToBottom();
-      await legendListRef.current?.scrollToEnd?.({ animated });
-    },
-    [beginStickToBottom],
-  );
-
   // Debounce *showing* the scroll-to-bottom pill so it doesn't flash during
-  // thread switches.  LegendList fires scroll events with isAtEnd=false while
-  // initialScrollAtEnd is settling; hiding is always immediate.
+  // thread switches. LegendList can emit transient mount-time scroll events
+  // while initialScrollAtEnd is settling; hiding is always immediate.
   const showScrollDebouncer = useRef(
     new Debouncer(() => setShowScrollToBottom(true), { wait: 150 }),
   );
   const onIsAtEndChange = useCallback((isAtEnd: boolean) => {
-    if (!isAtEnd && Date.now() < scrollToEndSettleUntilRef.current) {
-      return;
-    }
     if (isAtEndRef.current === isAtEnd) return;
     isAtEndRef.current = isAtEnd;
     if (isAtEnd) {
@@ -2011,7 +1996,9 @@ export default function ChatView(props: ChatViewProps) {
 
   useEffect(() => {
     setPullRequestDialogState(null);
-    beginStickToBottom();
+    isAtEndRef.current = true;
+    showScrollDebouncer.current.cancel();
+    setShowScrollToBottom(false);
     if (planSidebarOpenOnNextThreadRef.current) {
       planSidebarOpenOnNextThreadRef.current = false;
       setPlanSidebarOpen(true);
@@ -2019,7 +2006,7 @@ export default function ChatView(props: ChatViewProps) {
       setPlanSidebarOpen(false);
     }
     planSidebarDismissedForTurnRef.current = null;
-  }, [activeThread?.id, beginStickToBottom]);
+  }, [activeThread?.id]);
 
   // Auto-open the plan sidebar when plan/todo steps arrive for the current turn.
   // Don't auto-open for plans carried over from a previous turn (the user can open manually).
@@ -3287,7 +3274,6 @@ export default function ChatView(props: ChatViewProps) {
               resolvedTheme={resolvedTheme}
               timestampFormat={timestampFormat}
               workspaceRoot={activeWorkspaceRoot}
-              onStickToBottom={scrollToEnd}
               onIsAtEndChange={onIsAtEndChange}
             />
 

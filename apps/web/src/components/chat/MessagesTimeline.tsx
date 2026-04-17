@@ -113,7 +113,6 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
-  onStickToBottom: (animated?: boolean) => void | Promise<void>;
   onIsAtEndChange: (isAtEnd: boolean) => void;
 }
 
@@ -142,7 +141,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   resolvedTheme,
   timestampFormat,
   workspaceRoot,
-  onStickToBottom,
   onIsAtEndChange,
 }: MessagesTimelineProps) {
   const rawRows = useMemo(
@@ -166,12 +164,28 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   const rows = useStableRows(rawRows);
 
-  const handleScroll = useCallback(() => {
-    const state = listRef.current?.getState?.();
-    if (state) {
-      onIsAtEndChange(state.isAtEnd);
-    }
-  }, [listRef, onIsAtEndChange]);
+  const handleScroll = useCallback(
+    (event?: {
+      nativeEvent?: {
+        contentInset?: { bottom?: number; right?: number };
+        contentOffset?: { x?: number; y?: number };
+        contentSize?: { width?: number; height?: number };
+        layoutMeasurement?: { width?: number; height?: number };
+      };
+    }) => {
+      const derivedIsAtEnd = deriveIsAtEndFromScrollEvent(event);
+      if (derivedIsAtEnd !== null) {
+        onIsAtEndChange(derivedIsAtEnd);
+        return;
+      }
+
+      const state = listRef.current?.getState?.();
+      if (state) {
+        onIsAtEndChange(state.isAtEnd);
+      }
+    },
+    [listRef, onIsAtEndChange],
+  );
 
   const didReconcileInitialScrollRef = useRef(false);
   useEffect(() => {
@@ -186,12 +200,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
     onIsAtEndChange(true);
     const frameId = window.requestAnimationFrame(() => {
-      void onStickToBottom(false);
+      void listRef.current?.scrollToEnd?.({ animated: false });
     });
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [onIsAtEndChange, onStickToBottom, rows.length]);
+  }, [listRef, onIsAtEndChange, rows.length]);
 
   // Memoised context value — only changes on state transitions, NOT on
   // every streaming chunk. Callbacks from ChatView are useCallback-stable.
@@ -796,6 +810,34 @@ function useStableRows(rows: MessagesTimelineRow[]): MessagesTimelineRow[] {
     prevState.current = nextState;
     return nextState.result;
   }, [rows]);
+}
+
+function deriveIsAtEndFromScrollEvent(event?: {
+  nativeEvent?: {
+    contentInset?: { bottom?: number; right?: number };
+    contentOffset?: { x?: number; y?: number };
+    contentSize?: { width?: number; height?: number };
+    layoutMeasurement?: { width?: number; height?: number };
+  };
+}): boolean | null {
+  const nativeEvent = event?.nativeEvent;
+  const contentHeight = nativeEvent?.contentSize?.height;
+  const offsetY = nativeEvent?.contentOffset?.y;
+  const viewportHeight = nativeEvent?.layoutMeasurement?.height;
+
+  if (
+    typeof contentHeight !== "number" ||
+    typeof offsetY !== "number" ||
+    typeof viewportHeight !== "number"
+  ) {
+    return null;
+  }
+
+  const insetBottom =
+    typeof nativeEvent?.contentInset?.bottom === "number" ? nativeEvent.contentInset.bottom : 0;
+  const distanceFromEnd = contentHeight - offsetY - viewportHeight - insetBottom;
+
+  return contentHeight <= viewportHeight || distanceFromEnd <= 2;
 }
 
 // ---------------------------------------------------------------------------

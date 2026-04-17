@@ -69,7 +69,6 @@ function buildProps() {
     resolvedTheme: "dark" as const,
     timestampFormat: "24-hour" as const,
     workspaceRoot: undefined,
-    onStickToBottom: scrollToEndSpy,
     onIsAtEndChange: vi.fn(),
   };
 }
