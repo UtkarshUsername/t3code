@@ -2035,7 +2035,6 @@ export default function ChatView(props: ChatViewProps) {
 
   useEffect(() => {
     setPullRequestDialogState(null);
-    clearProgrammaticScrollPending();
     isAtEndRef.current = true;
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
