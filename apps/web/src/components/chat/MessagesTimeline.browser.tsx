@@ -123,9 +123,10 @@ describe("MessagesTimeline", () => {
   });
 
   it("reschedules the initial bottom snap if rows update before the first frame lands", async () => {
+    let nextFrameId = 1;
     const requestAnimationFrameSpy = vi
       .spyOn(window, "requestAnimationFrame")
-      .mockImplementation(() => 1);
+      .mockImplementation(() => nextFrameId++);
     const cancelAnimationFrameSpy = vi
       .spyOn(window, "cancelAnimationFrame")
       .mockImplementation(() => undefined);
@@ -152,6 +153,10 @@ describe("MessagesTimeline", () => {
     );
 
     try {
+      await vi.waitFor(() => {
+        expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
+      });
+
       await screen.rerender(
         <MessagesTimeline
           {...props}
@@ -184,8 +189,10 @@ describe("MessagesTimeline", () => {
         />,
       );
 
-      expect(requestAnimationFrameSpy).toHaveBeenCalled();
-      expect(cancelAnimationFrameSpy).toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(cancelAnimationFrameSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(2);
       expect(props.onIsAtEndChange).toHaveBeenCalledWith(true);
     } finally {
       await screen.unmount();
