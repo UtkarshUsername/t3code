@@ -844,7 +844,7 @@ function deriveIsAtEndFromScrollEvent(event?: {
 
   const insetBottom =
     typeof nativeEvent?.contentInset?.bottom === "number" ? nativeEvent.contentInset.bottom : 0;
-  const distanceFromEnd = contentHeight - offsetY - viewportHeight - insetBottom;
+  const distanceFromEnd = contentHeight + insetBottom - offsetY - viewportHeight;
 
   return contentHeight <= viewportHeight || distanceFromEnd <= 2;
 }
