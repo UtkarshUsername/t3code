@@ -1160,7 +1160,7 @@ export default function GitActionsControl({
               />
             </div>
           </DialogPanel>
-          <DialogFooter>
+          <DialogFooter variant="bare" className="mt-2 border-border/70 border-t pt-5">
             <Button
               variant="outline"
               size="sm"
