@@ -1,5 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime";
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId, type GitStatusResult } from "@t3tools/contracts";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
@@ -22,9 +22,30 @@ function createDeferredPromise<T>() {
   return { promise, resolve, reject };
 }
 
+function createGitStatus(overrides: Partial<GitStatusResult> = {}): GitStatusResult {
+  return {
+    isRepo: true,
+    hasOriginRemote: true,
+    isDefaultBranch: false,
+    branch: BRANCH_NAME,
+    hasWorkingTreeChanges: false,
+    workingTree: {
+      files: [],
+      insertions: 0,
+      deletions: 0,
+    },
+    hasUpstream: true,
+    aheadCount: 1,
+    behindCount: 0,
+    pr: null,
+    ...overrides,
+  };
+}
+
 const {
   activeRunStackedActionDeferredRef,
   activeDraftThreadRef,
+  gitStatusRef,
   hasServerThreadRef,
   invalidateGitQueriesSpy,
   refreshGitStatusSpy,
@@ -38,6 +59,7 @@ const {
 } = vi.hoisted(() => ({
   activeRunStackedActionDeferredRef: { current: createDeferredPromise<never>() },
   activeDraftThreadRef: { current: null as unknown },
+  gitStatusRef: { current: createGitStatus() },
   hasServerThreadRef: { current: true },
   invalidateGitQueriesSpy: vi.fn(() => Promise.resolve()),
   refreshGitStatusSpy: vi.fn(() => Promise.resolve(null)),
@@ -112,15 +134,7 @@ vi.mock("~/lib/gitStatusState", () => ({
   refreshGitStatus: refreshGitStatusSpy,
   resetGitStatusStateForTests: () => undefined,
   useGitStatus: vi.fn(() => ({
-    data: {
-      branch: BRANCH_NAME,
-      hasWorkingTreeChanges: false,
-      workingTree: { files: [], insertions: 0, deletions: 0 },
-      hasUpstream: true,
-      aheadCount: 1,
-      behindCount: 0,
-      pr: null,
-    },
+    data: gitStatusRef.current,
     error: null,
     isPending: false,
   })),
@@ -252,6 +266,27 @@ function findButtonByText(text: string): HTMLButtonElement | null {
   ) ?? null) as HTMLButtonElement | null;
 }
 
+function findMenuItemByText(text: string): HTMLElement | null {
+  return (Array.from(document.querySelectorAll('[data-slot="menu-item"]')).find((item) =>
+    item.textContent?.trim().includes(text),
+  ) ?? null) as HTMLElement | null;
+}
+
+async function waitForElement<T extends Element>(
+  getter: () => T | null,
+  errorMessage: string,
+): Promise<T> {
+  await vi.waitFor(() => {
+    expect(getter(), errorMessage).not.toBeNull();
+  });
+
+  const element = getter();
+  if (!element) {
+    throw new Error(errorMessage);
+  }
+  return element;
+}
+
 function Harness() {
   const [activeThreadRef, setActiveThreadRef] = useState(
     scopeThreadRef(ENVIRONMENT_A, SHARED_THREAD_ID),
@@ -276,6 +311,7 @@ describe("GitActionsControl thread-scoped progress toast", () => {
     vi.clearAllMocks();
     activeRunStackedActionDeferredRef.current = createDeferredPromise<never>();
     activeDraftThreadRef.current = null;
+    gitStatusRef.current = createGitStatus();
     hasServerThreadRef.current = true;
     document.body.innerHTML = "";
   });
@@ -385,6 +421,76 @@ describe("GitActionsControl thread-scoped progress toast", () => {
         Object.defineProperty(document, "visibilityState", originalVisibilityState);
       }
       vi.useRealTimers();
+      await screen.unmount();
+      host.remove();
+    }
+  });
+
+  it("shows commit file checkboxes immediately without a separate edit mode", async () => {
+    gitStatusRef.current = createGitStatus({
+      aheadCount: 0,
+      hasWorkingTreeChanges: true,
+      workingTree: {
+        files: [
+          { path: "apps/web/src/components/GitActionsControl.tsx", insertions: 8, deletions: 3 },
+          {
+            path: "apps/web/src/components/GitActionsControl.browser.tsx",
+            insertions: 5,
+            deletions: 0,
+          },
+        ],
+        insertions: 13,
+        deletions: 3,
+      },
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const screen = await render(
+      <GitActionsControl
+        gitCwd={GIT_CWD}
+        activeThreadRef={scopeThreadRef(ENVIRONMENT_A, SHARED_THREAD_ID)}
+      />,
+      {
+        container: host,
+      },
+    );
+
+    try {
+      const optionsButton = await waitForElement<HTMLButtonElement>(
+        () => document.querySelector('button[aria-label="Git action options"]'),
+        'Unable to find "Git action options" button.',
+      );
+      optionsButton.click();
+
+      const commitMenuItem = await waitForElement<HTMLElement>(
+        () => findMenuItemByText("Commit"),
+        'Unable to find "Commit" menu item.',
+      );
+      commitMenuItem.click();
+
+      const dialog = await waitForElement<HTMLElement>(
+        () => document.querySelector('[data-slot="dialog-popup"]'),
+        'Unable to find "Commit changes" dialog.',
+      );
+      await vi.waitFor(() => {
+        expect(dialog.textContent).toContain("Commit changes");
+      });
+
+      expect(findButtonByText("Edit")).toBeNull();
+
+      const checkboxes = Array.from(dialog.querySelectorAll('[role="checkbox"]'));
+      expect(checkboxes).toHaveLength(3);
+      for (const checkbox of checkboxes) {
+        expect(checkbox.getAttribute("aria-checked")).toBe("true");
+      }
+
+      (checkboxes[1] as HTMLElement).click();
+
+      await vi.waitFor(() => {
+        expect(dialog.textContent).toContain("(1 of 2)");
+      });
+    } finally {
       await screen.unmount();
       host.remove();
     }
