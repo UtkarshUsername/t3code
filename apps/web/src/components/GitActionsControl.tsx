@@ -1031,8 +1031,8 @@ export default function GitActionsControl({
             <DialogTitle>{COMMIT_DIALOG_TITLE}</DialogTitle>
             <DialogDescription>{COMMIT_DIALOG_DESCRIPTION}</DialogDescription>
           </DialogHeader>
-          <DialogPanel className="space-y-4">
-            <section className="space-y-3 pb-4">
+          <DialogPanel className="space-y-3">
+            <section className="space-y-2 pb-2">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Branch</p>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1048,7 +1048,7 @@ export default function GitActionsControl({
               </div>
               <div className="h-px bg-border/70" />
             </section>
-            <section className="space-y-3">
+            <section className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <p className="text-sm font-medium">Changes</p>
@@ -1065,7 +1065,7 @@ export default function GitActionsControl({
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 bg-muted/16 px-4 py-2.5 text-xs text-muted-foreground">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 bg-muted/16 px-4 py-2 text-xs text-muted-foreground">
                       <label className="flex min-w-0 items-center gap-3">
                         <Checkbox
                           checked={allSelected}
@@ -1088,7 +1088,7 @@ export default function GitActionsControl({
                             <div
                               key={file.path}
                               className={cn(
-                                "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors",
+                                "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 transition-colors",
                                 isExcluded
                                   ? "bg-muted/8 text-muted-foreground"
                                   : "hover:bg-accent/24",
@@ -1136,7 +1136,7 @@ export default function GitActionsControl({
                         })}
                       </div>
                     </ScrollArea>
-                    <div className="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground">
+                    <div className="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-2 text-xs text-muted-foreground">
                       <span>
                         {selectedFiles.length} of {allFiles.length}{" "}
                         {allFiles.length === 1 ? "file" : "files"} selected
