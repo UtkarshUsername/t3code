@@ -1027,27 +1027,21 @@ export default function GitActionsControl({
         }}
       >
         <DialogPopup>
-          <DialogHeader>
-            <DialogTitle>{COMMIT_DIALOG_TITLE}</DialogTitle>
+          <DialogHeader className="gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <DialogTitle>{COMMIT_DIALOG_TITLE}</DialogTitle>
+              <span className="inline-flex items-center rounded-md border border-input bg-background px-2.5 py-1 font-mono text-xs shadow-xs/5">
+                {gitStatusForActions?.branch ?? "(detached HEAD)"}
+              </span>
+              {isDefaultBranch && (
+                <Badge size="sm" variant="warning">
+                  default branch
+                </Badge>
+              )}
+            </div>
             <DialogDescription>{COMMIT_DIALOG_DESCRIPTION}</DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-3">
-            <section className="space-y-2 pb-2">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Branch</p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center rounded-md border border-input bg-background px-3 py-1.5 font-mono text-sm shadow-xs/5">
-                    {gitStatusForActions?.branch ?? "(detached HEAD)"}
-                  </span>
-                  {isDefaultBranch && (
-                    <Badge size="sm" variant="warning">
-                      default branch
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <div className="h-px bg-border/70" />
-            </section>
             <section className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -1160,7 +1154,10 @@ export default function GitActionsControl({
               />
             </div>
           </DialogPanel>
-          <DialogFooter variant="bare" className="mt-2 border-border/70 border-t pt-5">
+          <DialogFooter
+            variant="bare"
+            className="mx-6 mt-2 border-border/70 border-t px-0 pt-5 sm:mx-6"
+          >
             <Button
               variant="outline"
               size="sm"
