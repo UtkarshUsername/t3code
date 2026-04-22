@@ -56,21 +56,45 @@ const {
   toastCloseSpy,
   toastPromiseSpy,
   toastUpdateSpy,
-} = vi.hoisted(() => ({
-  activeRunStackedActionDeferredRef: { current: createDeferredPromise<never>() },
-  activeDraftThreadRef: { current: null as unknown },
-  gitStatusRef: { current: createGitStatus() },
-  hasServerThreadRef: { current: true },
-  invalidateGitQueriesSpy: vi.fn(() => Promise.resolve()),
-  refreshGitStatusSpy: vi.fn(() => Promise.resolve(null)),
-  runStackedActionMutateAsyncSpy: vi.fn(() => activeRunStackedActionDeferredRef.current.promise),
-  setDraftThreadContextSpy: vi.fn(),
-  setThreadBranchSpy: vi.fn(),
-  toastAddSpy: vi.fn(() => "toast-1"),
-  toastCloseSpy: vi.fn(),
-  toastPromiseSpy: vi.fn(),
-  toastUpdateSpy: vi.fn(),
-}));
+} = vi.hoisted(() => {
+  const branchName = "feature/toast-scope";
+
+  function createInitialGitStatus(overrides: Partial<GitStatusResult> = {}): GitStatusResult {
+    return {
+      isRepo: true,
+      hasOriginRemote: true,
+      isDefaultBranch: false,
+      branch: branchName,
+      hasWorkingTreeChanges: false,
+      workingTree: {
+        files: [],
+        insertions: 0,
+        deletions: 0,
+      },
+      hasUpstream: true,
+      aheadCount: 1,
+      behindCount: 0,
+      pr: null,
+      ...overrides,
+    };
+  }
+
+  return {
+    activeRunStackedActionDeferredRef: { current: createDeferredPromise<never>() },
+    activeDraftThreadRef: { current: null as unknown },
+    gitStatusRef: { current: createInitialGitStatus() },
+    hasServerThreadRef: { current: true },
+    invalidateGitQueriesSpy: vi.fn(() => Promise.resolve()),
+    refreshGitStatusSpy: vi.fn(() => Promise.resolve(null)),
+    runStackedActionMutateAsyncSpy: vi.fn(() => activeRunStackedActionDeferredRef.current.promise),
+    setDraftThreadContextSpy: vi.fn(),
+    setThreadBranchSpy: vi.fn(),
+    toastAddSpy: vi.fn(() => "toast-1"),
+    toastCloseSpy: vi.fn(),
+    toastPromiseSpy: vi.fn(),
+    toastUpdateSpy: vi.fn(),
+  };
+});
 
 vi.mock("@tanstack/react-query", async () => {
   const actual =
