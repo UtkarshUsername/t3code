@@ -187,8 +187,7 @@ function getMenuActionDisabledReason({
 }
 
 const COMMIT_DIALOG_TITLE = "Commit changes";
-const COMMIT_DIALOG_DESCRIPTION =
-  "Review and confirm your commit. Leave the message blank to auto-generate one.";
+const COMMIT_DIALOG_DESCRIPTION = "Review and confirm your changes before committing.";
 
 function formatFileCountLabel(count: number): string {
   return `${count} file${count === 1 ? "" : "s"}`;
@@ -1041,7 +1040,7 @@ export default function GitActionsControl({
                     {gitStatusForActions?.branch ?? "(detached HEAD)"}
                   </span>
                   {isDefaultBranch && (
-                    <Badge size="sm" variant="warning" className="uppercase tracking-[0.14em]">
+                    <Badge size="sm" variant="warning">
                       default branch
                     </Badge>
                   )}
@@ -1066,7 +1065,7 @@ export default function GitActionsControl({
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 bg-muted/16 px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/75">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 bg-muted/16 px-4 py-2.5 text-xs text-muted-foreground">
                       <label className="flex min-w-0 items-center gap-3">
                         <Checkbox
                           checked={allSelected}
@@ -1117,7 +1116,7 @@ export default function GitActionsControl({
                                 >
                                   <span
                                     className={cn(
-                                      "block truncate font-mono text-xs sm:text-sm",
+                                      "block truncate font-mono text-xs",
                                       isExcluded && "text-muted-foreground/90",
                                     )}
                                   >
