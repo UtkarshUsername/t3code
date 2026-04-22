@@ -1030,11 +1030,15 @@ export default function GitActionsControl({
           <DialogHeader className="gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <DialogTitle>{COMMIT_DIALOG_TITLE}</DialogTitle>
-              <span className="inline-flex items-center rounded-md border border-input bg-background px-2.5 py-1 font-mono text-xs shadow-xs/5">
+              <span className="inline-flex items-center rounded-md border border-input/70 bg-muted/24 px-2 py-0.5 font-mono text-[11px] text-muted-foreground shadow-none">
                 {gitStatusForActions?.branch ?? "(detached HEAD)"}
               </span>
               {isDefaultBranch && (
-                <Badge size="sm" variant="warning">
+                <Badge
+                  size="sm"
+                  variant="warning"
+                  className="border-warning/28 bg-warning/10 px-1.5 text-[11px] text-warning-foreground/78 shadow-none"
+                >
                   default branch
                 </Badge>
               )}
