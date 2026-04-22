@@ -476,6 +476,10 @@ describe("GitActionsControl thread-scoped progress toast", () => {
       await vi.waitFor(() => {
         expect(dialog.textContent).toContain("Commit changes");
       });
+      expect(dialog.textContent).toContain(`Branch: ${BRANCH_NAME}`);
+      expect(dialog.textContent).toContain("Changes");
+      expect(dialog.textContent).toContain("2 files");
+      expect(dialog.textContent).toContain("2 of 2 files selected");
 
       expect(findButtonByText("Edit")).toBeNull();
 
@@ -488,7 +492,7 @@ describe("GitActionsControl thread-scoped progress toast", () => {
       (checkboxes[1] as HTMLElement).click();
 
       await vi.waitFor(() => {
-        expect(dialog.textContent).toContain("(1 of 2)");
+        expect(dialog.textContent).toContain("1 of 2 files selected");
       });
     } finally {
       await screen.unmount();
