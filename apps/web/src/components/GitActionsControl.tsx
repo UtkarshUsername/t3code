@@ -1027,20 +1027,18 @@ export default function GitActionsControl({
           }
         }}
       >
-        <DialogPopup className="max-w-3xl">
+        <DialogPopup>
           <DialogHeader>
             <DialogTitle>{COMMIT_DIALOG_TITLE}</DialogTitle>
             <DialogDescription>{COMMIT_DIALOG_DESCRIPTION}</DialogDescription>
           </DialogHeader>
-          <DialogPanel className="space-y-5">
-            <section className="rounded-xl border border-input/80 bg-linear-to-br from-muted/40 via-muted/18 to-background p-4 shadow-sm/5">
+          <DialogPanel className="space-y-4">
+            <section className="space-y-3 pb-4">
               <div className="space-y-1">
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/75">
-                  Branch
-                </p>
+                <p className="text-sm font-medium">Branch</p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center rounded-md border border-input bg-background/80 px-3 py-1.5 font-mono text-sm shadow-xs/5">
-                    Branch: {gitStatusForActions?.branch ?? "(detached HEAD)"}
+                  <span className="inline-flex items-center rounded-md border border-input bg-background px-3 py-1.5 font-mono text-sm shadow-xs/5">
+                    {gitStatusForActions?.branch ?? "(detached HEAD)"}
                   </span>
                   {isDefaultBranch && (
                     <Badge size="sm" variant="warning" className="uppercase tracking-[0.14em]">
@@ -1049,111 +1047,113 @@ export default function GitActionsControl({
                   )}
                 </div>
               </div>
+              <div className="h-px bg-border/70" />
             </section>
-            <section className="overflow-hidden rounded-xl border border-input/80 bg-linear-to-b from-muted/24 via-muted/10 to-background shadow-sm/5">
-              <div className="border-b border-border/70 px-4 py-3.5">
-                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium">
-                  <span>Changes</span>
-                  <span className="size-1 rounded-full bg-muted-foreground/35" />
-                  <span>{formatFileCountLabel(allFiles.length)}</span>
-                  <span className="size-1 rounded-full bg-muted-foreground/35" />
-                  <CommitDiffSummary insertions={totalInsertions} deletions={totalDeletions} />
-                </p>
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium">Changes</p>
+                  <Badge size="sm" variant="outline">
+                    {formatFileCountLabel(allFiles.length)}
+                  </Badge>
+                </div>
+                <CommitDiffSummary insertions={totalInsertions} deletions={totalDeletions} />
               </div>
-              {!gitStatusForActions || allFiles.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-muted-foreground">No changes to review.</div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 bg-muted/16 px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/75">
-                    <label className="flex min-w-0 items-center gap-3">
-                      <Checkbox
-                        checked={allSelected}
-                        indeterminate={!allSelected && !noneSelected}
-                        onCheckedChange={() => {
-                          setExcludedFiles(
-                            allSelected ? new Set(allFiles.map((f) => f.path)) : new Set(),
-                          );
-                        }}
-                      />
-                      <span>File</span>
-                    </label>
-                    <span>Changes</span>
+              <div className="overflow-hidden rounded-xl border border-input bg-background">
+                {!gitStatusForActions || allFiles.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">
+                    No changes to review.
                   </div>
-                  <ScrollArea className="h-52 bg-background/65">
-                    <div className="divide-y divide-border/60">
-                      {allFiles.map((file) => {
-                        const isExcluded = excludedFiles.has(file.path);
-                        return (
-                          <div
-                            key={file.path}
-                            className={cn(
-                              "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors",
-                              isExcluded
-                                ? "bg-muted/8 text-muted-foreground"
-                                : "hover:bg-accent/24",
-                            )}
-                          >
-                            <div className="flex min-w-0 items-center gap-3">
-                              <Checkbox
-                                checked={!isExcluded}
-                                onCheckedChange={() => {
-                                  setExcludedFiles((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(file.path)) {
-                                      next.delete(file.path);
-                                    } else {
-                                      next.add(file.path);
-                                    }
-                                    return next;
-                                  });
-                                }}
-                              />
-                              <button
-                                type="button"
-                                className="min-w-0 flex-1 text-left"
-                                onClick={() => openChangedFileInEditor(file.path)}
-                              >
-                                <span
-                                  className={cn(
-                                    "block truncate font-mono text-xs sm:text-sm",
-                                    isExcluded && "text-muted-foreground/90",
-                                  )}
-                                >
-                                  {file.path}
-                                </span>
-                              </button>
-                            </div>
-                            <div className="flex items-center justify-end">
-                              <CommitDiffSummary
-                                insertions={file.insertions}
-                                deletions={file.deletions}
-                                className={isExcluded ? "opacity-60" : undefined}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
+                ) : (
+                  <>
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 bg-muted/16 px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/75">
+                      <label className="flex min-w-0 items-center gap-3">
+                        <Checkbox
+                          checked={allSelected}
+                          indeterminate={!allSelected && !noneSelected}
+                          onCheckedChange={() => {
+                            setExcludedFiles(
+                              allSelected ? new Set(allFiles.map((f) => f.path)) : new Set(),
+                            );
+                          }}
+                        />
+                        <span>File</span>
+                      </label>
+                      <span>Changes</span>
                     </div>
-                  </ScrollArea>
-                  <div className="border-t border-border/70 bg-muted/14 px-4 py-3">
-                    <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted-foreground">
+                    <ScrollArea className="h-44">
+                      <div className="divide-y divide-border/60">
+                        {allFiles.map((file) => {
+                          const isExcluded = excludedFiles.has(file.path);
+                          return (
+                            <div
+                              key={file.path}
+                              className={cn(
+                                "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors",
+                                isExcluded
+                                  ? "bg-muted/8 text-muted-foreground"
+                                  : "hover:bg-accent/24",
+                              )}
+                            >
+                              <div className="flex min-w-0 items-center gap-3">
+                                <Checkbox
+                                  checked={!isExcluded}
+                                  onCheckedChange={() => {
+                                    setExcludedFiles((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(file.path)) {
+                                        next.delete(file.path);
+                                      } else {
+                                        next.add(file.path);
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  className="min-w-0 flex-1 text-left"
+                                  onClick={() => openChangedFileInEditor(file.path)}
+                                >
+                                  <span
+                                    className={cn(
+                                      "block truncate font-mono text-xs sm:text-sm",
+                                      isExcluded && "text-muted-foreground/90",
+                                    )}
+                                  >
+                                    {file.path}
+                                  </span>
+                                </button>
+                              </div>
+                              <div className="flex items-center justify-end">
+                                <CommitDiffSummary
+                                  insertions={file.insertions}
+                                  deletions={file.deletions}
+                                  className={isExcluded ? "opacity-60" : undefined}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                    <div className="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground">
                       <span>
                         {selectedFiles.length} of {allFiles.length}{" "}
                         {allFiles.length === 1 ? "file" : "files"} selected
                       </span>
-                      <span>(</span>
-                      <span className="font-mono text-success">+{selectedInsertions}</span>
-                      <span className="font-mono text-destructive">-{selectedDeletions}</span>
-                      <span>)</span>
-                    </p>
-                  </div>
-                </>
-              )}
+                      <CommitDiffSummary
+                        insertions={selectedInsertions}
+                        deletions={selectedDeletions}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
             </section>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <p className="text-sm font-medium">Commit message (optional)</p>
               <Textarea
-                className="bg-background/80"
                 value={dialogCommitMessage}
                 onChange={(event) => setDialogCommitMessage(event.target.value)}
                 placeholder="Leave empty to auto-generate"

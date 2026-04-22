@@ -476,7 +476,8 @@ describe("GitActionsControl thread-scoped progress toast", () => {
       await vi.waitFor(() => {
         expect(dialog.textContent).toContain("Commit changes");
       });
-      expect(dialog.textContent).toContain(`Branch: ${BRANCH_NAME}`);
+      expect(dialog.textContent).toContain("Branch");
+      expect(dialog.textContent).toContain(BRANCH_NAME);
       expect(dialog.textContent).toContain("Changes");
       expect(dialog.textContent).toContain("2 files");
       expect(dialog.textContent).toContain("2 of 2 files selected");
