@@ -1174,28 +1174,29 @@ export default function GitActionsControl({
             >
               Commit to new branch
             </Button>
-            {isDefaultBranch ? (
-              <Button size="sm" disabled={noneSelected} onClick={runDialogAction}>
-                <span>Commit to</span>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <span
-                        aria-label="Default branch name"
-                        className="max-w-24 truncate text-inherit decoration-amber-300/95 underline decoration-2 underline-offset-[0.22em] sm:max-w-32"
-                      >
-                        {currentBranchName}
-                      </span>
-                    }
-                  />
-                  <TooltipPopup side="top">You are committing to the default branch</TooltipPopup>
-                </Tooltip>
-              </Button>
-            ) : (
-              <Button size="sm" disabled={noneSelected} onClick={runDialogAction}>
-                <span className="max-w-36 truncate sm:max-w-44">Commit to {currentBranchName}</span>
-              </Button>
-            )}
+            <Tooltip>
+              <TooltipTrigger
+                render={<Button size="sm" disabled={noneSelected} onClick={runDialogAction} />}
+              >
+                {isDefaultBranch ? (
+                  <>
+                    <span>Commit to</span>
+                    <span className="max-w-24 truncate decoration-amber-300/95 underline decoration-2 underline-offset-[0.22em] sm:max-w-32">
+                      {currentBranchName}
+                    </span>
+                  </>
+                ) : (
+                  <span className="max-w-36 truncate sm:max-w-44">
+                    Commit to {currentBranchName}
+                  </span>
+                )}
+              </TooltipTrigger>
+              <TooltipPopup side="top">
+                {isDefaultBranch
+                  ? `You are committing to the default branch (${currentBranchName})`
+                  : `Commit to ${currentBranchName}`}
+              </TooltipPopup>
+            </Tooltip>
           </DialogFooter>
         </DialogPopup>
       </Dialog>
