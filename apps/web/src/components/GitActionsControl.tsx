@@ -7,7 +7,12 @@ import type {
 } from "@t3tools/contracts";
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { ChevronDownIcon, CloudUploadIcon, GitCommitIcon, InfoIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  CloudUploadIcon,
+  GitCommitIcon,
+  InfoIcon,
+} from "lucide-react";
 import { GitHubIcon } from "./Icons";
 import {
   buildGitActionProgressStages,
@@ -40,6 +45,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Textarea } from "~/components/ui/textarea";
 import { stackedThreadToast, toastManager, type ThreadToastData } from "~/components/ui/toast";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { openInPreferredEditor } from "~/editorPreferences";
 import {
   gitInitMutationOptions,
@@ -355,6 +361,7 @@ export default function GitActionsControl({
   const totalDeletions = allFiles.reduce((sum, file) => sum + file.deletions, 0);
   const selectedInsertions = selectedFiles.reduce((sum, file) => sum + file.insertions, 0);
   const selectedDeletions = selectedFiles.reduce((sum, file) => sum + file.deletions, 0);
+  const currentBranchName = gitStatusForActions?.branch ?? "(detached HEAD)";
 
   const initMutation = useMutation(
     gitInitMutationOptions({ environmentId: activeEnvironmentId, cwd: gitCwd, queryClient }),
@@ -1030,18 +1037,6 @@ export default function GitActionsControl({
           <DialogHeader className="gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <DialogTitle>{COMMIT_DIALOG_TITLE}</DialogTitle>
-              <span className="inline-flex items-center rounded-md border border-input/70 bg-muted/24 px-2 py-0.5 font-mono text-[11px] text-muted-foreground shadow-none">
-                {gitStatusForActions?.branch ?? "(detached HEAD)"}
-              </span>
-              {isDefaultBranch && (
-                <Badge
-                  size="sm"
-                  variant="warning"
-                  className="border-warning/28 bg-warning/10 px-1.5 text-[11px] text-warning-foreground/78 shadow-none"
-                >
-                  default branch
-                </Badge>
-              )}
             </div>
             <DialogDescription>{COMMIT_DIALOG_DESCRIPTION}</DialogDescription>
           </DialogHeader>
@@ -1177,11 +1172,30 @@ export default function GitActionsControl({
               disabled={noneSelected}
               onClick={runDialogActionOnNewBranch}
             >
-              Commit on new branch
+              Commit to new branch
             </Button>
-            <Button size="sm" disabled={noneSelected} onClick={runDialogAction}>
-              Commit
-            </Button>
+            {isDefaultBranch ? (
+              <Button size="sm" disabled={noneSelected} onClick={runDialogAction}>
+                <span>Commit to</span>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <span
+                        aria-label="Default branch name"
+                        className="max-w-24 truncate text-inherit decoration-amber-300/95 underline decoration-2 underline-offset-[0.22em] sm:max-w-32"
+                      >
+                        {currentBranchName}
+                      </span>
+                    }
+                  />
+                  <TooltipPopup side="top">You are committing to the default branch</TooltipPopup>
+                </Tooltip>
+              </Button>
+            ) : (
+              <Button size="sm" disabled={noneSelected} onClick={runDialogAction}>
+                <span className="max-w-36 truncate sm:max-w-44">Commit to {currentBranchName}</span>
+              </Button>
+            )}
           </DialogFooter>
         </DialogPopup>
       </Dialog>
