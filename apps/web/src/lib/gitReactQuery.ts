@@ -1,5 +1,6 @@
 import {
   type EnvironmentId,
+  type ExecutionTarget,
   type GitActionProgressEvent,
   type GitStackedAction,
   type ThreadId,
@@ -66,6 +67,7 @@ function invalidateGitBranchQueries(
 export function gitBranchSearchInfiniteQueryOptions(input: {
   environmentId: EnvironmentId | null;
   cwd: string | null;
+  executionTarget?: ExecutionTarget | undefined;
   query: string;
   enabled?: boolean;
 }) {
@@ -80,6 +82,7 @@ export function gitBranchSearchInfiniteQueryOptions(input: {
       const api = ensureEnvironmentApi(input.environmentId);
       return api.git.listBranches({
         cwd: input.cwd,
+        ...(input.executionTarget !== undefined ? { executionTarget: input.executionTarget } : {}),
         ...(normalizedQuery.length > 0 ? { query: normalizedQuery } : {}),
         cursor: pageParam,
         limit: GIT_BRANCHES_PAGE_SIZE,
@@ -97,6 +100,7 @@ export function gitBranchSearchInfiniteQueryOptions(input: {
 export function gitResolvePullRequestQueryOptions(input: {
   environmentId: EnvironmentId | null;
   cwd: string | null;
+  executionTarget?: ExecutionTarget | undefined;
   reference: string | null;
 }) {
   return queryOptions({
@@ -112,7 +116,11 @@ export function gitResolvePullRequestQueryOptions(input: {
         throw new Error("Pull request lookup is unavailable.");
       }
       const api = ensureEnvironmentApi(input.environmentId);
-      return api.git.resolvePullRequest({ cwd: input.cwd, reference: input.reference });
+      return api.git.resolvePullRequest({
+        cwd: input.cwd,
+        ...(input.executionTarget !== undefined ? { executionTarget: input.executionTarget } : {}),
+        reference: input.reference,
+      });
     },
     enabled: input.environmentId !== null && input.cwd !== null && input.reference !== null,
     staleTime: 30_000,
@@ -124,6 +132,7 @@ export function gitResolvePullRequestQueryOptions(input: {
 export function gitInitMutationOptions(input: {
   environmentId: EnvironmentId | null;
   cwd: string | null;
+  executionTarget?: ExecutionTarget | undefined;
   queryClient: QueryClient;
 }) {
   return mutationOptions({
@@ -131,7 +140,10 @@ export function gitInitMutationOptions(input: {
     mutationFn: async () => {
       if (!input.cwd || !input.environmentId) throw new Error("Git init is unavailable.");
       const api = ensureEnvironmentApi(input.environmentId);
-      return api.git.init({ cwd: input.cwd });
+      return api.git.init({
+        cwd: input.cwd,
+        ...(input.executionTarget !== undefined ? { executionTarget: input.executionTarget } : {}),
+      });
     },
     onSettled: async () => {
       await invalidateGitBranchQueries(input.queryClient, input.environmentId, input.cwd);
@@ -142,6 +154,7 @@ export function gitInitMutationOptions(input: {
 export function gitCheckoutMutationOptions(input: {
   environmentId: EnvironmentId | null;
   cwd: string | null;
+  executionTarget?: ExecutionTarget | undefined;
   queryClient: QueryClient;
 }) {
   return mutationOptions({
@@ -149,7 +162,11 @@ export function gitCheckoutMutationOptions(input: {
     mutationFn: async (branch: string) => {
       if (!input.cwd || !input.environmentId) throw new Error("Git checkout is unavailable.");
       const api = ensureEnvironmentApi(input.environmentId);
-      return api.git.checkout({ cwd: input.cwd, branch });
+      return api.git.checkout({
+        cwd: input.cwd,
+        ...(input.executionTarget !== undefined ? { executionTarget: input.executionTarget } : {}),
+        branch,
+      });
     },
     onSettled: async () => {
       await invalidateGitBranchQueries(input.queryClient, input.environmentId, input.cwd);
@@ -160,6 +177,7 @@ export function gitCheckoutMutationOptions(input: {
 export function gitRunStackedActionMutationOptions(input: {
   environmentId: EnvironmentId | null;
   cwd: string | null;
+  executionTarget?: ExecutionTarget | undefined;
   queryClient: QueryClient;
 }) {
   return mutationOptions({
@@ -185,6 +203,9 @@ export function gitRunStackedActionMutationOptions(input: {
           action,
           actionId,
           cwd: input.cwd,
+          ...(input.executionTarget !== undefined
+            ? { executionTarget: input.executionTarget }
+            : {}),
           ...(commitMessage ? { commitMessage } : {}),
           ...(featureBranch ? { featureBranch: true } : {}),
           ...(filePaths && filePaths.length > 0 ? { filePaths } : {}),
@@ -201,6 +222,7 @@ export function gitRunStackedActionMutationOptions(input: {
 export function gitPullMutationOptions(input: {
   environmentId: EnvironmentId | null;
   cwd: string | null;
+  executionTarget?: ExecutionTarget | undefined;
   queryClient: QueryClient;
 }) {
   return mutationOptions({
@@ -208,7 +230,10 @@ export function gitPullMutationOptions(input: {
     mutationFn: async () => {
       if (!input.cwd || !input.environmentId) throw new Error("Git pull is unavailable.");
       const api = ensureEnvironmentApi(input.environmentId);
-      return api.git.pull({ cwd: input.cwd });
+      return api.git.pull({
+        cwd: input.cwd,
+        ...(input.executionTarget !== undefined ? { executionTarget: input.executionTarget } : {}),
+      });
     },
     onSuccess: async () => {
       await invalidateGitBranchQueries(input.queryClient, input.environmentId, input.cwd);
@@ -259,6 +284,7 @@ export function gitRemoveWorktreeMutationOptions(input: {
 export function gitPreparePullRequestThreadMutationOptions(input: {
   environmentId: EnvironmentId | null;
   cwd: string | null;
+  executionTarget?: ExecutionTarget | undefined;
   queryClient: QueryClient;
 }) {
   return mutationOptions({
@@ -274,6 +300,7 @@ export function gitPreparePullRequestThreadMutationOptions(input: {
       const api = ensureEnvironmentApi(input.environmentId);
       return api.git.preparePullRequestThread({
         cwd: input.cwd,
+        ...(input.executionTarget !== undefined ? { executionTarget: input.executionTarget } : {}),
         reference: args.reference,
         mode: args.mode,
         ...(args.threadId ? { threadId: args.threadId } : {}),
