@@ -7,6 +7,7 @@ import {
   type OrchestrationCommand,
   type GitActionProgressEvent,
   type GitManagerServiceError,
+  type GitStatusInput,
   OrchestrationDispatchCommandError,
   type OrchestrationEvent,
   type OrchestrationShellStreamEvent,
@@ -546,9 +547,9 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
         };
       });
 
-      const refreshGitStatus = (cwd: string) =>
+      const refreshGitStatus = (input: string | GitStatusInput) =>
         gitStatusBroadcaster
-          .refreshStatus(cwd)
+          .refreshStatus(input)
           .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
       return WsRpcGroup.of({
@@ -936,21 +937,17 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             },
           ),
         [WS_METHODS.gitRefreshStatus]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.gitRefreshStatus,
-            gitStatusBroadcaster.refreshStatus(input.cwd),
-            {
-              "rpc.aggregate": "git",
-            },
-          ),
+          observeRpcEffect(WS_METHODS.gitRefreshStatus, gitStatusBroadcaster.refreshStatus(input), {
+            "rpc.aggregate": "git",
+          }),
         [WS_METHODS.gitPull]: (input) =>
           observeRpcEffect(
             WS_METHODS.gitPull,
-            git.pullCurrentBranch(input.cwd).pipe(
+            git.pullCurrentBranch(input).pipe(
               Effect.matchCauseEffect({
                 onFailure: (cause) => Effect.failCause(cause),
                 onSuccess: (result) =>
-                  refreshGitStatus(input.cwd).pipe(Effect.ignore({ log: true }), Effect.as(result)),
+                  refreshGitStatus(input).pipe(Effect.ignore({ log: true }), Effect.as(result)),
               }),
             ),
             { "rpc.aggregate": "git" },
@@ -970,7 +967,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                   Effect.matchCauseEffect({
                     onFailure: (cause) => Queue.failCause(queue, cause),
                     onSuccess: () =>
-                      refreshGitStatus(input.cwd).pipe(
+                      refreshGitStatus(input).pipe(
                         Effect.andThen(Queue.end(queue).pipe(Effect.asVoid)),
                       ),
                   }),
@@ -987,7 +984,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             WS_METHODS.gitPreparePullRequestThread,
             gitManager
               .preparePullRequestThread(input)
-              .pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+              .pipe(Effect.tap(() => refreshGitStatus(input))),
             { "rpc.aggregate": "git" },
           ),
         [WS_METHODS.gitListBranches]: (input) =>
@@ -997,33 +994,33 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
         [WS_METHODS.gitCreateWorktree]: (input) =>
           observeRpcEffect(
             WS_METHODS.gitCreateWorktree,
-            git.createWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            git.createWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input))),
             { "rpc.aggregate": "git" },
           ),
         [WS_METHODS.gitRemoveWorktree]: (input) =>
           observeRpcEffect(
             WS_METHODS.gitRemoveWorktree,
-            git.removeWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            git.removeWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input))),
             { "rpc.aggregate": "git" },
           ),
         [WS_METHODS.gitCreateBranch]: (input) =>
           observeRpcEffect(
             WS_METHODS.gitCreateBranch,
-            git.createBranch(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            git.createBranch(input).pipe(Effect.tap(() => refreshGitStatus(input))),
             { "rpc.aggregate": "git" },
           ),
         [WS_METHODS.gitCheckout]: (input) =>
           observeRpcEffect(
             WS_METHODS.gitCheckout,
             Effect.scoped(git.checkoutBranch(input)).pipe(
-              Effect.tap(() => refreshGitStatus(input.cwd)),
+              Effect.tap(() => refreshGitStatus(input)),
             ),
             { "rpc.aggregate": "git" },
           ),
         [WS_METHODS.gitInit]: (input) =>
           observeRpcEffect(
             WS_METHODS.gitInit,
-            git.initRepo(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            git.initRepo(input).pipe(Effect.tap(() => refreshGitStatus(input))),
             { "rpc.aggregate": "git" },
           ),
         [WS_METHODS.terminalOpen]: (input) =>
