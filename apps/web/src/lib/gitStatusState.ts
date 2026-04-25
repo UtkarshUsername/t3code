@@ -211,7 +211,6 @@ function subscribeToGitStatusTarget(
     return NOOP;
   }
 
-  const cwd = target.cwd;
   let currentClientIdentity: string | null = null;
   let currentUnsubscribe = NOOP;
 

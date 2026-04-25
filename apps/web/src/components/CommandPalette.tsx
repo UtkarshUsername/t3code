@@ -4,8 +4,10 @@ import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
   type EnvironmentId,
+  type ExecutionTarget,
   type FilesystemBrowseResult,
   type ProjectId,
+  type WslDistribution,
 } from "@t3tools/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
@@ -17,6 +19,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   MessageSquareIcon,
+  MonitorIcon,
   SettingsIcon,
   SquarePenIcon,
 } from "lucide-react";
@@ -108,6 +111,7 @@ import type { ChatComposerHandle } from "./chat/ChatComposer";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
 const BROWSE_STALE_TIME_MS = 30_000;
+type WslExecutionTarget = Extract<ExecutionTarget, { kind: "wsl" }>;
 
 function getLocalFileManagerName(platform: string): string {
   if (isMacPlatform(platform)) {
@@ -225,6 +229,7 @@ function OpenCommandPaletteDialog() {
   const [addProjectEnvironmentId, setAddProjectEnvironmentId] = useState<EnvironmentId | null>(
     null,
   );
+  const [wslBrowseTarget, setWslBrowseTarget] = useState<WslExecutionTarget | null>(null);
   const [isPickingProjectFolder, setIsPickingProjectFolder] = useState(false);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const primaryEnvironmentLabel = readPrimaryEnvironmentDescriptor()?.label ?? null;
@@ -282,6 +287,20 @@ function OpenCommandPaletteDialog() {
   ]);
   const defaultAddProjectEnvironmentId = addProjectEnvironmentOptions[0]?.environmentId ?? null;
   const browseEnvironmentId = addProjectEnvironmentId ?? defaultAddProjectEnvironmentId;
+  const browseEnvironmentServerConfig =
+    browseEnvironmentId && primaryEnvironmentId && browseEnvironmentId === primaryEnvironmentId
+      ? null
+      : browseEnvironmentId
+        ? savedEnvironmentRuntimeById[browseEnvironmentId]?.serverConfig
+        : null;
+  const canBrowseWslInEnvironment =
+    browseEnvironmentId !== null &&
+    (browseEnvironmentId === primaryEnvironmentId
+      ? readPrimaryEnvironmentDescriptor()?.platform.os === "windows"
+      : browseEnvironmentServerConfig?.environment.platform.os === "windows") &&
+    (browseEnvironmentId === primaryEnvironmentId
+      ? (savedEnvironmentRuntimeById[browseEnvironmentId]?.serverConfig?.capabilities.wsl ?? false)
+      : (browseEnvironmentServerConfig?.capabilities.wsl ?? false));
   const browseEnvironmentPlatform = useMemo(() => {
     const os =
       browseEnvironmentId && primaryEnvironmentId && browseEnvironmentId === primaryEnvironmentId
@@ -294,7 +313,8 @@ function OpenCommandPaletteDialog() {
           : null;
     return getEnvironmentBrowsePlatform(os);
   }, [browseEnvironmentId, primaryEnvironmentId, savedEnvironmentRuntimeById]);
-  const isBrowsing = isFilesystemBrowseQuery(query, browseEnvironmentPlatform);
+  const isBrowsing =
+    wslBrowseTarget !== null || isFilesystemBrowseQuery(query, browseEnvironmentPlatform);
   const paletteMode = getCommandPaletteMode({ currentView, isBrowsing });
   const getAddProjectInitialQueryForEnvironment = useCallback(
     (environmentId: EnvironmentId | null): string => {
@@ -334,7 +354,9 @@ function OpenCommandPaletteDialog() {
       ? currentProjectCwd
       : null;
   const relativePathNeedsActiveProject =
-    isExplicitRelativeProjectPath(query.trim()) && currentProjectCwdForBrowse === null;
+    wslBrowseTarget === null &&
+    isExplicitRelativeProjectPath(query.trim()) &&
+    currentProjectCwdForBrowse === null;
   const browseDirectoryPath = isBrowsing ? getBrowseDirectoryPath(query) : "";
   const browseFilterQuery =
     isBrowsing && !hasTrailingPathSeparator(query) ? getBrowseLeafPathSegment(query) : "";
@@ -344,12 +366,19 @@ function OpenCommandPaletteDialog() {
       if (!browseEnvironmentId) return null;
       const api = readEnvironmentApi(browseEnvironmentId);
       if (!api) return null;
+      if (wslBrowseTarget?.kind === "wsl") {
+        return api.wsl.browse({
+          target: wslBrowseTarget,
+          partialPath,
+          cwd: "/",
+        });
+      }
       return api.filesystem.browse({
         partialPath,
         ...(currentProjectCwdForBrowse ? { cwd: currentProjectCwdForBrowse } : {}),
       });
     },
-    [browseEnvironmentId, currentProjectCwdForBrowse],
+    [browseEnvironmentId, currentProjectCwdForBrowse, wslBrowseTarget],
   );
 
   const { data: browseResult, isPending: isBrowsePending } = useQuery({
@@ -358,6 +387,7 @@ function OpenCommandPaletteDialog() {
       browseEnvironmentId,
       browseDirectoryPath,
       currentProjectCwdForBrowse,
+      wslBrowseTarget,
     ],
     queryFn: () => fetchBrowseResult(browseDirectoryPath),
     staleTime: BROWSE_STALE_TIME_MS,
@@ -367,6 +397,19 @@ function OpenCommandPaletteDialog() {
       browseEnvironmentId !== null &&
       !relativePathNeedsActiveProject,
   });
+  const { data: wslDistributionsResult } = useQuery({
+    queryKey: ["wslDistributions", browseEnvironmentId],
+    queryFn: async () => {
+      if (!browseEnvironmentId) {
+        return { distributions: [] as WslDistribution[] };
+      }
+      const api = readEnvironmentApi(browseEnvironmentId);
+      return api?.wsl.listDistributions() ?? { distributions: [] };
+    },
+    enabled: canBrowseWslInEnvironment,
+    staleTime: BROWSE_STALE_TIME_MS,
+  });
+  const wslDistributions = wslDistributionsResult?.distributions ?? [];
   const browseEntries = browseResult?.entries ?? EMPTY_BROWSE_ENTRIES;
   const {
     filteredEntries: filteredBrowseEntries,
@@ -385,12 +428,19 @@ function OpenCommandPaletteDialog() {
           browseEnvironmentId,
           partialPath,
           currentProjectCwdForBrowse,
+          wslBrowseTarget,
         ],
         queryFn: () => fetchBrowseResult(partialPath),
         staleTime: BROWSE_STALE_TIME_MS,
       });
     },
-    [browseEnvironmentId, currentProjectCwdForBrowse, fetchBrowseResult, queryClient],
+    [
+      browseEnvironmentId,
+      currentProjectCwdForBrowse,
+      fetchBrowseResult,
+      queryClient,
+      wslBrowseTarget,
+    ],
   );
 
   // Prefetch the parent and the most likely next child so browse navigation
@@ -542,6 +592,7 @@ function OpenCommandPaletteDialog() {
   function popView(): void {
     if (viewStack.length <= 1) {
       setAddProjectEnvironmentId(null);
+      setWslBrowseTarget(null);
     }
     setViewStack((previousViews) => previousViews.slice(0, -1));
     setHighlightedItemValue(null);
@@ -559,6 +610,7 @@ function OpenCommandPaletteDialog() {
   const startAddProjectBrowse = useCallback(
     (environmentId: EnvironmentId): void => {
       setAddProjectEnvironmentId(environmentId);
+      setWslBrowseTarget(null);
       pushPaletteView({
         addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
         groups: [],
@@ -567,6 +619,16 @@ function OpenCommandPaletteDialog() {
     },
     [getAddProjectInitialQueryForEnvironment],
   );
+
+  const startWslProjectBrowse = useCallback((environmentId: EnvironmentId, distroName: string) => {
+    setAddProjectEnvironmentId(environmentId);
+    setWslBrowseTarget({ kind: "wsl", distroName });
+    pushPaletteView({
+      addonIcon: <MonitorIcon className={ADDON_ICON_CLASS} />,
+      groups: [],
+      initialQuery: "/home/",
+    });
+  }, []);
 
   const addProjectEnvironmentItems: CommandPaletteActionItem[] = addProjectEnvironmentOptions.map(
     (option) => ({
@@ -697,6 +759,41 @@ function OpenCommandPaletteDialog() {
     });
   }
 
+  if (canBrowseWslInEnvironment && browseEnvironmentId !== null && wslDistributions.length > 0) {
+    actionItems.push({
+      kind: "submenu",
+      value: "action:add-wsl-project",
+      searchTerms: ["add project", "open wsl folder", "wsl", "linux", "distro"],
+      title: "Open WSL folder",
+      description: "Browse Linux paths in WSL",
+      icon: <MonitorIcon className={ITEM_ICON_CLASS} />,
+      addonIcon: <MonitorIcon className={ADDON_ICON_CLASS} />,
+      groups: [
+        {
+          value: "wsl-distros",
+          label: "WSL Distributions",
+          items: wslDistributions.map((distribution) => ({
+            kind: "action" as const,
+            value: `action:add-wsl-project:${distribution.name}`,
+            searchTerms: [
+              distribution.name,
+              distribution.default ? "default" : "",
+              distribution.running ? "running" : "",
+              "wsl",
+            ],
+            title: distribution.name,
+            description: distribution.default ? "Default distribution" : "WSL distribution",
+            icon: <MonitorIcon className={ITEM_ICON_CLASS} />,
+            keepOpen: true,
+            run: async () => {
+              startWslProjectBrowse(browseEnvironmentId, distribution.name);
+            },
+          })),
+        },
+      ],
+    });
+  }
+
   actionItems.push({
     kind: "action",
     value: "action:settings",
@@ -725,7 +822,10 @@ function OpenCommandPaletteDialog() {
       const api = readEnvironmentApi(browseEnvironmentId);
       if (!api) return;
 
-      if (isUnsupportedWindowsProjectPath(rawCwd.trim(), browseEnvironmentPlatform)) {
+      if (
+        wslBrowseTarget === null &&
+        isUnsupportedWindowsProjectPath(rawCwd.trim(), browseEnvironmentPlatform)
+      ) {
         toastManager.add(
           stackedThreadToast({
             type: "error",
@@ -736,7 +836,11 @@ function OpenCommandPaletteDialog() {
         return;
       }
 
-      if (isExplicitRelativeProjectPath(rawCwd.trim()) && !currentProjectCwdForBrowse) {
+      if (
+        wslBrowseTarget === null &&
+        isExplicitRelativeProjectPath(rawCwd.trim()) &&
+        !currentProjectCwdForBrowse
+      ) {
         toastManager.add(
           stackedThreadToast({
             type: "error",
@@ -747,11 +851,21 @@ function OpenCommandPaletteDialog() {
         return;
       }
 
-      const cwd = resolveProjectPathForDispatch(rawCwd, currentProjectCwdForBrowse);
+      const cwd =
+        wslBrowseTarget?.kind === "wsl"
+          ? rawCwd.trim()
+          : resolveProjectPathForDispatch(rawCwd, currentProjectCwdForBrowse);
       if (cwd.length === 0) return;
 
       const existing = findProjectByPath(
-        projects.filter((project) => project.environmentId === browseEnvironmentId),
+        projects.filter(
+          (project) =>
+            project.environmentId === browseEnvironmentId &&
+            (wslBrowseTarget === null
+              ? project.executionTarget?.kind !== "wsl"
+              : project.executionTarget?.kind === "wsl" &&
+                project.executionTarget.distroName === wslBrowseTarget.distroName),
+        ),
         cwd,
       );
       if (existing) {
@@ -784,6 +898,7 @@ function OpenCommandPaletteDialog() {
           projectId,
           title: inferProjectTitleFromPath(cwd),
           workspaceRoot: cwd,
+          ...(wslBrowseTarget !== null ? { executionTarget: wslBrowseTarget } : {}),
           createWorkspaceRootIfMissing: true,
           defaultModelSelection: {
             provider: "codex",
@@ -816,6 +931,7 @@ function OpenCommandPaletteDialog() {
       settings.defaultThreadEnvMode,
       settings.sidebarThreadSortOrder,
       threads,
+      wslBrowseTarget,
     ],
   );
 
@@ -880,6 +996,7 @@ function OpenCommandPaletteDialog() {
   const fileManagerName = getLocalFileManagerName(navigator.platform);
   const canOpenProjectFromFileManager =
     isBrowsing &&
+    wslBrowseTarget === null &&
     browseEnvironmentId !== null &&
     primaryEnvironmentId !== null &&
     browseEnvironmentId === primaryEnvironmentId &&
