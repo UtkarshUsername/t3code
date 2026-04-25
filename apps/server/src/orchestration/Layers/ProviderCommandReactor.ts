@@ -294,6 +294,8 @@ const make = Effect.gen(function* () {
       thread,
       projects: readModel.projects,
     });
+    const project = readModel.projects.find((entry) => entry.id === thread.projectId);
+    const effectiveExecutionTarget = project?.executionTarget;
 
     const resolveActiveSession = (threadId: ThreadId) =>
       providerService
@@ -308,6 +310,9 @@ const make = Effect.gen(function* () {
         threadId,
         ...(preferredProvider ? { provider: preferredProvider } : {}),
         ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
+        ...(effectiveExecutionTarget !== undefined
+          ? { executionTarget: effectiveExecutionTarget }
+          : {}),
         modelSelection: desiredModelSelection,
         ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
         runtimeMode: desiredRuntimeMode,
@@ -335,6 +340,10 @@ const make = Effect.gen(function* () {
     if (existingSessionThreadId) {
       const runtimeModeChanged = thread.runtimeMode !== thread.session?.runtimeMode;
       const cwdChanged = effectiveCwd !== activeSession?.cwd;
+      const executionTargetChanged = !Equal.equals(
+        effectiveExecutionTarget ?? { kind: "local" },
+        activeSession?.executionTarget ?? { kind: "local" },
+      );
       const sessionModelSwitch =
         currentProvider === undefined
           ? "in-session"
@@ -352,6 +361,7 @@ const make = Effect.gen(function* () {
       if (
         !runtimeModeChanged &&
         !cwdChanged &&
+        !executionTargetChanged &&
         !shouldRestartForModelChange &&
         !shouldRestartForModelSelectionChange
       ) {
@@ -372,6 +382,7 @@ const make = Effect.gen(function* () {
         previousCwd: activeSession?.cwd,
         desiredCwd: effectiveCwd,
         cwdChanged,
+        executionTargetChanged,
         modelChanged,
         shouldRestartForModelChange,
         shouldRestartForModelSelectionChange,
@@ -387,6 +398,7 @@ const make = Effect.gen(function* () {
         provider: restartedSession.provider,
         runtimeMode: restartedSession.runtimeMode,
         cwd: restartedSession.cwd,
+        executionTarget: restartedSession.executionTarget,
       });
       yield* bindSessionToThread(restartedSession);
       return restartedSession.threadId;
