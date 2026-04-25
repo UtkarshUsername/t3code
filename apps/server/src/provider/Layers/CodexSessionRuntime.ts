@@ -10,6 +10,7 @@ import {
   type ProviderInteractionMode,
   type ProviderRequestKind,
   type ProviderSession,
+  type ExecutionTarget,
   type ProviderTurnStartResult,
   type ProviderUserInputAnswers,
   RuntimeMode,
@@ -31,6 +32,8 @@ import {
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
 } from "../CodexDeveloperInstructions.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
+import { buildWslExecArgs } from "../../wsl/WslCli.ts";
+import { isWslTarget, localExecutionTarget } from "../../wsl/WslTarget.ts";
 
 const PROVIDER = "codex" as const;
 
@@ -79,6 +82,7 @@ export interface CodexSessionRuntimeOptions {
   readonly binaryPath: string;
   readonly homePath?: string;
   readonly cwd: string;
+  readonly executionTarget?: ExecutionTarget;
   readonly runtimeMode: RuntimeMode;
   readonly model?: string;
   readonly serviceTier?: EffectCodexSchema.V2ThreadStartParams__ServiceTier | undefined;
@@ -680,14 +684,19 @@ export const makeCodexSessionRuntime = (
     const collabReceiverTurnsRef = yield* Ref.make(new Map<string, TurnId>());
     const closedRef = yield* Ref.make(false);
 
+    const executionTarget = options.executionTarget ?? localExecutionTarget();
+    const childCommand = isWslTarget(executionTarget) ? "wsl.exe" : options.binaryPath;
+    const childArgs = isWslTarget(executionTarget)
+      ? buildWslExecArgs(executionTarget, options.cwd, options.binaryPath, ["app-server"])
+      : ["app-server"];
     const child = yield* spawner
       .spawn(
-        ChildProcess.make(options.binaryPath, ["app-server"], {
-          cwd: options.cwd,
-          ...(options.homePath
+        ChildProcess.make(childCommand, childArgs, {
+          cwd: isWslTarget(executionTarget) ? undefined : options.cwd,
+          ...(!isWslTarget(executionTarget) && options.homePath
             ? { env: { ...process.env, CODEX_HOME: expandHomePath(options.homePath) } }
             : {}),
-          shell: process.platform === "win32",
+          shell: process.platform === "win32" && !isWslTarget(executionTarget),
         }),
       )
       .pipe(
@@ -715,6 +724,7 @@ export const makeCodexSessionRuntime = (
       status: "connecting",
       runtimeMode: options.runtimeMode,
       cwd: options.cwd,
+      executionTarget,
       ...(options.model ? { model: options.model } : {}),
       threadId: options.threadId,
       ...(options.resumeCursor !== undefined ? { resumeCursor: options.resumeCursor } : {}),

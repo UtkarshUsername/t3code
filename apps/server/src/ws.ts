@@ -63,6 +63,8 @@ import {
   type SessionCredentialChange,
 } from "./auth/Services/SessionCredentialService.ts";
 import { respondToAuthError } from "./auth/http.ts";
+import { isWslAvailable, listWslDistributions, runWslShell } from "./wsl/WslCli.ts";
+import { normalizeWslTarget } from "./wsl/WslTarget.ts";
 
 function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
   OrchestrationEvent,
@@ -515,9 +517,14 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
         const settings = yield* serverSettings.getSettings;
         const environment = yield* serverEnvironment.getDescriptor;
         const auth = yield* serverAuth.getDescriptor();
+        const wsl = yield* isWslAvailable();
 
         return {
           environment,
+          capabilities: {
+            repositoryIdentity: true,
+            wsl,
+          },
           auth,
           cwd: config.cwd,
           keybindingsConfigPath: config.keybindingsConfigPath,
@@ -819,6 +826,106 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               ),
             ),
             { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.wslListDistributions]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.wslListDistributions,
+            listWslDistributions().pipe(
+              Effect.catch((cause) =>
+                Effect.logWarning("failed to list WSL distributions", { cause }).pipe(
+                  Effect.as([]),
+                ),
+              ),
+              Effect.map((distributions) => ({ distributions })),
+            ),
+            { "rpc.aggregate": "wsl" },
+          ),
+        [WS_METHODS.wslBrowse]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.wslBrowse,
+            runWslShell(
+              normalizeWslTarget(input.target),
+              input.cwd ?? "/",
+              `node -e ${JSON.stringify(
+                [
+                  "const fs=require('fs');const path=require('path');",
+                  "const partial=process.argv[1]||'';",
+                  "const cwd=process.cwd();",
+                  "const target=path.posix.resolve(cwd, partial);",
+                  "const ends=/\\/$/.test(partial)||partial==='~';",
+                  "const parent=ends?target:path.posix.dirname(target);",
+                  "const prefix=ends?'':path.posix.basename(target).toLowerCase();",
+                  "const entries=fs.readdirSync(parent,{withFileTypes:true})",
+                  ".filter(d=>d.isDirectory()&&d.name.toLowerCase().startsWith(prefix)&&(prefix.startsWith('.')||!d.name.startsWith('.')))",
+                  ".map(d=>({name:d.name,fullPath:path.posix.join(parent,d.name)}))",
+                  ".sort((a,b)=>a.name.localeCompare(b.name));",
+                  "console.log(JSON.stringify({parentPath:parent,entries}));",
+                ].join(""),
+              )} ${JSON.stringify(input.partialPath)}`,
+              { timeoutMs: 5_000, operation: "wsl.browse" },
+            ).pipe(
+              Effect.flatMap((result) =>
+                result.code === 0
+                  ? Effect.try({
+                      try: () => JSON.parse(result.stdout) as { parentPath: string; entries: [] },
+                      catch: (cause) =>
+                        new FilesystemBrowseError({
+                          message: "Failed to parse WSL browse response.",
+                          cause,
+                        }),
+                    })
+                  : Effect.fail(
+                      new FilesystemBrowseError({
+                        message: "Unable to browse WSL path.",
+                        cause: result.stderr,
+                      }),
+                    ),
+              ),
+              Effect.mapError((cause) =>
+                Schema.is(FilesystemBrowseError)(cause)
+                  ? cause
+                  : new FilesystemBrowseError({
+                      message: cause.message,
+                      cause,
+                    }),
+              ),
+            ),
+            { "rpc.aggregate": "wsl" },
+          ),
+        [WS_METHODS.wslResolvePath]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.wslResolvePath,
+            runWslShell(
+              normalizeWslTarget(input.target),
+              "/",
+              `[ -d ${JSON.stringify(input.path)} ] && echo directory || { [ -f ${JSON.stringify(input.path)} ] && echo file || echo missing; }`,
+              { timeoutMs: 3_000, operation: "wsl.resolvePath" },
+            ).pipe(
+              Effect.catch((cause) =>
+                Effect.logWarning("failed to resolve WSL path", {
+                  distroName: input.target.distroName,
+                  path: input.path,
+                  cause,
+                }).pipe(
+                  Effect.as({
+                    code: 1,
+                    stdout: "missing",
+                    stderr: "",
+                    signal: null,
+                    timedOut: false,
+                  }),
+                ),
+              ),
+              Effect.map((result) => {
+                const kind = result.stdout.trim();
+                return {
+                  path: input.path,
+                  exists: kind === "file" || kind === "directory",
+                  ...(kind === "file" || kind === "directory" ? { kind } : {}),
+                };
+              }),
+            ),
+            { "rpc.aggregate": "wsl" },
           ),
         [WS_METHODS.subscribeGitStatus]: (input) =>
           observeRpcStream(
