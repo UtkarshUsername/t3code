@@ -22,6 +22,7 @@ import {
   ModelSelection,
   ProjectId,
   ThreadId,
+  ExecutionTarget,
 } from "@t3tools/contracts";
 import { Effect, Layer, Option, Schema, Struct } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -55,6 +56,7 @@ const decodeShellSnapshot = Schema.decodeUnknownEffect(OrchestrationShellSnapsho
 const decodeThread = Schema.decodeUnknownEffect(OrchestrationThread);
 const ProjectionProjectDbRowSchema = ProjectionProject.mapFields(
   Struct.assign({
+    executionTarget: Schema.fromJsonString(ExecutionTarget),
     defaultModelSelection: Schema.NullOr(Schema.fromJsonString(ModelSelection)),
     scripts: Schema.fromJsonString(Schema.Array(ProjectScript)),
   }),
@@ -210,6 +212,7 @@ function mapProjectShellRow(
     id: row.projectId,
     title: row.title,
     workspaceRoot: row.workspaceRoot,
+    ...(row.executionTarget !== undefined ? { executionTarget: row.executionTarget } : {}),
     repositoryIdentity,
     defaultModelSelection: row.defaultModelSelection,
     scripts: row.scripts,
@@ -239,6 +242,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           project_id AS "projectId",
           title,
           workspace_root AS "workspaceRoot",
+          execution_target_json AS "executionTarget",
           default_model_selection_json AS "defaultModelSelection",
           scripts_json AS "scripts",
           created_at AS "createdAt",
@@ -435,6 +439,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           project_id AS "projectId",
           title,
           workspace_root AS "workspaceRoot",
+          execution_target_json AS "executionTarget",
           default_model_selection_json AS "defaultModelSelection",
           scripts_json AS "scripts",
           created_at AS "createdAt",
@@ -457,6 +462,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           project_id AS "projectId",
           title,
           workspace_root AS "workspaceRoot",
+          execution_target_json AS "executionTarget",
           default_model_selection_json AS "defaultModelSelection",
           scripts_json AS "scripts",
           created_at AS "createdAt",

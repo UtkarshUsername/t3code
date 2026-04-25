@@ -1,4 +1,4 @@
-import { ThreadId } from "@t3tools/contracts";
+import { ExecutionTarget, ThreadId } from "@t3tools/contracts";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import { Effect, Layer, Option, Schema, Struct } from "effect";
@@ -16,6 +16,7 @@ import {
 
 const ProviderSessionRuntimeDbRowSchema = ProviderSessionRuntime.mapFields(
   Struct.assign({
+    executionTarget: Schema.NullOr(Schema.fromJsonString(ExecutionTarget)),
     resumeCursor: Schema.NullOr(Schema.fromJsonString(Schema.Unknown)),
     runtimePayload: Schema.NullOr(Schema.fromJsonString(Schema.Unknown)),
   }),
@@ -50,6 +51,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
           runtime_mode,
           status,
           last_seen_at,
+          execution_target_json,
           resume_cursor_json,
           runtime_payload_json
         )
@@ -60,6 +62,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
           ${runtime.runtimeMode},
           ${runtime.status},
           ${runtime.lastSeenAt},
+          ${runtime.executionTarget != null ? JSON.stringify(runtime.executionTarget) : null},
           ${runtime.resumeCursor},
           ${runtime.runtimePayload}
         )
@@ -70,6 +73,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
           runtime_mode = excluded.runtime_mode,
           status = excluded.status,
           last_seen_at = excluded.last_seen_at,
+          execution_target_json = excluded.execution_target_json,
           resume_cursor_json = excluded.resume_cursor_json,
           runtime_payload_json = excluded.runtime_payload_json
       `,
@@ -87,6 +91,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
           runtime_mode AS "runtimeMode",
           status,
           last_seen_at AS "lastSeenAt",
+          execution_target_json AS "executionTarget",
           resume_cursor_json AS "resumeCursor",
           runtime_payload_json AS "runtimePayload"
         FROM provider_session_runtime
@@ -106,6 +111,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
           runtime_mode AS "runtimeMode",
           status,
           last_seen_at AS "lastSeenAt",
+          execution_target_json AS "executionTarget",
           resume_cursor_json AS "resumeCursor",
           runtime_payload_json AS "runtimePayload"
         FROM provider_session_runtime
@@ -123,7 +129,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
   });
 
   const upsert: ProviderSessionRuntimeRepositoryShape["upsert"] = (runtime) =>
-    upsertRuntimeRow(runtime).pipe(
+    upsertRuntimeRow({ ...runtime, executionTarget: runtime.executionTarget ?? null }).pipe(
       Effect.mapError(
         toPersistenceSqlOrDecodeError(
           "ProviderSessionRuntimeRepository.upsert:query",

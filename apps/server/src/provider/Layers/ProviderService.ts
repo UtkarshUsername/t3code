@@ -195,6 +195,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       provider: session.provider,
       runtimeMode: session.runtimeMode,
       status: toRuntimeStatus(session),
+      ...(session.executionTarget !== undefined
+        ? { executionTarget: session.executionTarget }
+        : {}),
       ...(session.resumeCursor !== undefined ? { resumeCursor: session.resumeCursor } : {}),
       runtimePayload: toRuntimePayloadFromSession(session, extra),
     });
