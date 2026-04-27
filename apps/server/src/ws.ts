@@ -64,7 +64,8 @@ import {
   type SessionCredentialChange,
 } from "./auth/Services/SessionCredentialService.ts";
 import { respondToAuthError } from "./auth/http.ts";
-import { isWslAvailable, listWslDistributions, runWslShell } from "./wsl/WslCli.ts";
+import { isWslAvailable, listWslDistributions, runWsl, runWslShell } from "./wsl/WslCli.ts";
+import { parseWslBrowseOutput, WSL_BROWSE_SCRIPT } from "./wsl/WslBrowse.ts";
 import { normalizeWslTarget } from "./wsl/WslTarget.ts";
 
 function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
@@ -844,31 +845,17 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
         [WS_METHODS.wslBrowse]: (input) =>
           observeRpcEffect(
             WS_METHODS.wslBrowse,
-            runWslShell(
+            runWsl(
               normalizeWslTarget(input.target),
               input.cwd ?? "/",
-              `node -e ${JSON.stringify(
-                [
-                  "const fs=require('fs');const path=require('path');",
-                  "const partial=process.argv[1]||'';",
-                  "const cwd=process.cwd();",
-                  "const target=path.posix.resolve(cwd, partial);",
-                  "const ends=/\\/$/.test(partial)||partial==='~';",
-                  "const parent=ends?target:path.posix.dirname(target);",
-                  "const prefix=ends?'':path.posix.basename(target).toLowerCase();",
-                  "const entries=fs.readdirSync(parent,{withFileTypes:true})",
-                  ".filter(d=>d.isDirectory()&&d.name.toLowerCase().startsWith(prefix)&&(prefix.startsWith('.')||!d.name.startsWith('.')))",
-                  ".map(d=>({name:d.name,fullPath:path.posix.join(parent,d.name)}))",
-                  ".sort((a,b)=>a.name.localeCompare(b.name));",
-                  "console.log(JSON.stringify({parentPath:parent,entries}));",
-                ].join(""),
-              )} ${JSON.stringify(input.partialPath)}`,
+              "sh",
+              ["-lc", WSL_BROWSE_SCRIPT, "t3-wsl-browse", input.partialPath],
               { timeoutMs: 5_000, operation: "wsl.browse" },
             ).pipe(
               Effect.flatMap((result) =>
                 result.code === 0
                   ? Effect.try({
-                      try: () => JSON.parse(result.stdout) as { parentPath: string; entries: [] },
+                      try: () => parseWslBrowseOutput(result.stdout),
                       catch: (cause) =>
                         new FilesystemBrowseError({
                           message: "Failed to parse WSL browse response.",

@@ -17,12 +17,13 @@
 - [x] Route git status, branch, checkout, pull, init, worktree, and branch-create operations through WSL targets.
 - [x] Propagate project execution targets through core web calls for terminals, git, branch selection, workspace search, and workspace writes.
 - [x] Add shared command-palette "Open WSL folder" flow backed by WSL list/browse RPCs.
+- [x] Remove the WSL folder-browse dependency on distro-local `node`; browse now uses POSIX shell/coreutils through `wsl.exe`.
 - [x] Add focused tests for WSL path parsing, WSL CLI argument building, execution-target schemas, and web git-status target state.
 
 ### Partial / Needs Hardening
 
 - [ ] Replace scattered target-aware conditionals with a true backend `ExecutionContext` abstraction.
-- [ ] Remove the WSL workspace browse/search/write dependency on distro-local `node`; prefer direct POSIX tooling or a reusable execution-context file API.
+- [ ] Remove remaining WSL workspace search/write dependency on distro-local `node`; prefer direct POSIX tooling or a reusable execution-context file API.
 - [ ] Add stronger typed WSL errors and user-facing error messages for missing distros, missing binaries, command timeout, and path conversion failures.
 - [ ] Extend WSL provider execution beyond Codex; OpenCode is the next practical target on this machine.
 - [ ] Make unsupported providers explicit for WSL projects instead of relying on local/default paths.
