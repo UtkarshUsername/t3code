@@ -1,5 +1,49 @@
 # WSL-Native Project Support For Windows In T3 Code
 
+## Implementation Todo
+
+### Done
+
+- [x] Add shared `ExecutionTarget` and `ProjectLocation` contract schemas.
+- [x] Add WSL RPC contracts for distro listing, browsing, and path resolution.
+- [x] Add backend WSL module for target normalization, `wsl.exe` invocation, distro parsing, UNC parsing, Windows-drive mapping, and POSIX containment helpers.
+- [x] Report backend WSL capability in server config.
+- [x] Persist project and provider-session execution targets with migrations/default local fallback.
+- [x] Carry execution targets through orchestration project create/update/read-model flows.
+- [x] Carry execution targets through provider session start/resume metadata.
+- [x] Run Codex app-server through WSL for WSL projects.
+- [x] Launch terminals through `wsl.exe --distribution ... --cd ... --exec ...` for WSL projects.
+- [x] Route workspace search and file writes through WSL for WSL projects.
+- [x] Route git status, branch, checkout, pull, init, worktree, and branch-create operations through WSL targets.
+- [x] Propagate project execution targets through core web calls for terminals, git, branch selection, workspace search, and workspace writes.
+- [x] Add shared command-palette "Open WSL folder" flow backed by WSL list/browse RPCs.
+- [x] Add focused tests for WSL path parsing, WSL CLI argument building, execution-target schemas, and web git-status target state.
+
+### Partial / Needs Hardening
+
+- [ ] Replace scattered target-aware conditionals with a true backend `ExecutionContext` abstraction.
+- [ ] Remove the WSL workspace browse/search/write dependency on distro-local `node`; prefer direct POSIX tooling or a reusable execution-context file API.
+- [ ] Add stronger typed WSL errors and user-facing error messages for missing distros, missing binaries, command timeout, and path conversion failures.
+- [ ] Extend WSL provider execution beyond Codex; OpenCode is the next practical target on this machine.
+- [ ] Make unsupported providers explicit for WSL projects instead of relying on local/default paths.
+- [ ] Add WSL-aware checkpoint diff/store routing end to end, not just shared git primitives.
+- [ ] Add repository identity resolution through WSL git remotes.
+- [ ] Add setup-script and project bootstrap validation coverage for WSL projects.
+- [ ] Add integration tests with mocked process spawning for WSL browse, terminal spawn args, Codex spawn args, git routing, project creation, and file writes.
+
+### Remaining Product / UX Work
+
+- [ ] Verify and polish the WSL open-folder flow in `bun run dev`, `npx t3`, and packaged desktop on Windows.
+- [ ] Add "Open Current Folder in WSL" for Windows folders that map to `/mnt/<drive>/...`.
+- [ ] Detect UNC WSL paths opened as local paths and offer to reopen them as native WSL projects.
+- [ ] Display WSL project identity clearly in project picker, recent projects/sidebar, thread header, and terminal drawer.
+- [ ] Add WSL path validation in the project-create flow before persistence.
+- [ ] Add Windows-folder-to-WSL path conversion UI/API flow.
+- [ ] Confirm terminal acceptance manually: `pwd` shows POSIX path and `uname` reports Linux.
+- [ ] Confirm Codex acceptance manually from an actual WSL project.
+- [ ] Confirm file search/write/git/checkpoint acceptance manually from an actual WSL project.
+- [ ] Run the full required completion checks when ready: `bun fmt`, `bun lint`, and `bun typecheck`.
+
 ## Summary
 
 Implement WSL as a first-class execution target for Windows users so T3 Code can open and operate on projects that live inside WSL without treating them as mounted Windows folders. This must work anywhere T3 Code is running with the local backend on Windows:

@@ -93,7 +93,7 @@ import { resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
 import { CommandPaletteResults } from "./CommandPaletteResults";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusIndicators";
-import { useServerKeybindings } from "../rpc/serverState";
+import { useServerConfig, useServerKeybindings } from "../rpc/serverState";
 import { resolveShortcutCommand } from "../keybindings";
 import {
   Command,
@@ -222,6 +222,7 @@ function OpenCommandPaletteDialog() {
     useHandleNewThread();
   const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
   const threads = useStore(useShallow(selectSidebarThreadsAcrossEnvironments));
+  const primaryServerConfig = useServerConfig();
   const keybindings = useServerKeybindings();
   const [viewStack, setViewStack] = useState<CommandPaletteView[]>([]);
   const currentView = viewStack.at(-1) ?? null;
@@ -289,18 +290,14 @@ function OpenCommandPaletteDialog() {
   const browseEnvironmentId = addProjectEnvironmentId ?? defaultAddProjectEnvironmentId;
   const browseEnvironmentServerConfig =
     browseEnvironmentId && primaryEnvironmentId && browseEnvironmentId === primaryEnvironmentId
-      ? null
+      ? primaryServerConfig
       : browseEnvironmentId
         ? savedEnvironmentRuntimeById[browseEnvironmentId]?.serverConfig
         : null;
   const canBrowseWslInEnvironment =
     browseEnvironmentId !== null &&
-    (browseEnvironmentId === primaryEnvironmentId
-      ? readPrimaryEnvironmentDescriptor()?.platform.os === "windows"
-      : browseEnvironmentServerConfig?.environment.platform.os === "windows") &&
-    (browseEnvironmentId === primaryEnvironmentId
-      ? (savedEnvironmentRuntimeById[browseEnvironmentId]?.serverConfig?.capabilities.wsl ?? false)
-      : (browseEnvironmentServerConfig?.capabilities.wsl ?? false));
+    browseEnvironmentServerConfig?.environment.platform.os === "windows" &&
+    browseEnvironmentServerConfig.capabilities.wsl;
   const browseEnvironmentPlatform = useMemo(() => {
     const os =
       browseEnvironmentId && primaryEnvironmentId && browseEnvironmentId === primaryEnvironmentId
@@ -759,39 +756,60 @@ function OpenCommandPaletteDialog() {
     });
   }
 
-  if (canBrowseWslInEnvironment && browseEnvironmentId !== null && wslDistributions.length > 0) {
-    actionItems.push({
-      kind: "submenu",
-      value: "action:add-wsl-project",
-      searchTerms: ["add project", "open wsl folder", "wsl", "linux", "distro"],
-      title: "Open WSL folder",
-      description: "Browse Linux paths in WSL",
-      icon: <MonitorIcon className={ITEM_ICON_CLASS} />,
-      addonIcon: <MonitorIcon className={ADDON_ICON_CLASS} />,
-      groups: [
-        {
-          value: "wsl-distros",
-          label: "WSL Distributions",
-          items: wslDistributions.map((distribution) => ({
-            kind: "action" as const,
-            value: `action:add-wsl-project:${distribution.name}`,
-            searchTerms: [
-              distribution.name,
-              distribution.default ? "default" : "",
-              distribution.running ? "running" : "",
-              "wsl",
-            ],
-            title: distribution.name,
-            description: distribution.default ? "Default distribution" : "WSL distribution",
-            icon: <MonitorIcon className={ITEM_ICON_CLASS} />,
-            keepOpen: true,
-            run: async () => {
-              startWslProjectBrowse(browseEnvironmentId, distribution.name);
-            },
-          })),
+  if (canBrowseWslInEnvironment && browseEnvironmentId !== null) {
+    if (wslDistributions.length > 0) {
+      actionItems.push({
+        kind: "submenu",
+        value: "action:add-wsl-project",
+        searchTerms: ["add project", "open wsl folder", "wsl", "linux", "distro"],
+        title: "Open WSL folder",
+        description: "Browse Linux paths in WSL",
+        icon: <MonitorIcon className={ITEM_ICON_CLASS} />,
+        addonIcon: <MonitorIcon className={ADDON_ICON_CLASS} />,
+        groups: [
+          {
+            value: "wsl-distros",
+            label: "WSL Distributions",
+            items: wslDistributions.map((distribution) => ({
+              kind: "action" as const,
+              value: `action:add-wsl-project:${distribution.name}`,
+              searchTerms: [
+                distribution.name,
+                distribution.default ? "default" : "",
+                distribution.running ? "running" : "",
+                "wsl",
+              ],
+              title: distribution.name,
+              description: distribution.default ? "Default distribution" : "WSL distribution",
+              icon: <MonitorIcon className={ITEM_ICON_CLASS} />,
+              keepOpen: true,
+              run: async () => {
+                startWslProjectBrowse(browseEnvironmentId, distribution.name);
+              },
+            })),
+          },
+        ],
+      });
+    } else {
+      actionItems.push({
+        kind: "action",
+        value: "action:add-wsl-project",
+        searchTerms: ["add project", "open wsl folder", "wsl", "linux", "distro"],
+        title: "Open WSL folder",
+        description: "No WSL distributions were reported",
+        icon: <MonitorIcon className={ITEM_ICON_CLASS} />,
+        keepOpen: true,
+        run: async () => {
+          toastManager.add(
+            stackedThreadToast({
+              type: "warning",
+              title: "No WSL distributions found",
+              description: "WSL is available, but the backend did not report any distributions.",
+            }),
+          );
         },
-      ],
-    });
+      });
+    }
   }
 
   actionItems.push({
