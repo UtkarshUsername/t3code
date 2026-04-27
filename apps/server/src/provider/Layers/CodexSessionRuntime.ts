@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { posix as posixPath } from "node:path";
 
 import {
   ApprovalRequestId,
@@ -32,7 +33,7 @@ import {
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
 } from "../CodexDeveloperInstructions.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
-import { buildWslExecArgs, runWslShell } from "../../wsl/WslCli.ts";
+import { buildWslExecArgs, runWsl } from "../../wsl/WslCli.ts";
 import { isWslTarget, localExecutionTarget, type WslTarget } from "../../wsl/WslTarget.ts";
 
 const PROVIDER = "codex" as const;
@@ -667,90 +668,202 @@ function parseThreadSnapshot(
   };
 }
 
-function shellQuoteLiteral(value: string): string {
-  return `'${value.replaceAll("'", "'\"'\"'")}'`;
-}
-
-function parseResolvedBinaryPath(stdout: string): string | undefined {
-  const firstLine = stdout
+function firstNonEmptyLine(stdout: string): string | undefined {
+  return stdout
     .split(/\r?\n/u)
     .map((line) => line.trim())
     .find((line) => line.length > 0);
-  return firstLine && firstLine.startsWith("/") ? firstLine : undefined;
 }
 
-const COMMON_WSL_USER_BIN_PATHS = [
-  "$HOME/.local/bin",
-  "$HOME/.bun/bin",
-  "$HOME/.npm/bin",
-  "$HOME/.npm-global/bin",
-].join(":");
+function normalizeWslAbsolutePath(input: string): string {
+  const normalized = posixPath.normalize(input);
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
 
-const SYSTEM_WSL_BIN_PATHS = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+const SYSTEM_WSL_BIN_DIRS = [
+  "/usr/local/sbin",
+  "/usr/local/bin",
+  "/usr/sbin",
+  "/usr/bin",
+  "/sbin",
+  "/bin",
+];
+
+function normalizePosixDir(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/")) {
+    return undefined;
+  }
+  return trimmed.endsWith("/") && trimmed !== "/" ? trimmed.replace(/\/+$/u, "") : trimmed;
+}
+
+function buildBinaryCandidate(dir: string, binaryName: string): string {
+  return dir === "/" ? `/${binaryName}` : `${dir}/${binaryName}`;
+}
 
 function resolveWslCodexBinary(input: {
   readonly executionTarget: WslTarget;
   readonly requestedBinary: string;
 }): Effect.Effect<string, CodexErrors.CodexAppServerError> {
-  const requestedBinaryQuoted = shellQuoteLiteral(input.requestedBinary);
-  const command = `command -v ${requestedBinaryQuoted}`;
-  const sanitizedPathCommand = `PATH="${COMMON_WSL_USER_BIN_PATHS}:${SYSTEM_WSL_BIN_PATHS}"; command -v ${requestedBinaryQuoted}`;
-
   const toSpawnError = (message: string, cause?: unknown) =>
     new CodexErrors.CodexAppServerSpawnError({
       command: `${input.requestedBinary} app-server`,
       cause: cause ?? new Error(message),
     });
 
-  return runWslShell(input.executionTarget, "/", command, {
-    timeoutMs: 3_000,
-    operation: "codex.resolve-binary",
-  }).pipe(
-    Effect.mapError((cause) =>
-      toSpawnError(
-        `Failed to resolve Codex binary in WSL distro '${input.executionTarget.distroName}'.`,
-        cause,
+  const resolveWslHomeDirectory = () =>
+    runWsl(input.executionTarget, "/", "printenv", ["HOME"], {
+      timeoutMs: 3_000,
+      operation: "codex.resolve-home",
+    }).pipe(
+      Effect.mapError((cause) =>
+        toSpawnError(
+          `Failed to resolve HOME in WSL distro '${input.executionTarget.distroName}'.`,
+          cause,
+        ),
       ),
-    ),
-    Effect.flatMap((result) => {
-      const primary = parseResolvedBinaryPath(result.stdout);
-      if (result.code === 0 && primary && !primary.startsWith("/mnt/")) {
-        return Effect.succeed(primary);
-      }
+      Effect.flatMap((result) => {
+        const home = firstNonEmptyLine(result.stdout);
+        if (result.code !== 0 || !home || !home.startsWith("/")) {
+          return Effect.fail(
+            toSpawnError(
+              `Unable to resolve HOME in WSL distro '${input.executionTarget.distroName}'.`,
+            ),
+          );
+        }
+        return Effect.succeed(normalizeWslAbsolutePath(home));
+      }),
+    );
 
-      return runWslShell(input.executionTarget, "/", sanitizedPathCommand, {
-        timeoutMs: 3_000,
-        operation: "codex.resolve-binary-sanitized-path",
+  return Effect.gen(function* () {
+    const home = yield* resolveWslHomeDirectory();
+
+    const pathResult = yield* runWsl(input.executionTarget, "/", "printenv", ["PATH"], {
+      timeoutMs: 3_000,
+      operation: "codex.resolve-path",
+    }).pipe(
+      Effect.mapError((cause) =>
+        toSpawnError(
+          `Failed to resolve PATH in WSL distro '${input.executionTarget.distroName}'.`,
+          cause,
+        ),
+      ),
+    );
+    const pathEntries =
+      pathResult.code === 0
+        ? pathResult.stdout
+            .split(":")
+            .map((entry) => normalizePosixDir(entry))
+            .filter((entry): entry is string => entry !== undefined)
+        : [];
+
+    const candidateDirs = Array.from(
+      new Set([
+        `${home}/.local/bin`,
+        `${home}/.bun/bin`,
+        `${home}/.npm/bin`,
+        `${home}/.npm-global/bin`,
+        ...SYSTEM_WSL_BIN_DIRS,
+        ...pathEntries,
+      ]),
+    );
+
+    const requested = input.requestedBinary.trim();
+    const requestedHasSlash = requested.includes("/");
+    const candidates = requestedHasSlash
+      ? [requested]
+      : candidateDirs.map((dir) => buildBinaryCandidate(dir, requested));
+    const nonWindowsCandidates = candidates.filter((candidate) => !candidate.startsWith("/mnt/"));
+
+    for (const candidate of nonWindowsCandidates) {
+      const probe = yield* runWsl(input.executionTarget, "/", "test", ["-x", candidate], {
+        timeoutMs: 2_000,
+        operation: "codex.resolve-binary-probe",
       }).pipe(
         Effect.mapError((cause) =>
           toSpawnError(
-            `Failed to resolve Codex binary in WSL distro '${input.executionTarget.distroName}' with sanitized PATH.`,
+            `Failed to probe Codex binary in WSL distro '${input.executionTarget.distroName}'.`,
             cause,
           ),
         ),
-        Effect.flatMap((fallbackResult) => {
-          const fallback = parseResolvedBinaryPath(fallbackResult.stdout);
-          if (fallbackResult.code === 0 && fallback && !fallback.startsWith("/mnt/")) {
-            return Effect.succeed(fallback);
-          }
+      );
+      if (probe.code === 0) {
+        return candidate;
+      }
+    }
 
-          if (primary?.startsWith("/mnt/")) {
-            return Effect.fail(
-              toSpawnError(
-                `Codex resolved to a Windows-mounted path ('${primary}') in WSL distro '${input.executionTarget.distroName}'. Install Codex inside WSL (Linux build) and ensure it is on PATH.`,
-              ),
-            );
-          }
+    const windowsCandidate = candidates.find((candidate) => candidate.startsWith("/mnt/"));
+    if (windowsCandidate) {
+      return yield* toSpawnError(
+        `Codex resolved to a Windows-mounted path ('${windowsCandidate}') in WSL distro '${input.executionTarget.distroName}'. Install Codex inside WSL (Linux build) and ensure it is on PATH.`,
+      );
+    }
 
+    return yield* toSpawnError(
+      `Codex binary '${input.requestedBinary}' was not found in WSL distro '${input.executionTarget.distroName}'. Install Codex inside WSL and ensure it is on PATH.`,
+    );
+  });
+}
+
+function resolveWslRuntimeCwd(input: {
+  readonly executionTarget: WslTarget;
+  readonly cwd: string;
+}): Effect.Effect<string, CodexErrors.CodexAppServerError> {
+  const toSpawnError = (message: string, cause?: unknown) =>
+    new CodexErrors.CodexAppServerSpawnError({
+      command: "codex app-server",
+      cause: cause ?? new Error(message),
+    });
+
+  const resolveWslHomeDirectory = () =>
+    runWsl(input.executionTarget, "/", "printenv", ["HOME"], {
+      timeoutMs: 3_000,
+      operation: "codex.resolve-home",
+    }).pipe(
+      Effect.mapError((cause) =>
+        toSpawnError(
+          `Failed to resolve HOME in WSL distro '${input.executionTarget.distroName}'.`,
+          cause,
+        ),
+      ),
+      Effect.flatMap((result) => {
+        const home = firstNonEmptyLine(result.stdout);
+        if (result.code !== 0 || !home || !home.startsWith("/")) {
           return Effect.fail(
             toSpawnError(
-              `Codex binary '${input.requestedBinary}' was not found in WSL distro '${input.executionTarget.distroName}'. Install Codex inside WSL and ensure it is on PATH.`,
+              `Unable to resolve HOME in WSL distro '${input.executionTarget.distroName}'.`,
             ),
           );
-        }),
-      );
-    }),
-  );
+        }
+        return Effect.succeed(normalizeWslAbsolutePath(home));
+      }),
+    );
+
+  return Effect.gen(function* () {
+    const requested = input.cwd.trim();
+    const candidate = requested.length === 0 ? "/" : requested;
+    const absoluteCandidate = candidate.startsWith("/")
+      ? normalizeWslAbsolutePath(candidate)
+      : candidate === "~" || candidate.startsWith("~/")
+        ? normalizeWslAbsolutePath(
+            `${yield* resolveWslHomeDirectory()}${candidate === "~" ? "" : `/${candidate.slice(2)}`}`,
+          )
+        : "/";
+
+    const probe = yield* runWsl(input.executionTarget, "/", "test", ["-d", absoluteCandidate], {
+      timeoutMs: 3_000,
+      operation: "codex.resolve-cwd",
+    }).pipe(
+      Effect.mapError((cause) =>
+        toSpawnError(
+          `Failed to validate working directory in WSL distro '${input.executionTarget.distroName}'.`,
+          cause,
+        ),
+      ),
+    );
+
+    return probe.code === 0 ? absoluteCandidate : "/";
+  });
 }
 
 export const makeCodexSessionRuntime = (
@@ -777,9 +890,12 @@ export const makeCodexSessionRuntime = (
           requestedBinary: options.binaryPath,
         })
       : undefined;
+    const wslCwd = isWslTarget(executionTarget)
+      ? yield* resolveWslRuntimeCwd({ executionTarget, cwd: options.cwd })
+      : undefined;
     const childCommand = isWslTarget(executionTarget) ? "wsl.exe" : options.binaryPath;
     const childArgs = isWslTarget(executionTarget)
-      ? buildWslExecArgs(executionTarget, options.cwd, wslBinaryPath ?? options.binaryPath, [
+      ? buildWslExecArgs(executionTarget, wslCwd ?? "/", wslBinaryPath ?? options.binaryPath, [
           "app-server",
         ])
       : ["app-server"];
