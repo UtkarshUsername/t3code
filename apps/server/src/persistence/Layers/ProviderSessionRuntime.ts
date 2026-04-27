@@ -14,9 +14,18 @@ import {
   type ProviderSessionRuntimeRepositoryShape,
 } from "../Services/ProviderSessionRuntime.ts";
 
+const LaxExecutionTarget = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("local") }),
+  Schema.Struct({
+    kind: Schema.Literal("wsl"),
+    distroName: Schema.String,
+    user: Schema.optional(Schema.String),
+  }),
+]);
+
 const ProviderSessionRuntimeDbRowSchema = ProviderSessionRuntime.mapFields(
   Struct.assign({
-    executionTarget: Schema.NullOr(Schema.fromJsonString(ExecutionTarget)),
+    executionTarget: Schema.NullOr(Schema.fromJsonString(LaxExecutionTarget)),
     resumeCursor: Schema.NullOr(Schema.fromJsonString(Schema.Unknown)),
     runtimePayload: Schema.NullOr(Schema.fromJsonString(Schema.Unknown)),
   }),
