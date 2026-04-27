@@ -296,6 +296,12 @@ const make = Effect.gen(function* () {
     });
     const project = readModel.projects.find((entry) => entry.id === thread.projectId);
     const effectiveExecutionTarget = project?.executionTarget;
+    yield* Effect.logInfo("DEBUG: Project execution target in orchestration", {
+      threadId,
+      projectId: thread.projectId,
+      hasProject: !!project,
+      projectExecutionTarget: effectiveExecutionTarget?.kind,
+    });
 
     const resolveActiveSession = (threadId: ThreadId) =>
       providerService

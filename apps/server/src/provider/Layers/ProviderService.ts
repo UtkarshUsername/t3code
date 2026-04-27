@@ -368,6 +368,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         "provider.kind": input.provider,
         "provider.thread_id": threadId,
         "provider.runtime_mode": input.runtimeMode,
+        "provider.input_execution_target": input.executionTarget?.kind,
       });
       return yield* Effect.gen(function* () {
         const settings = yield* serverSettings.getSettings.pipe(

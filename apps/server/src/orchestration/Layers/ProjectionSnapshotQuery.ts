@@ -54,9 +54,19 @@ import {
 const decodeReadModel = Schema.decodeUnknownEffect(OrchestrationReadModel);
 const decodeShellSnapshot = Schema.decodeUnknownEffect(OrchestrationShellSnapshot);
 const decodeThread = Schema.decodeUnknownEffect(OrchestrationThread);
+
+const LaxExecutionTarget = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("local") }),
+  Schema.Struct({
+    kind: Schema.Literal("wsl"),
+    distroName: Schema.String,
+    user: Schema.optional(Schema.String),
+  }),
+]);
+
 const ProjectionProjectDbRowSchema = ProjectionProject.mapFields(
   Struct.assign({
-    executionTarget: Schema.fromJsonString(ExecutionTarget),
+    executionTarget: Schema.fromJsonString(LaxExecutionTarget),
     defaultModelSelection: Schema.NullOr(Schema.fromJsonString(ModelSelection)),
     scripts: Schema.fromJsonString(Schema.Array(ProjectScript)),
   }),
@@ -907,6 +917,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 id: row.projectId,
                 title: row.title,
                 workspaceRoot: row.workspaceRoot,
+                ...(row.executionTarget !== undefined ? { executionTarget: row.executionTarget } : {}),
                 repositoryIdentity: repositoryIdentities.get(row.projectId) ?? null,
                 defaultModelSelection: row.defaultModelSelection,
                 scripts: row.scripts,
