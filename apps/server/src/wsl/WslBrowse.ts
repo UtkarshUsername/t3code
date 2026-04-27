@@ -20,14 +20,25 @@ export const WSL_BROWSE_SCRIPT = [
   "  esac",
   "fi",
   '[ -d "$parent" ] || exit 3',
-  'printf "%s\\0%s\\0" "$parent" "$prefix"',
-  'find "$parent" -mindepth 1 -maxdepth 1 -type d -printf "%f\\0%p\\0"',
-].join("\n");
+  'echo "$parent"',
+  'echo "__PREFIX__:$prefix"',
+  'for path in "$parent"/* "$parent"/.*; do',
+  '  [ -d "$path" ] || continue',
+  '  name=$(basename -- "$path")',
+  '  [ "$name" = "." ] && continue',
+  '  [ "$name" = ".." ] && continue',
+  '  echo "__ENTRY__:$name:$path"',
+  "done",
+].join("; ");
 
 export function parseWslBrowseOutput(stdout: string): FilesystemBrowseResult {
-  const parts = stdout.split("\0");
-  const parentPath = parts[0]?.trim();
-  const prefix = parts[1] ?? "";
+  const lines = stdout
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const parentPath = lines[0];
+  const prefixLine = lines.find((line) => line.startsWith("__PREFIX__:"));
+  const prefix = prefixLine ? prefixLine.slice("__PREFIX__:".length) : "";
   if (!parentPath) {
     throw new Error("WSL browse response did not include a parent path.");
   }
@@ -36,10 +47,14 @@ export function parseWslBrowseOutput(stdout: string): FilesystemBrowseResult {
   const showHidden = prefix.length === 0 || prefix.startsWith(".");
   const entries: Array<FilesystemBrowseResult["entries"][number]> = [];
 
-  for (let index = 2; index + 1 < parts.length; index += 2) {
-    const name = parts[index];
-    const fullPath = parts[index + 1];
-    if (!name || !fullPath) continue;
+  for (const line of lines) {
+    if (!line.startsWith("__ENTRY__:")) continue;
+    const entry = line.slice("__ENTRY__:".length);
+    const separator = entry.indexOf(":");
+    if (separator <= 0) continue;
+    const name = entry.slice(0, separator);
+    const fullPath = entry.slice(separator + 1);
+    if (!fullPath) continue;
     if (!name.toLowerCase().startsWith(lowerPrefix)) continue;
     if (!showHidden && name.startsWith(".")) continue;
     entries.push({ name, fullPath });

@@ -1,4 +1,5 @@
 import { Cause, Duration, Effect, Layer, Option, Queue, Ref, Schema, Stream } from "effect";
+import { posix as posixPath } from "node:path";
 import {
   type AuthAccessStreamEvent,
   AuthSessionId,
@@ -64,8 +65,7 @@ import {
   type SessionCredentialChange,
 } from "./auth/Services/SessionCredentialService.ts";
 import { respondToAuthError } from "./auth/http.ts";
-import { isWslAvailable, listWslDistributions, runWsl, runWslShell } from "./wsl/WslCli.ts";
-import { parseWslBrowseOutput, WSL_BROWSE_SCRIPT } from "./wsl/WslBrowse.ts";
+import { isWslAvailable, listWslDistributions, runWsl } from "./wsl/WslCli.ts";
 import { normalizeWslTarget } from "./wsl/WslTarget.ts";
 
 function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
@@ -845,30 +845,100 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
         [WS_METHODS.wslBrowse]: (input) =>
           observeRpcEffect(
             WS_METHODS.wslBrowse,
-            runWsl(
-              normalizeWslTarget(input.target),
-              input.cwd ?? "/",
-              "sh",
-              ["-lc", WSL_BROWSE_SCRIPT, "t3-wsl-browse", input.partialPath],
-              { timeoutMs: 5_000, operation: "wsl.browse" },
-            ).pipe(
-              Effect.flatMap((result) =>
-                result.code === 0
-                  ? Effect.try({
-                      try: () => parseWslBrowseOutput(result.stdout),
-                      catch: (cause) =>
-                        new FilesystemBrowseError({
-                          message: "Failed to parse WSL browse response.",
-                          cause,
-                        }),
-                    })
-                  : Effect.fail(
-                      new FilesystemBrowseError({
-                        message: "Unable to browse WSL path.",
-                        cause: result.stderr,
+            Effect.gen(function* () {
+              const target = normalizeWslTarget(input.target);
+              const baseCwd = input.cwd && input.cwd.trim().length > 0 ? input.cwd : "/";
+              const requestedPartial = input.partialPath.trim();
+              const expandedPartial =
+                requestedPartial === "~" || requestedPartial.startsWith("~/")
+                  ? yield* runWsl(target, "/", "printenv", ["HOME"], {
+                      timeoutMs: 3_000,
+                      operation: "wsl.browse-home",
+                    }).pipe(
+                      Effect.flatMap((result) => {
+                        if (result.code !== 0) {
+                          return Effect.fail(
+                            new FilesystemBrowseError({
+                              message: "Unable to resolve WSL home directory.",
+                              cause: result.stderr,
+                            }),
+                          );
+                        }
+                        const home = result.stdout.trim();
+                        if (!home.startsWith("/")) {
+                          return Effect.fail(
+                            new FilesystemBrowseError({
+                              message: "Unable to resolve WSL home directory.",
+                              cause: result.stdout,
+                            }),
+                          );
+                        }
+                        return Effect.succeed(
+                          requestedPartial === "~"
+                            ? home
+                            : posixPath.join(home, requestedPartial.slice(2)),
+                        );
                       }),
-                    ),
-              ),
+                    )
+                  : requestedPartial;
+
+              const normalizedTargetPath =
+                expandedPartial.length === 0
+                  ? posixPath.normalize(baseCwd)
+                  : expandedPartial.startsWith("/")
+                    ? posixPath.normalize(expandedPartial)
+                    : posixPath.normalize(posixPath.join(baseCwd, expandedPartial));
+              const selectDirectory = expandedPartial.length === 0 || expandedPartial.endsWith("/");
+              const parentPath = selectDirectory
+                ? normalizedTargetPath
+                : posixPath.dirname(normalizedTargetPath);
+              const prefix = selectDirectory ? "" : posixPath.basename(normalizedTargetPath);
+
+              const listResult = yield* runWsl(
+                target,
+                parentPath,
+                "find",
+                [".", "-mindepth", "1", "-maxdepth", "1", "-type", "d", "-print"],
+                { timeoutMs: 5_000, operation: "wsl.browse" },
+              );
+              if (listResult.code !== 0) {
+                return yield* new FilesystemBrowseError({
+                  message: "Unable to browse WSL path.",
+                  cause: listResult.stderr,
+                });
+              }
+
+              const lowerPrefix = prefix.toLowerCase();
+              const showHidden = prefix.length === 0 || prefix.startsWith(".");
+              const entries = listResult.stdout
+                .split(/\r?\n/u)
+                .filter((line) => line.length > 0)
+                .flatMap((rawLine) => {
+                  const normalizedLine = rawLine === "." ? "" : rawLine.replace(/^\.\//u, "");
+                  if (normalizedLine.length === 0) {
+                    return [];
+                  }
+                  const name = posixPath.basename(normalizedLine);
+                  if (!name.toLowerCase().startsWith(lowerPrefix)) {
+                    return [];
+                  }
+                  if (!showHidden && name.startsWith(".")) {
+                    return [];
+                  }
+                  return [
+                    {
+                      name,
+                      fullPath: posixPath.join(parentPath, normalizedLine),
+                    },
+                  ];
+                })
+                .toSorted((left, right) => left.name.localeCompare(right.name));
+
+              return {
+                parentPath,
+                entries,
+              };
+            }).pipe(
               Effect.mapError((cause) =>
                 Schema.is(FilesystemBrowseError)(cause)
                   ? cause
@@ -883,36 +953,55 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
         [WS_METHODS.wslResolvePath]: (input) =>
           observeRpcEffect(
             WS_METHODS.wslResolvePath,
-            runWslShell(
-              normalizeWslTarget(input.target),
-              "/",
-              `[ -d ${JSON.stringify(input.path)} ] && echo directory || { [ -f ${JSON.stringify(input.path)} ] && echo file || echo missing; }`,
-              { timeoutMs: 3_000, operation: "wsl.resolvePath" },
-            ).pipe(
-              Effect.catch((cause) =>
-                Effect.logWarning("failed to resolve WSL path", {
-                  distroName: input.target.distroName,
-                  path: input.path,
-                  cause,
-                }).pipe(
-                  Effect.as({
-                    code: 1,
-                    stdout: "missing",
-                    stderr: "",
-                    signal: null,
-                    timedOut: false,
-                  }),
+            Effect.gen(function* () {
+              const target = normalizeWslTarget(input.target);
+              const directoryProbe = yield* runWsl(target, "/", "test", ["-d", input.path], {
+                timeoutMs: 3_000,
+                operation: "wsl.resolvePath.directory",
+              }).pipe(
+                Effect.catch((cause) =>
+                  Effect.logWarning("failed to resolve WSL directory path", {
+                    distroName: input.target.distroName,
+                    path: input.path,
+                    cause,
+                  }).pipe(
+                    Effect.as({
+                      code: 1,
+                    }),
+                  ),
                 ),
-              ),
-              Effect.map((result) => {
-                const kind = result.stdout.trim();
+              );
+              if (directoryProbe.code === 0) {
                 return {
                   path: input.path,
-                  exists: kind === "file" || kind === "directory",
-                  ...(kind === "file" || kind === "directory" ? { kind } : {}),
+                  exists: true,
+                  kind: "directory" as const,
                 };
-              }),
-            ),
+              }
+
+              const fileProbe = yield* runWsl(target, "/", "test", ["-f", input.path], {
+                timeoutMs: 3_000,
+                operation: "wsl.resolvePath.file",
+              }).pipe(
+                Effect.catch((cause) =>
+                  Effect.logWarning("failed to resolve WSL file path", {
+                    distroName: input.target.distroName,
+                    path: input.path,
+                    cause,
+                  }).pipe(
+                    Effect.as({
+                      code: 1,
+                    }),
+                  ),
+                ),
+              );
+
+              return {
+                path: input.path,
+                exists: fileProbe.code === 0,
+                ...(fileProbe.code === 0 ? { kind: "file" as const } : {}),
+              };
+            }),
             { "rpc.aggregate": "wsl" },
           ),
         [WS_METHODS.subscribeGitStatus]: (input) =>

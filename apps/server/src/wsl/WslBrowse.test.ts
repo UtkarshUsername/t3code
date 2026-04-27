@@ -6,7 +6,12 @@ describe("parseWslBrowseOutput", () => {
   it("parses nul-delimited WSL directory browse output", () => {
     expect(
       parseWslBrowseOutput(
-        ["/home/me", "pr", "project", "/home/me/project", "notes", "/home/me/notes", ""].join("\0"),
+        [
+          "/home/me",
+          "__PREFIX__:pr",
+          "__ENTRY__:project:/home/me/project",
+          "__ENTRY__:notes:/home/me/notes",
+        ].join("\n"),
       ),
     ).toEqual({
       parentPath: "/home/me",
@@ -17,7 +22,12 @@ describe("parseWslBrowseOutput", () => {
   it("hides dot directories unless the prefix requests them", () => {
     expect(
       parseWslBrowseOutput(
-        ["/home/me", "", ".config", "/home/me/.config", "src", "/home/me/src", ""].join("\0"),
+        [
+          "/home/me",
+          "__PREFIX__:",
+          "__ENTRY__:.config:/home/me/.config",
+          "__ENTRY__:src:/home/me/src",
+        ].join("\n"),
       ),
     ).toEqual({
       parentPath: "/home/me",
@@ -29,7 +39,12 @@ describe("parseWslBrowseOutput", () => {
 
     expect(
       parseWslBrowseOutput(
-        ["/home/me", "s", ".ssh", "/home/me/.ssh", "src", "/home/me/src", ""].join("\0"),
+        [
+          "/home/me",
+          "__PREFIX__:s",
+          "__ENTRY__:.ssh:/home/me/.ssh",
+          "__ENTRY__:src:/home/me/src",
+        ].join("\n"),
       ),
     ).toEqual({
       parentPath: "/home/me",
