@@ -41,6 +41,15 @@ export function buildWslShellArgs(
   return buildWslExecArgs(target, cwd, "sh", ["-lc", script]);
 }
 
+export function buildWslShellCommandArgs(
+  target: WslTarget,
+  cwd: string | undefined,
+  script: string,
+  args: ReadonlyArray<string> = [],
+): string[] {
+  return buildWslExecArgs(target, cwd, "sh", ["-lc", script, "t3-wsl-shell", ...args]);
+}
+
 export function isWslAvailable(): Effect.Effect<boolean> {
   if (process.platform !== "win32") {
     return Effect.succeed(false);
@@ -98,6 +107,16 @@ export function runWslShell(
   options?: { readonly timeoutMs?: number; readonly operation?: string },
 ): Effect.Effect<ProcessRunResult, WslCliError> {
   return runWsl(target, cwd, "sh", ["-lc", script], options);
+}
+
+export function runWslShellCommand(
+  target: WslTarget,
+  cwd: string | undefined,
+  script: string,
+  args: ReadonlyArray<string> = [],
+  options?: { readonly timeoutMs?: number; readonly operation?: string },
+): Effect.Effect<ProcessRunResult, WslCliError> {
+  return runWsl(target, cwd, "sh", ["-lc", script, "t3-wsl-shell", ...args], options);
 }
 
 export function listWslDistributions(): Effect.Effect<WslDistribution[], WslCliError> {

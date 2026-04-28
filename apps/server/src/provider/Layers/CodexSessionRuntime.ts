@@ -33,7 +33,7 @@ import {
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
 } from "../CodexDeveloperInstructions.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
-import { buildWslExecArgs, runWsl } from "../../wsl/WslCli.ts";
+import { buildWslExecArgs, runWsl, runWslShell, runWslShellCommand } from "../../wsl/WslCli.ts";
 import { isWslTarget, localExecutionTarget, type WslTarget } from "../../wsl/WslTarget.ts";
 
 const PROVIDER = "codex" as const;
@@ -701,6 +701,54 @@ function buildBinaryCandidate(dir: string, binaryName: string): string {
   return dir === "/" ? `/${binaryName}` : `${dir}/${binaryName}`;
 }
 
+const WSL_HOME_PROBE_SCRIPT = [
+  "home=${HOME:-}",
+  'if [ -z "$home" ]; then',
+  "  user=$(id -un 2>/dev/null || true)",
+  '  if [ -n "$user" ]; then',
+  '    home=$(getent passwd "$user" 2>/dev/null | cut -d: -f6)',
+  "  fi",
+  "fi",
+  'if [ -z "$home" ]; then',
+  "  home=$(cd ~ 2>/dev/null && pwd -P)",
+  "fi",
+  'printf "%s\\n" "$home"',
+].join("\n");
+
+function resolveWslHomeDirectory(input: {
+  readonly executionTarget: WslTarget;
+  readonly command: string;
+}): Effect.Effect<string, CodexErrors.CodexAppServerError> {
+  const toSpawnError = (message: string, cause?: unknown) =>
+    new CodexErrors.CodexAppServerSpawnError({
+      command: input.command,
+      cause: cause ?? new Error(message),
+    });
+
+  return runWslShell(input.executionTarget, "/", WSL_HOME_PROBE_SCRIPT, {
+    timeoutMs: 3_000,
+    operation: "codex.resolve-home",
+  }).pipe(
+    Effect.mapError((cause) =>
+      toSpawnError(
+        `Failed to resolve HOME in WSL distro '${input.executionTarget.distroName}'.`,
+        cause,
+      ),
+    ),
+    Effect.flatMap((result) => {
+      const home = firstNonEmptyLine(result.stdout);
+      if (result.code !== 0 || !home || !home.startsWith("/")) {
+        return Effect.fail(
+          toSpawnError(
+            `Unable to resolve HOME in WSL distro '${input.executionTarget.distroName}'.`,
+          ),
+        );
+      }
+      return Effect.succeed(normalizeWslAbsolutePath(home));
+    }),
+  );
+}
+
 function resolveWslCodexBinary(input: {
   readonly executionTarget: WslTarget;
   readonly requestedBinary: string;
@@ -711,34 +759,44 @@ function resolveWslCodexBinary(input: {
       cause: cause ?? new Error(message),
     });
 
-  const resolveWslHomeDirectory = () =>
-    runWsl(input.executionTarget, "/", "printenv", ["HOME"], {
-      timeoutMs: 3_000,
-      operation: "codex.resolve-home",
-    }).pipe(
-      Effect.mapError((cause) =>
-        toSpawnError(
-          `Failed to resolve HOME in WSL distro '${input.executionTarget.distroName}'.`,
-          cause,
-        ),
-      ),
-      Effect.flatMap((result) => {
-        const home = firstNonEmptyLine(result.stdout);
-        if (result.code !== 0 || !home || !home.startsWith("/")) {
-          return Effect.fail(
-            toSpawnError(
-              `Unable to resolve HOME in WSL distro '${input.executionTarget.distroName}'.`,
-            ),
-          );
-        }
-        return Effect.succeed(normalizeWslAbsolutePath(home));
-      }),
-    );
-
   return Effect.gen(function* () {
-    const home = yield* resolveWslHomeDirectory();
+    const requested = input.requestedBinary.trim();
+    const requestedHasSlash = requested.includes("/");
+    let windowsPathResolvedFromPath: string | undefined;
+    const home = yield* resolveWslHomeDirectory({
+      executionTarget: input.executionTarget,
+      command: `${requested} app-server`,
+    });
 
-    const pathResult = yield* runWsl(input.executionTarget, "/", "printenv", ["PATH"], {
+    if (!requestedHasSlash) {
+      const commandProbe = yield* runWslShellCommand(
+        input.executionTarget,
+        "/",
+        'command -v "$1"',
+        [requested],
+        {
+          timeoutMs: 3_000,
+          operation: "codex.resolve-command",
+        },
+      ).pipe(
+        Effect.mapError((cause) =>
+          toSpawnError(
+            `Failed to resolve Codex binary from PATH in WSL distro '${input.executionTarget.distroName}'.`,
+            cause,
+          ),
+        ),
+      );
+      const commandPath =
+        commandProbe.code === 0 ? firstNonEmptyLine(commandProbe.stdout) : undefined;
+      if (commandPath?.startsWith("/") && !commandPath.startsWith("/mnt/")) {
+        return normalizeWslAbsolutePath(commandPath);
+      }
+      if (commandPath?.startsWith("/mnt/")) {
+        windowsPathResolvedFromPath = commandPath;
+      }
+    }
+
+    const pathResult = yield* runWslShell(input.executionTarget, "/", 'printf "%s\\n" "$PATH"', {
       timeoutMs: 3_000,
       operation: "codex.resolve-path",
     }).pipe(
@@ -768,8 +826,6 @@ function resolveWslCodexBinary(input: {
       ]),
     );
 
-    const requested = input.requestedBinary.trim();
-    const requestedHasSlash = requested.includes("/");
     const candidates = requestedHasSlash
       ? [requested]
       : candidateDirs.map((dir) => buildBinaryCandidate(dir, requested));
@@ -792,7 +848,8 @@ function resolveWslCodexBinary(input: {
       }
     }
 
-    const windowsCandidate = candidates.find((candidate) => candidate.startsWith("/mnt/"));
+    const windowsCandidate =
+      windowsPathResolvedFromPath ?? candidates.find((candidate) => candidate.startsWith("/mnt/"));
     if (windowsCandidate) {
       return yield* toSpawnError(
         `Codex resolved to a Windows-mounted path ('${windowsCandidate}') in WSL distro '${input.executionTarget.distroName}'. Install Codex inside WSL (Linux build) and ensure it is on PATH.`,
@@ -815,30 +872,6 @@ function resolveWslRuntimeCwd(input: {
       cause: cause ?? new Error(message),
     });
 
-  const resolveWslHomeDirectory = () =>
-    runWsl(input.executionTarget, "/", "printenv", ["HOME"], {
-      timeoutMs: 3_000,
-      operation: "codex.resolve-home",
-    }).pipe(
-      Effect.mapError((cause) =>
-        toSpawnError(
-          `Failed to resolve HOME in WSL distro '${input.executionTarget.distroName}'.`,
-          cause,
-        ),
-      ),
-      Effect.flatMap((result) => {
-        const home = firstNonEmptyLine(result.stdout);
-        if (result.code !== 0 || !home || !home.startsWith("/")) {
-          return Effect.fail(
-            toSpawnError(
-              `Unable to resolve HOME in WSL distro '${input.executionTarget.distroName}'.`,
-            ),
-          );
-        }
-        return Effect.succeed(normalizeWslAbsolutePath(home));
-      }),
-    );
-
   return Effect.gen(function* () {
     const requested = input.cwd.trim();
     const candidate = requested.length === 0 ? "/" : requested;
@@ -846,7 +879,10 @@ function resolveWslRuntimeCwd(input: {
       ? normalizeWslAbsolutePath(candidate)
       : candidate === "~" || candidate.startsWith("~/")
         ? normalizeWslAbsolutePath(
-            `${yield* resolveWslHomeDirectory()}${candidate === "~" ? "" : `/${candidate.slice(2)}`}`,
+            `${yield* resolveWslHomeDirectory({
+              executionTarget: input.executionTarget,
+              command: "codex app-server",
+            })}${candidate === "~" ? "" : `/${candidate.slice(2)}`}`,
           )
         : "/";
 

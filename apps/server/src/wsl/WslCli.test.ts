@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildWslExecArgs, buildWslShellArgs, parseWslListVerbose } from "./WslCli.ts";
+import {
+  buildWslExecArgs,
+  buildWslShellArgs,
+  buildWslShellCommandArgs,
+  parseWslListVerbose,
+} from "./WslCli.ts";
 
 describe("WslCli", () => {
   it("builds direct exec arguments", () => {
@@ -33,6 +38,25 @@ describe("WslCli", () => {
       "sh",
       "-lc",
       "pwd",
+    ]);
+  });
+
+  it("builds shell arguments with positional parameters", () => {
+    expect(
+      buildWslShellCommandArgs({ kind: "wsl", distroName: "Ubuntu" }, "/", 'command -v "$1"', [
+        "codex",
+      ]),
+    ).toEqual([
+      "--distribution",
+      "Ubuntu",
+      "--cd",
+      "/",
+      "--exec",
+      "sh",
+      "-lc",
+      'command -v "$1"',
+      "t3-wsl-shell",
+      "codex",
     ]);
   });
 
