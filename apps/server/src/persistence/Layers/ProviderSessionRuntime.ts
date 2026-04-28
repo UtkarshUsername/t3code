@@ -1,4 +1,9 @@
-import { ExecutionTarget, ThreadId } from "@t3tools/contracts";
+import {
+  IsoDateTime,
+  ProviderSessionRuntimeStatus,
+  RuntimeMode,
+  ThreadId,
+} from "@t3tools/contracts";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import { Effect, Layer, Option, Schema, Struct } from "effect";
@@ -6,6 +11,7 @@ import { Effect, Layer, Option, Schema, Struct } from "effect";
 import {
   toPersistenceDecodeError,
   toPersistenceSqlError,
+  PersistenceDecodeError,
   type ProviderSessionRuntimeRepositoryError,
 } from "../Errors.ts";
 import {
@@ -23,13 +29,26 @@ const LaxExecutionTarget = Schema.Union([
   }),
 ]);
 
-const ProviderSessionRuntimeDbRowSchema = ProviderSessionRuntime.mapFields(
+const ProviderSessionRuntimeWriteSchema = ProviderSessionRuntime.mapFields(
   Struct.assign({
     executionTarget: Schema.NullOr(Schema.fromJsonString(LaxExecutionTarget)),
     resumeCursor: Schema.NullOr(Schema.fromJsonString(Schema.Unknown)),
     runtimePayload: Schema.NullOr(Schema.fromJsonString(Schema.Unknown)),
   }),
 );
+
+const ProviderSessionRuntimeDbRowSchema = Schema.Struct({
+  threadId: ThreadId,
+  providerName: Schema.String,
+  adapterKey: Schema.String,
+  runtimeMode: RuntimeMode,
+  status: ProviderSessionRuntimeStatus,
+  lastSeenAt: IsoDateTime,
+  executionTarget: Schema.NullOr(Schema.String),
+  resumeCursor: Schema.NullOr(Schema.String),
+  runtimePayload: Schema.NullOr(Schema.String),
+});
+type ProviderSessionRuntimeDbRow = typeof ProviderSessionRuntimeDbRowSchema.Type;
 
 const decodeRuntime = Schema.decodeUnknownEffect(ProviderSessionRuntime);
 
@@ -46,11 +65,43 @@ function toPersistenceSqlOrDecodeError(sqlOperation: string, decodeOperation: st
       : toPersistenceSqlError(sqlOperation)(cause);
 }
 
+function parseJsonField(value: string | null): unknown | null {
+  if (value === null) return null;
+  const parsed = JSON.parse(value);
+  return typeof parsed === "string" ? JSON.parse(parsed) : parsed;
+}
+
+function decodeRuntimeRow(
+  row: ProviderSessionRuntimeDbRow,
+  operation: string,
+): Effect.Effect<ProviderSessionRuntime, ProviderSessionRuntimeRepositoryError> {
+  const toJsonParseError = (cause: unknown) =>
+    new PersistenceDecodeError({
+      operation: `${operation}:parseJsonFields`,
+      issue: "Failed to parse provider session runtime JSON fields.",
+      cause,
+    });
+
+  return Effect.try({
+    try: () => ({
+      ...row,
+      executionTarget: parseJsonField(row.executionTarget),
+      resumeCursor: parseJsonField(row.resumeCursor),
+      runtimePayload: parseJsonField(row.runtimePayload),
+    }),
+    catch: toJsonParseError,
+  }).pipe(
+    Effect.flatMap((runtime) =>
+      decodeRuntime(runtime).pipe(Effect.mapError(toPersistenceDecodeError(operation))),
+    ),
+  );
+}
+
 const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
   const upsertRuntimeRow = SqlSchema.void({
-    Request: ProviderSessionRuntimeDbRowSchema,
+    Request: ProviderSessionRuntimeWriteSchema,
     execute: (runtime) =>
       sql`
         INSERT INTO provider_session_runtime (
@@ -71,7 +122,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
           ${runtime.runtimeMode},
           ${runtime.status},
           ${runtime.lastSeenAt},
-          ${runtime.executionTarget != null ? JSON.stringify(runtime.executionTarget) : null},
+          ${runtime.executionTarget},
           ${runtime.resumeCursor},
           ${runtime.runtimePayload}
         )
@@ -159,14 +210,10 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
         Option.match(runtimeRowOption, {
           onNone: () => Effect.succeed(Option.none()),
           onSome: (row) =>
-            decodeRuntime(row).pipe(
-              Effect.mapError(
-                toPersistenceDecodeError(
-                  "ProviderSessionRuntimeRepository.getByThreadId:rowToRuntime",
-                ),
-              ),
-              Effect.map((runtime) => Option.some(runtime)),
-            ),
+            decodeRuntimeRow(
+              row,
+              "ProviderSessionRuntimeRepository.getByThreadId:rowToRuntime",
+            ).pipe(Effect.map((runtime) => Option.some(runtime))),
         }),
       ),
     );
@@ -182,12 +229,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
       Effect.flatMap((rows) =>
         Effect.forEach(
           rows,
-          (row) =>
-            decodeRuntime(row).pipe(
-              Effect.mapError(
-                toPersistenceDecodeError("ProviderSessionRuntimeRepository.list:rowToRuntime"),
-              ),
-            ),
+          (row) => decodeRuntimeRow(row, "ProviderSessionRuntimeRepository.list:rowToRuntime"),
           { concurrency: "unbounded" },
         ),
       ),
