@@ -906,7 +906,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   projectRows,
                   (row) =>
                     repositoryIdentityResolver
-                      .resolve(row.workspaceRoot)
+                      .resolve({
+                        cwd: row.workspaceRoot,
+                        executionTarget: row.executionTarget,
+                      })
                       .pipe(Effect.map((identity) => [row.projectId, identity] as const)),
                   { concurrency: repositoryIdentityResolutionConcurrency },
                 ),
@@ -1047,7 +1050,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 projectRows,
                 (row) =>
                   repositoryIdentityResolver
-                    .resolve(row.workspaceRoot)
+                    .resolve({
+                      cwd: row.workspaceRoot,
+                      executionTarget: row.executionTarget,
+                    })
                     .pipe(Effect.map((identity) => [row.projectId, identity] as const)),
                 { concurrency: repositoryIdentityResolutionConcurrency },
               ),
@@ -1175,7 +1181,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         Option.isNone(option)
           ? Effect.succeed(Option.none<OrchestrationProjectShell>())
           : repositoryIdentityResolver
-              .resolve(option.value.workspaceRoot)
+              .resolve({
+                cwd: option.value.workspaceRoot,
+                executionTarget: option.value.executionTarget,
+              })
               .pipe(
                 Effect.map((repositoryIdentity) =>
                   Option.some(mapProjectShellRow(option.value, repositoryIdentity)),
