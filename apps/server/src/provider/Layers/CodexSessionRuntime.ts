@@ -688,6 +688,7 @@ const SYSTEM_WSL_BIN_DIRS = [
   "/sbin",
   "/bin",
 ];
+const WSL_CODEX_RESOLUTION_TIMEOUT_MS = 15_000;
 
 function normalizePosixDir(value: string): string | undefined {
   const trimmed = value.trim();
@@ -726,7 +727,7 @@ function resolveWslHomeDirectory(input: {
     });
 
   return runWslShell(input.executionTarget, "/", WSL_HOME_PROBE_SCRIPT, {
-    timeoutMs: 3_000,
+    timeoutMs: WSL_CODEX_RESOLUTION_TIMEOUT_MS,
     operation: "codex.resolve-home",
   }).pipe(
     Effect.mapError((cause) =>
@@ -775,7 +776,7 @@ function resolveWslCodexBinary(input: {
         'command -v "$1"',
         [requested],
         {
-          timeoutMs: 3_000,
+          timeoutMs: WSL_CODEX_RESOLUTION_TIMEOUT_MS,
           operation: "codex.resolve-command",
         },
       ).pipe(
@@ -797,7 +798,7 @@ function resolveWslCodexBinary(input: {
     }
 
     const pathResult = yield* runWslShell(input.executionTarget, "/", 'printf "%s\\n" "$PATH"', {
-      timeoutMs: 3_000,
+      timeoutMs: WSL_CODEX_RESOLUTION_TIMEOUT_MS,
       operation: "codex.resolve-path",
     }).pipe(
       Effect.mapError((cause) =>
@@ -833,7 +834,7 @@ function resolveWslCodexBinary(input: {
 
     for (const candidate of nonWindowsCandidates) {
       const probe = yield* runWsl(input.executionTarget, "/", "test", ["-x", candidate], {
-        timeoutMs: 2_000,
+        timeoutMs: WSL_CODEX_RESOLUTION_TIMEOUT_MS,
         operation: "codex.resolve-binary-probe",
       }).pipe(
         Effect.mapError((cause) =>
@@ -887,7 +888,7 @@ function resolveWslRuntimeCwd(input: {
         : "/";
 
     const probe = yield* runWsl(input.executionTarget, "/", "test", ["-d", absoluteCandidate], {
-      timeoutMs: 3_000,
+      timeoutMs: WSL_CODEX_RESOLUTION_TIMEOUT_MS,
       operation: "codex.resolve-cwd",
     }).pipe(
       Effect.mapError((cause) =>

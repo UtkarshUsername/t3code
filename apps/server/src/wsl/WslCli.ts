@@ -89,6 +89,7 @@ export function runWsl(
         allowNonZeroExit: true,
         maxBufferBytes: DEFAULT_MAX_BUFFER_BYTES,
         outputMode: "truncate",
+        shell: false,
       }),
     catch: (cause) =>
       new WslCliError({
