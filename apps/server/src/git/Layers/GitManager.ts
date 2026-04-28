@@ -1309,8 +1309,6 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
       console.log("WSL MANAGER localStatus gitCore.status RESULT", { status });
       return {
         isRepo: status.isRepo,
-      return {
-        isRepo: status.isRepo,
         ...(status.hostingProvider ? { hostingProvider: status.hostingProvider } : {}),
         hasOriginRemote: status.hasOriginRemote,
         isDefaultBranch: status.isDefaultBranch,
