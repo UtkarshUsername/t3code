@@ -2,7 +2,7 @@
 
 ## Implementation Todo
 
-### Done
+### Confirmed Done
 
 - [x] Add shared `ExecutionTarget` and `ProjectLocation` contract schemas.
 - [x] Add WSL RPC contracts for distro listing, browsing, and path resolution.
@@ -12,23 +12,33 @@
 - [x] Carry execution targets through orchestration project create/update/read-model flows.
 - [x] Carry execution targets through provider session start/resume metadata.
 - [x] Run Codex app-server through WSL for WSL projects.
-- [x] Launch terminals through `wsl.exe --distribution ... --cd ... --exec ...` for WSL projects.
-- [x] Route workspace search and file writes through WSL for WSL projects.
-- [x] Route git status, branch, checkout, pull, init, worktree, and branch-create operations through WSL targets.
+- [x] Fix Codex WSL startup on Windows by bypassing `cmd.exe` for `wsl.exe` calls.
+- [x] Fix Codex WSL binary resolution when Windows PATH entries appear before native WSL binaries.
+- [x] Fix provider session runtime persistence for WSL execution-target metadata, including legacy double-encoded rows.
 - [x] Propagate project execution targets through core web calls for terminals, git, branch selection, workspace search, and workspace writes.
 - [x] Add shared command-palette "Open WSL folder" flow backed by WSL list/browse RPCs.
 - [x] Remove the WSL folder-browse dependency on distro-local `node`; browse now uses POSIX shell/coreutils through `wsl.exe`.
 - [x] Add focused tests for WSL path parsing, WSL CLI argument building, execution-target schemas, and web git-status target state.
+- [x] Confirm Codex can respond from a WSL project in `bun run dev`.
+
+### Active Bugs Found In Manual Testing
+
+- [ ] Fix WSL git/repository identity detection. WSL projects with git can still show the no-git badge.
+- [ ] Fix workspace file search for WSL projects. `@` file tagging currently stays on "Searching workspace files...".
+- [ ] Fix terminal open cwd handling for WSL projects. Early terminals can report `[terminal] Terminal cwd does not exist: /home/utkarsh/agents/`.
+- [ ] Fix terminal close/kill for WSL PTYs. Closing terminals can log `failed to kill terminal process` for `SIGTERM`.
+- [ ] Fix thread-title generation for WSL projects. It still invokes local Windows Codex against POSIX cwd and logs `C:\home\...` path failures.
+- [ ] Audit provider/session reaper logs around WSL sessions to distinguish expected idle cleanup from terminal lifecycle noise.
 
 ### Partial / Needs Hardening
 
 - [ ] Replace scattered target-aware conditionals with a true backend `ExecutionContext` abstraction.
-- [ ] Remove remaining WSL workspace search/write dependency on distro-local `node`; prefer direct POSIX tooling or a reusable execution-context file API.
+- [ ] Route all workspace search/read/write operations through WSL-native execution paths; remove remaining local filesystem assumptions and any distro-local `node` dependency.
+- [ ] Route git status, repository identity, branch, checkout, pull, init, worktree, and branch-create operations through WSL targets end to end.
 - [ ] Add stronger typed WSL errors and user-facing error messages for missing distros, missing binaries, command timeout, and path conversion failures.
 - [ ] Extend WSL provider execution beyond Codex; OpenCode is the next practical target on this machine.
 - [ ] Make unsupported providers explicit for WSL projects instead of relying on local/default paths.
 - [ ] Add WSL-aware checkpoint diff/store routing end to end, not just shared git primitives.
-- [ ] Add repository identity resolution through WSL git remotes.
 - [ ] Add setup-script and project bootstrap validation coverage for WSL projects.
 - [ ] Add integration tests with mocked process spawning for WSL browse, terminal spawn args, Codex spawn args, git routing, project creation, and file writes.
 
@@ -40,8 +50,8 @@
 - [ ] Display WSL project identity clearly in project picker, recent projects/sidebar, thread header, and terminal drawer.
 - [ ] Add WSL path validation in the project-create flow before persistence.
 - [ ] Add Windows-folder-to-WSL path conversion UI/API flow.
-- [ ] Confirm terminal acceptance manually: `pwd` shows POSIX path and `uname` reports Linux.
-- [ ] Confirm Codex acceptance manually from an actual WSL project.
+- [ ] Confirm terminal acceptance manually after lifecycle fixes: `pwd` shows POSIX path and `uname` reports Linux.
+- [x] Confirm Codex acceptance manually from an actual WSL project.
 - [ ] Confirm file search/write/git/checkpoint acceptance manually from an actual WSL project.
 - [ ] Run the full required completion checks when ready: `bun fmt`, `bun lint`, and `bun typecheck`.
 
