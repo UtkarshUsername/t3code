@@ -160,7 +160,14 @@ export const GitStatusBroadcasterLive = Layer.effect(
     const loadLocalStatus = Effect.fn("loadLocalStatus")(function* (input: GitStatusInput) {
       const cwd = normalizeStatusCwd(input);
       const key = statusCacheKey(cwd, input.executionTarget);
+      yield* Effect.logDebug("loadLocalStatus WSL debug", {
+        inputCwd: input.cwd,
+        inputExecutionTargetKind: input.executionTarget?.kind,
+        normalizedCwd: cwd,
+        cacheKey: key,
+      });
       const local = yield* gitManager.localStatus({ ...input, cwd });
+      console.log("WSL BROADCASTER loadLocalStatus RESULT", { key, local });
       return yield* updateCachedLocalStatus(key, local);
     });
 
@@ -321,6 +328,7 @@ export const GitStatusBroadcasterLive = Layer.effect(
           const normalizedCwd = normalizeStatusCwd(input);
           const normalizedInput = { ...input, cwd: normalizedCwd };
           const key = statusCacheKey(normalizedCwd, input.executionTarget);
+          console.log("WSL BROADCASTER streamStatus", { input, normalizedCwd, key });
           const subscription = yield* PubSub.subscribe(changesPubSub);
           const initialLocal = yield* getOrLoadLocalStatus(normalizedInput, key);
           const initialRemote = (yield* getCachedStatus(key))?.remote?.value ?? null;

@@ -1011,14 +1011,16 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             }),
             { "rpc.aggregate": "wsl" },
           ),
-        [WS_METHODS.subscribeGitStatus]: (input) =>
-          observeRpcStream(
+        [WS_METHODS.subscribeGitStatus]: (input) => {
+          console.log("WSL SERVER subscribeGitStatus INPUT", JSON.stringify(input));
+          return observeRpcStream(
             WS_METHODS.subscribeGitStatus,
             gitStatusBroadcaster.streamStatus(input),
             {
               "rpc.aggregate": "git",
             },
-          ),
+          );
+        },
         [WS_METHODS.gitRefreshStatus]: (input) =>
           observeRpcEffect(WS_METHODS.gitRefreshStatus, gitStatusBroadcaster.refreshStatus(input), {
             "rpc.aggregate": "git",
