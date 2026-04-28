@@ -1137,21 +1137,29 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         Effect.flatMap((option) =>
           Option.isNone(option)
             ? Effect.succeed(Option.none<OrchestrationProject>())
-            : repositoryIdentityResolver.resolve(option.value.workspaceRoot).pipe(
-                Effect.map((repositoryIdentity) =>
-                  Option.some({
-                    id: option.value.projectId,
-                    title: option.value.title,
-                    workspaceRoot: option.value.workspaceRoot,
-                    repositoryIdentity,
-                    defaultModelSelection: option.value.defaultModelSelection,
-                    scripts: option.value.scripts,
-                    createdAt: option.value.createdAt,
-                    updatedAt: option.value.updatedAt,
-                    deletedAt: option.value.deletedAt,
-                  } satisfies OrchestrationProject),
+            : repositoryIdentityResolver
+                .resolve({
+                  cwd: option.value.workspaceRoot,
+                  executionTarget: option.value.executionTarget,
+                })
+                .pipe(
+                  Effect.map((repositoryIdentity) =>
+                    Option.some({
+                      id: option.value.projectId,
+                      title: option.value.title,
+                      workspaceRoot: option.value.workspaceRoot,
+                      ...(option.value.executionTarget !== undefined
+                        ? { executionTarget: option.value.executionTarget }
+                        : {}),
+                      repositoryIdentity,
+                      defaultModelSelection: option.value.defaultModelSelection,
+                      scripts: option.value.scripts,
+                      createdAt: option.value.createdAt,
+                      updatedAt: option.value.updatedAt,
+                      deletedAt: option.value.deletedAt,
+                    } satisfies OrchestrationProject),
+                  ),
                 ),
-              ),
         ),
       );
 

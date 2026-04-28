@@ -214,28 +214,35 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       ): Effect.Effect<OrchestrationEvent, never, never> => {
         switch (event.type) {
           case "project.created":
-            return repositoryIdentityResolver.resolve(event.payload.workspaceRoot).pipe(
-              Effect.map((repositoryIdentity) => ({
-                ...event,
-                payload: {
-                  ...event.payload,
-                  repositoryIdentity,
-                },
-              })),
-            );
+            return repositoryIdentityResolver
+              .resolve({
+                cwd: event.payload.workspaceRoot,
+                executionTarget: event.payload.executionTarget,
+              })
+              .pipe(
+                Effect.map((repositoryIdentity) => ({
+                  ...event,
+                  payload: {
+                    ...event.payload,
+                    repositoryIdentity,
+                  },
+                })),
+              );
           case "project.meta-updated":
             return Effect.gen(function* () {
-              const workspaceRoot =
-                event.payload.workspaceRoot ??
-                (yield* orchestrationEngine.getReadModel()).projects.find(
-                  (project) => project.id === event.payload.projectId,
-                )?.workspaceRoot ??
-                null;
+              const readModel = yield* orchestrationEngine.getReadModel();
+              const project = readModel.projects.find(
+                (candidate) => candidate.id === event.payload.projectId,
+              );
+              const workspaceRoot = event.payload.workspaceRoot ?? project?.workspaceRoot ?? null;
               if (workspaceRoot === null) {
                 return event;
               }
 
-              const repositoryIdentity = yield* repositoryIdentityResolver.resolve(workspaceRoot);
+              const repositoryIdentity = yield* repositoryIdentityResolver.resolve({
+                cwd: workspaceRoot,
+                executionTarget: event.payload.executionTarget ?? project?.executionTarget,
+              });
               return {
                 ...event,
                 payload: {
