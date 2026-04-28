@@ -1299,8 +1299,16 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
   });
 
   const localStatus: GitManagerShape["localStatus"] = Effect.fn("localStatus")(function* (input) {
+    yield* Effect.logDebug("GitManager.localStatus WSL debug", {
+      inputCwd: input.cwd,
+      inputExecutionTargetKind: input.executionTarget?.kind,
+    });
     if (input.executionTarget?.kind === "wsl") {
+      console.log("WSL MANAGER localStatus calling gitCore.status", { cwd: input.cwd });
       const status = yield* gitCore.status(input);
+      console.log("WSL MANAGER localStatus gitCore.status RESULT", { status });
+      return {
+        isRepo: status.isRepo,
       return {
         isRepo: status.isRepo,
         ...(status.hostingProvider ? { hostingProvider: status.hostingProvider } : {}),
