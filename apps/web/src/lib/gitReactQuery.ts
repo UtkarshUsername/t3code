@@ -104,7 +104,7 @@ export function gitResolvePullRequestQueryOptions(input: {
   reference: string | null;
 }) {
   return queryOptions({
-queryKey: [
+    queryKey: [
       "git",
       "pull-requests",
       input.environmentId ?? null,
