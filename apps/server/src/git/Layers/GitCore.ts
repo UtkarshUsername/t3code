@@ -672,7 +672,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   ): Effect.Effect<A, E, R> =>
     executionTarget === undefined
       ? effect
-      : Effect.suspend(() => executionTargetStorage.run(executionTarget, () => effect));
+      : executionTargetStorage.run(executionTarget, () => effect);
 
   let executeRaw: GitCoreShape["execute"];
 
@@ -691,6 +691,12 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       const inheritedTarget = executionTargetStorage.getStore();
       const executionTarget = input.executionTarget ?? inheritedTarget;
       const wslTarget = isWslTarget(executionTarget) ? executionTarget : undefined;
+      console.log("WSL EXEC debug", {
+        inputExecutionTarget: input.executionTarget,
+        inheritedTarget,
+        executionTarget,
+        wslTarget
+      });
 
       const runGitCommand = Effect.fn("runGitCommand")(function* () {
         const trace2Monitor =
@@ -708,6 +714,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
           wslTarget === undefined
             ? commandInput.args
             : buildWslExecArgs(wslTarget, commandInput.cwd, "git", commandInput.args);
+        console.log("WSL SPAWN command", { command, args, cwd: commandInput.cwd });
         const child = yield* commandSpawner
           .spawn(
             ChildProcess.make(command, args, {
@@ -1227,6 +1234,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   });
 
   const readStatusDetailsLocal = Effect.fn("readStatusDetailsLocal")(function* (cwd: string) {
+    console.log("WSL readStatusDetailsLocal", { cwd });
     const statusResult = yield* executeGit(
       "GitCore.statusDetails.status",
       cwd,
@@ -1370,6 +1378,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   );
 
   const statusDetails: GitCoreShape["statusDetails"] = Effect.fn("statusDetails")(function* (cwd) {
+    console.log("WSL COREstatusDetails", { cwd });
     yield* refreshStatusUpstreamIfStale(cwd).pipe(
       Effect.catchIf(isMissingGitCwdError, () => Effect.void),
       Effect.ignoreCause({ log: true }),
