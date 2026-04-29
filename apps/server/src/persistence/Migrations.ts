@@ -11,7 +11,6 @@
 import * as Migrator from "effect/unstable/sql/Migrator";
 import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 // Import all migrations statically
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
@@ -87,13 +86,7 @@ export const makeMigrationLoader = (throughId?: number) =>
     Object.fromEntries(
       migrationEntries
         .filter(([id]) => throughId === undefined || id <= throughId)
-        .map(
-          ([id, name, migration]) =>
-            [`${id}_${name}`, migration] as [
-              string,
-              Effect.Effect<void, unknown, SqlClient.SqlClient>,
-            ],
-        ),
+        .map(([id, name, migration]) => [`${id}_${name}`, migration]),
     ),
   );
 
