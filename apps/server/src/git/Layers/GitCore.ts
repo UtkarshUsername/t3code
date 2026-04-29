@@ -825,25 +825,29 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       ),
     );
 
-  const executeGit = (
+const executeGit = (
     operation: string,
     cwd: string,
     args: readonly string[],
     options: ExecuteGitOptions = {},
-  ): Effect.Effect<ExecuteGitResult, GitCommandError> =>
-    execute({
+  ): Effect.Effect<ExecuteGitResult, GitCommandError> => {
+    const execTarget = executionTargetStorage.getStore();
+    console.log("WSL executeGit storage", { execTarget });
+    const inputWithExec = {
+      executionTarget: execTarget,
       operation,
       cwd,
       args,
-      ...(options.stdin !== undefined ? { stdin: options.stdin } : {}),
       allowNonZeroExit: true,
+      ...(options.stdin !== undefined ? { stdin: options.stdin } : {}),
       ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
       ...(options.maxOutputBytes !== undefined ? { maxOutputBytes: options.maxOutputBytes } : {}),
       ...(options.truncateOutputAtMaxBytes !== undefined
         ? { truncateOutputAtMaxBytes: options.truncateOutputAtMaxBytes }
         : {}),
       ...(options.progress ? { progress: options.progress } : {}),
-    }).pipe(
+    };
+    return executeRaw(inputWithExec).pipe(
       Effect.flatMap((result) => {
         if (options.allowNonZeroExit || result.code === 0) {
           return Effect.succeed(result);
@@ -867,6 +871,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
         );
       }),
     );
+  };
 
   const runGit = (
     operation: string,
@@ -1390,6 +1395,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
 
   const status: GitCoreShape["status"] = (input) => {
     console.log("WSL CORESTATUS input", input);
+    console.log("WSL CORESTATUS calling withExecTarget with", input.executionTarget);
     return withExecutionTarget(
       input.executionTarget,
       statusDetails(input.cwd).pipe(
