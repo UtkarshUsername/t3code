@@ -65,7 +65,7 @@ const LaxExecutionTarget = Schema.Union([
 
 const ProjectionProjectDbRowSchema = ProjectionProject.mapFields(
   Struct.assign({
-    executionTarget: Schema.fromJsonString(LaxExecutionTarget),
+    executionTarget: Schema.NullOr(Schema.fromJsonString(LaxExecutionTarget)),
     defaultModelSelection: Schema.NullOr(Schema.fromJsonString(ModelSelection)),
     scripts: Schema.fromJsonString(Schema.Array(ProjectScript)),
   }),
@@ -221,7 +221,7 @@ function mapProjectShellRow(
     id: row.projectId,
     title: row.title,
     workspaceRoot: row.workspaceRoot,
-    ...(row.executionTarget !== undefined ? { executionTarget: row.executionTarget } : {}),
+    ...(row.executionTarget != null ? { executionTarget: row.executionTarget } : {}),
     repositoryIdentity,
     defaultModelSelection: row.defaultModelSelection,
     scripts: row.scripts,
@@ -908,7 +908,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                     repositoryIdentityResolver
                       .resolve({
                         cwd: row.workspaceRoot,
-                        executionTarget: row.executionTarget,
+                        executionTarget: row.executionTarget ?? undefined,
                       })
                       .pipe(Effect.map((identity) => [row.projectId, identity] as const)),
                   { concurrency: repositoryIdentityResolutionConcurrency },
@@ -919,7 +919,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 id: row.projectId,
                 title: row.title,
                 workspaceRoot: row.workspaceRoot,
-                ...(row.executionTarget !== undefined
+                ...(row.executionTarget != null
                   ? { executionTarget: row.executionTarget }
                   : {}),
                 repositoryIdentity: repositoryIdentities.get(row.projectId) ?? null,
@@ -1052,7 +1052,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   repositoryIdentityResolver
                     .resolve({
                       cwd: row.workspaceRoot,
-                      executionTarget: row.executionTarget,
+                      executionTarget: row.executionTarget ?? undefined,
                     })
                     .pipe(Effect.map((identity) => [row.projectId, identity] as const)),
                 { concurrency: repositoryIdentityResolutionConcurrency },
@@ -1146,7 +1146,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             : repositoryIdentityResolver
                 .resolve({
                   cwd: option.value.workspaceRoot,
-                  executionTarget: option.value.executionTarget,
+                  executionTarget: option.value.executionTarget ?? undefined,
                 })
                 .pipe(
                   Effect.map((repositoryIdentity) =>
@@ -1154,7 +1154,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                       id: option.value.projectId,
                       title: option.value.title,
                       workspaceRoot: option.value.workspaceRoot,
-                      ...(option.value.executionTarget !== undefined
+                      ...(option.value.executionTarget != null
                         ? { executionTarget: option.value.executionTarget }
                         : {}),
                       repositoryIdentity,
@@ -1183,7 +1183,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           : repositoryIdentityResolver
               .resolve({
                 cwd: option.value.workspaceRoot,
-                executionTarget: option.value.executionTarget,
+                executionTarget: option.value.executionTarget ?? undefined,
               })
               .pipe(
                 Effect.map((repositoryIdentity) =>
