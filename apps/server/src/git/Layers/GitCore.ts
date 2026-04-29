@@ -85,6 +85,7 @@ type TraceTailState = {
 class StatusRemoteRefreshCacheKey extends Data.Class<{
   gitCommonDir: string;
   remoteName: string;
+  executionTarget?: ExecutionTarget | undefined;
 }> {}
 
 interface ExecuteGitOptions {
@@ -999,7 +1000,11 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   const refreshStatusRemoteCacheEntry = Effect.fn("refreshStatusRemoteCacheEntry")(function* (
     cacheKey: StatusRemoteRefreshCacheKey,
   ) {
-    yield* fetchRemoteForStatus(cacheKey.gitCommonDir, cacheKey.remoteName);
+    yield* fetchRemoteForStatus(
+      cacheKey.gitCommonDir,
+      cacheKey.remoteName,
+      cacheKey.executionTarget,
+    );
     return true as const;
   });
 
@@ -1024,6 +1029,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       new StatusRemoteRefreshCacheKey({
         gitCommonDir,
         remoteName: upstream.remoteName,
+        ...(executionTarget !== undefined ? { executionTarget } : {}),
       }),
     );
   });
@@ -1406,38 +1412,49 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     };
   });
 
+  const statusDetailsLocalForTarget = (
+    cwd: string,
+    executionTarget?: ExecutionTarget,
+  ): Effect.Effect<GitStatusDetails, GitCommandError> =>
+    readStatusDetailsLocal(cwd, executionTarget);
+
+  const statusDetailsForTarget = (
+    cwd: string,
+    executionTarget?: ExecutionTarget,
+  ): Effect.Effect<GitStatusDetails, GitCommandError> =>
+    Effect.gen(function* () {
+      yield* refreshStatusUpstreamIfStale(cwd, executionTarget).pipe(
+        Effect.catchIf(isMissingGitCwdError, () => Effect.void),
+        Effect.ignoreCause({ log: true }),
+      );
+      return yield* readStatusDetailsLocal(cwd, executionTarget);
+    });
+
   const statusDetailsLocal: GitCoreShape["statusDetailsLocal"] = Effect.fn("statusDetailsLocal")(
     function* (cwd) {
-      return yield* readStatusDetailsLocal(cwd);
+      return yield* statusDetailsLocalForTarget(cwd);
     },
   );
 
   const statusDetails: GitCoreShape["statusDetails"] = Effect.fn("statusDetails")(function* (cwd) {
     const executionTarget = executionTargetStorage.getStore();
-    yield* refreshStatusUpstreamIfStale(cwd, executionTarget).pipe(
-      Effect.catchIf(isMissingGitCwdError, () => Effect.void),
-      Effect.ignoreCause({ log: true }),
-    );
-    return yield* readStatusDetailsLocal(cwd, executionTarget);
+    return yield* statusDetailsForTarget(cwd, executionTarget);
   });
 
   const status: GitCoreShape["status"] = (input) =>
-    withExecutionTarget(
-      input.executionTarget,
-      statusDetails(input.cwd).pipe(
-        Effect.map((details) => ({
-          isRepo: details.isRepo,
-          hasOriginRemote: details.hasOriginRemote,
-          isDefaultBranch: details.isDefaultBranch,
-          branch: details.branch,
-          hasWorkingTreeChanges: details.hasWorkingTreeChanges,
-          workingTree: details.workingTree,
-          hasUpstream: details.hasUpstream,
-          aheadCount: details.aheadCount,
-          behindCount: details.behindCount,
-          pr: null,
-        })),
-      ),
+    statusDetailsForTarget(input.cwd, input.executionTarget).pipe(
+      Effect.map((details) => ({
+        isRepo: details.isRepo,
+        hasOriginRemote: details.hasOriginRemote,
+        isDefaultBranch: details.isDefaultBranch,
+        branch: details.branch,
+        hasWorkingTreeChanges: details.hasWorkingTreeChanges,
+        workingTree: details.workingTree,
+        hasUpstream: details.hasUpstream,
+        aheadCount: details.aheadCount,
+        behindCount: details.behindCount,
+        pr: null,
+      })),
     );
 
   const prepareCommitContext: GitCoreShape["prepareCommitContext"] = Effect.fn(
