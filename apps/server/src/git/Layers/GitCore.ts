@@ -1226,7 +1226,10 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
   });
 
-  const readBranchRecency = Effect.fn("readBranchRecency")(function* (cwd: string) {
+  const readBranchRecency = Effect.fn("readBranchRecency")(function* (
+    cwd: string,
+    executionTarget?: ExecutionTarget,
+  ) {
     const branchRecency = yield* executeGit(
       "GitCore.readBranchRecency",
       cwd,
@@ -1239,6 +1242,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       {
         timeoutMs: 15_000,
         allowNonZeroExit: true,
+        executionTarget,
       },
     );
 
@@ -1831,11 +1835,11 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       return relativePaths.filter((relativePath) => !ignoredPaths.has(relativePath));
     });
 
-  const listBranches: GitCoreShape["listBranches"] = Effect.fn("listBranches")(function* (input) {
-    return yield* withExecutionTarget(
-      input.executionTarget,
-      Effect.gen(function* () {
-        const branchRecencyPromise = readBranchRecency(input.cwd).pipe(
+  const listBranchesForTarget = (
+    input: Parameters<GitCoreShape["listBranches"]>[0],
+  ) =>
+    Effect.gen(function* () {
+        const branchRecencyPromise = readBranchRecency(input.cwd, input.executionTarget).pipe(
           Effect.catch(() => Effect.succeed(new Map<string, number>())),
         );
         const localBranchResult = yield* executeGit(
@@ -1845,6 +1849,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
           {
             timeoutMs: 10_000,
             allowNonZeroExit: true,
+            executionTarget: input.executionTarget,
           },
         ).pipe(
           Effect.catchIf(isMissingGitCwdError, () =>
@@ -1884,6 +1889,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
           {
             timeoutMs: 10_000,
             allowNonZeroExit: true,
+            executionTarget: input.executionTarget,
           },
         ).pipe(
           Effect.catch((error) =>
@@ -1900,6 +1906,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
           {
             timeoutMs: 5_000,
             allowNonZeroExit: true,
+            executionTarget: input.executionTarget,
           },
         ).pipe(
           Effect.catch((error) =>
@@ -1919,6 +1926,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
                 {
                   timeoutMs: 5_000,
                   allowNonZeroExit: true,
+                  executionTarget: input.executionTarget,
                 },
               ),
               executeGit(
@@ -1928,6 +1936,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
                 {
                   timeoutMs: 5_000,
                   allowNonZeroExit: true,
+                  executionTarget: input.executionTarget,
                 },
               ),
               remoteBranchResultEffect,
@@ -1957,8 +1966,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
 
         const worktreeMap = new Map<string, string>();
         if (worktreeList.code === 0) {
-          const inheritedTarget = executionTargetStorage.getStore();
-          const usesWslPaths = isWslTarget(inheritedTarget);
+          const usesWslPaths = isWslTarget(input.executionTarget);
           let currentPath: string | null = null;
           for (const line of worktreeList.stdout.split("\n")) {
             if (line.startsWith("worktree ")) {
@@ -2051,8 +2059,10 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
           nextCursor: branches.nextCursor,
           totalCount: branches.totalCount,
         };
-      }),
-    );
+      });
+
+  const listBranches: GitCoreShape["listBranches"] = Effect.fn("listBranches")(function* (input) {
+    return yield* listBranchesForTarget(input);
   });
 
   const createWorktree: GitCoreShape["createWorktree"] = Effect.fn("createWorktree")(
