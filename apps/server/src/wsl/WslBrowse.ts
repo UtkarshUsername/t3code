@@ -50,7 +50,7 @@ export function parseWslBrowseOutput(stdout: string): FilesystemBrowseResult {
   for (const line of lines) {
     if (!line.startsWith("__ENTRY__:")) continue;
     const entry = line.slice("__ENTRY__:".length);
-    const separator = entry.indexOf(":");
+    const separator = entry.lastIndexOf(":");
     if (separator <= 0) continue;
     const name = entry.slice(0, separator);
     const fullPath = entry.slice(separator + 1);
