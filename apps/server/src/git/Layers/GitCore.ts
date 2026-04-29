@@ -669,12 +669,10 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   const withExecutionTarget = <A, E, R>(
     executionTarget: ExecutionTarget | undefined,
     effect: Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E, R> => {
-    console.log("WSL withExecutionTarget", { executionTarget });
-    return executionTarget === undefined
+  ): Effect.Effect<A, E, R> =>
+    executionTarget === undefined
       ? effect
-      : executionTargetStorage.run(executionTarget, () => effect);
-  };
+      : Effect.suspend(() => executionTargetStorage.run(executionTarget, () => effect));
 
   let executeRaw: GitCoreShape["execute"];
 
@@ -693,12 +691,6 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       const inheritedTarget = executionTargetStorage.getStore();
       const executionTarget = input.executionTarget ?? inheritedTarget;
       const wslTarget = isWslTarget(executionTarget) ? executionTarget : undefined;
-      console.log("WSL EXEC debug", {
-        inputExecutionTarget: input.executionTarget,
-        inheritedTarget,
-        executionTarget,
-        wslTarget
-      });
 
       const runGitCommand = Effect.fn("runGitCommand")(function* () {
         const trace2Monitor =
@@ -716,7 +708,6 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
           wslTarget === undefined
             ? commandInput.args
             : buildWslExecArgs(wslTarget, commandInput.cwd, "git", commandInput.args);
-        console.log("WSL SPAWN command", { command, args, cwd: commandInput.cwd });
         const child = yield* commandSpawner
           .spawn(
             ChildProcess.make(command, args, {
@@ -825,16 +816,15 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       ),
     );
 
-const executeGit = (
+  const executeGit = (
     operation: string,
     cwd: string,
     args: readonly string[],
     options: ExecuteGitOptions = {},
   ): Effect.Effect<ExecuteGitResult, GitCommandError> => {
     const execTarget = executionTargetStorage.getStore();
-    console.log("WSL executeGit storage", { execTarget });
-    const inputWithExec = {
-      executionTarget: execTarget,
+    return execute({
+      ...(execTarget !== undefined ? { executionTarget: execTarget } : {}),
       operation,
       cwd,
       args,
@@ -846,8 +836,7 @@ const executeGit = (
         ? { truncateOutputAtMaxBytes: options.truncateOutputAtMaxBytes }
         : {}),
       ...(options.progress ? { progress: options.progress } : {}),
-    };
-    return executeRaw(inputWithExec).pipe(
+    }).pipe(
       Effect.flatMap((result) => {
         if (options.allowNonZeroExit || result.code === 0) {
           return Effect.succeed(result);
@@ -1241,7 +1230,6 @@ const executeGit = (
   });
 
   const readStatusDetailsLocal = Effect.fn("readStatusDetailsLocal")(function* (cwd: string) {
-    console.log("WSL readStatusDetailsLocal", { cwd });
     const statusResult = yield* executeGit(
       "GitCore.statusDetails.status",
       cwd,
@@ -1385,7 +1373,6 @@ const executeGit = (
   );
 
   const statusDetails: GitCoreShape["statusDetails"] = Effect.fn("statusDetails")(function* (cwd) {
-    console.log("WSL COREstatusDetails", { cwd });
     yield* refreshStatusUpstreamIfStale(cwd).pipe(
       Effect.catchIf(isMissingGitCwdError, () => Effect.void),
       Effect.ignoreCause({ log: true }),
@@ -1393,10 +1380,8 @@ const executeGit = (
     return yield* readStatusDetailsLocal(cwd);
   });
 
-  const status: GitCoreShape["status"] = (input) => {
-    console.log("WSL CORESTATUS input", input);
-    console.log("WSL CORESTATUS calling withExecTarget with", input.executionTarget);
-    return withExecutionTarget(
+  const status: GitCoreShape["status"] = (input) =>
+    withExecutionTarget(
       input.executionTarget,
       statusDetails(input.cwd).pipe(
         Effect.map((details) => ({
@@ -1413,7 +1398,6 @@ const executeGit = (
         })),
       ),
     );
-  };
 
   const prepareCommitContext: GitCoreShape["prepareCommitContext"] = Effect.fn(
     "prepareCommitContext",

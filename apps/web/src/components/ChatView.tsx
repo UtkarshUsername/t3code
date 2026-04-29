@@ -1424,7 +1424,6 @@ export default function ChatView(props: ChatViewProps) {
       })
     : null;
   const activeProjectExecutionTarget = activeProject?.executionTarget;
-  console.log("WSL DEBUG ChatView", { gitCwd, activeProjectExecutionTarget, activeProject });
   const gitStatusQuery = useGitStatus({
     environmentId,
     cwd: gitCwd,
