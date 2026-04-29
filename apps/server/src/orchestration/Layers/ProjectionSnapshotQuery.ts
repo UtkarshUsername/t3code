@@ -919,9 +919,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 id: row.projectId,
                 title: row.title,
                 workspaceRoot: row.workspaceRoot,
-                ...(row.executionTarget != null
-                  ? { executionTarget: row.executionTarget }
-                  : {}),
+                ...(row.executionTarget != null ? { executionTarget: row.executionTarget } : {}),
                 repositoryIdentity: repositoryIdentities.get(row.projectId) ?? null,
                 defaultModelSelection: row.defaultModelSelection,
                 scripts: row.scripts,
