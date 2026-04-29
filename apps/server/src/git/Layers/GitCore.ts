@@ -1,5 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-
 import {
   Cache,
   Data,
@@ -77,7 +75,7 @@ const NON_REPOSITORY_STATUS_DETAILS = Object.freeze<GitStatusDetails>({
   behindCount: 0,
 });
 
-const executionTargetStorage = new AsyncLocalStorage<ExecutionTarget>();
+const executionTargetStorage = new AsyncLocalStorage<ExecutionTarget | undefined>();
 
 type TraceTailState = {
   processedChars: number;
@@ -90,6 +88,7 @@ class StatusRemoteRefreshCacheKey extends Data.Class<{
 }> {}
 
 interface ExecuteGitOptions {
+  executionTarget?: ExecutionTarget | undefined;
   stdin?: string | undefined;
   timeoutMs?: number | undefined;
   allowNonZeroExit?: boolean | undefined;
@@ -822,44 +821,46 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     args: readonly string[],
     options: ExecuteGitOptions = {},
   ): Effect.Effect<ExecuteGitResult, GitCommandError> => {
-    const execTarget = executionTargetStorage.getStore();
-    return execute({
-      ...(execTarget !== undefined ? { executionTarget: execTarget } : {}),
-      operation,
-      cwd,
-      args,
-      allowNonZeroExit: true,
-      ...(options.stdin !== undefined ? { stdin: options.stdin } : {}),
-      ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
-      ...(options.maxOutputBytes !== undefined ? { maxOutputBytes: options.maxOutputBytes } : {}),
-      ...(options.truncateOutputAtMaxBytes !== undefined
-        ? { truncateOutputAtMaxBytes: options.truncateOutputAtMaxBytes }
-        : {}),
-      ...(options.progress ? { progress: options.progress } : {}),
-    }).pipe(
-      Effect.flatMap((result) => {
-        if (options.allowNonZeroExit || result.code === 0) {
-          return Effect.succeed(result);
-        }
-        const stderr = result.stderr.trim();
-        if (stderr.length > 0) {
-          return Effect.fail(createGitCommandError(operation, cwd, args, stderr));
-        }
-        if (options.fallbackErrorMessage) {
+    return Effect.gen(function* () {
+      const execTarget = options.executionTarget ?? executionTargetStorage.getStore();
+      return yield* execute({
+        ...(execTarget !== undefined ? { executionTarget: execTarget } : {}),
+        operation,
+        cwd,
+        args,
+        allowNonZeroExit: true,
+        ...(options.stdin !== undefined ? { stdin: options.stdin } : {}),
+        ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+        ...(options.maxOutputBytes !== undefined ? { maxOutputBytes: options.maxOutputBytes } : {}),
+        ...(options.truncateOutputAtMaxBytes !== undefined
+          ? { truncateOutputAtMaxBytes: options.truncateOutputAtMaxBytes }
+          : {}),
+        ...(options.progress ? { progress: options.progress } : {}),
+      }).pipe(
+        Effect.flatMap((result) => {
+          if (options.allowNonZeroExit || result.code === 0) {
+            return Effect.succeed(result);
+          }
+          const stderr = result.stderr.trim();
+          if (stderr.length > 0) {
+            return Effect.fail(createGitCommandError(operation, cwd, args, stderr));
+          }
+          if (options.fallbackErrorMessage) {
+            return Effect.fail(
+              createGitCommandError(operation, cwd, args, options.fallbackErrorMessage),
+            );
+          }
           return Effect.fail(
-            createGitCommandError(operation, cwd, args, options.fallbackErrorMessage),
+            createGitCommandError(
+              operation,
+              cwd,
+              args,
+              `${commandLabel(args)} failed: code=${result.code ?? "null"}`,
+            ),
           );
-        }
-        return Effect.fail(
-          createGitCommandError(
-            operation,
-            cwd,
-            args,
-            `${commandLabel(args)} failed: code=${result.code ?? "null"}`,
-          ),
-        );
-      }),
-    );
+        }),
+      );
+    });
   };
 
   const runGit = (
@@ -867,16 +868,18 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     cwd: string,
     args: readonly string[],
     allowNonZeroExit = false,
+    executionTarget?: ExecutionTarget,
   ): Effect.Effect<void, GitCommandError> =>
-    executeGit(operation, cwd, args, { allowNonZeroExit }).pipe(Effect.asVoid);
+    executeGit(operation, cwd, args, { allowNonZeroExit, executionTarget }).pipe(Effect.asVoid);
 
   const runGitStdout = (
     operation: string,
     cwd: string,
     args: readonly string[],
     allowNonZeroExit = false,
+    executionTarget?: ExecutionTarget,
   ): Effect.Effect<string, GitCommandError> =>
-    executeGit(operation, cwd, args, { allowNonZeroExit }).pipe(
+    executeGit(operation, cwd, args, { allowNonZeroExit, executionTarget }).pipe(
       Effect.map((result) => result.stdout),
     );
 
@@ -928,19 +931,29 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     );
   });
 
-  const resolveCurrentUpstream = Effect.fn("resolveCurrentUpstream")(function* (cwd: string) {
+  const resolveCurrentUpstream = Effect.fn("resolveCurrentUpstream")(function* (
+    cwd: string,
+    executionTarget?: ExecutionTarget,
+  ) {
     const upstreamRef = yield* runGitStdout(
       "GitCore.resolveCurrentUpstream",
       cwd,
       ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
       true,
+      executionTarget,
     ).pipe(Effect.map((stdout) => stdout.trim()));
 
     if (upstreamRef.length === 0 || upstreamRef === "@{upstream}") {
       return null;
     }
 
-    const remoteNames = yield* runGitStdout("GitCore.listRemoteNames", cwd, ["remote"]).pipe(
+    const remoteNames = yield* runGitStdout(
+      "GitCore.listRemoteNames",
+      cwd,
+      ["remote"],
+      false,
+      executionTarget,
+    ).pipe(
       Effect.map(parseRemoteNames),
       Effect.catch(() => Effect.succeed<ReadonlyArray<string>>([])),
     );
@@ -953,6 +966,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   const fetchRemoteForStatus = (
     gitCommonDir: string,
     remoteName: string,
+    executionTarget?: ExecutionTarget,
   ): Effect.Effect<void, GitCommandError> => {
     const fetchCwd =
       path.basename(gitCommonDir) === ".git" ? path.dirname(gitCommonDir) : gitCommonDir;
@@ -963,15 +977,22 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       {
         allowNonZeroExit: true,
         timeoutMs: Duration.toMillis(STATUS_UPSTREAM_REFRESH_TIMEOUT),
+        executionTarget,
       },
     ).pipe(Effect.asVoid);
   };
 
-  const resolveGitCommonDir = Effect.fn("resolveGitCommonDir")(function* (cwd: string) {
-    const gitCommonDir = yield* runGitStdout("GitCore.resolveGitCommonDir", cwd, [
-      "rev-parse",
-      "--git-common-dir",
-    ]).pipe(Effect.map((stdout) => stdout.trim()));
+  const resolveGitCommonDir = Effect.fn("resolveGitCommonDir")(function* (
+    cwd: string,
+    executionTarget?: ExecutionTarget,
+  ) {
+    const gitCommonDir = yield* runGitStdout(
+      "GitCore.resolveGitCommonDir",
+      cwd,
+      ["rev-parse", "--git-common-dir"],
+      false,
+      executionTarget,
+    ).pipe(Effect.map((stdout) => stdout.trim()));
     return path.isAbsolute(gitCommonDir) ? gitCommonDir : path.resolve(cwd, gitCommonDir);
   });
 
@@ -993,10 +1014,11 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
 
   const refreshStatusUpstreamIfStale = Effect.fn("refreshStatusUpstreamIfStale")(function* (
     cwd: string,
+    executionTarget?: ExecutionTarget,
   ) {
-    const upstream = yield* resolveCurrentUpstream(cwd);
+    const upstream = yield* resolveCurrentUpstream(cwd, executionTarget);
     if (!upstream) return;
-    const gitCommonDir = yield* resolveGitCommonDir(cwd);
+    const gitCommonDir = yield* resolveGitCommonDir(cwd, executionTarget);
     yield* Cache.get(
       statusRemoteRefreshCache,
       new StatusRemoteRefreshCacheKey({
@@ -1038,9 +1060,13 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       },
     ).pipe(Effect.map((result) => result.code === 0));
 
-  const originRemoteExists = (cwd: string): Effect.Effect<boolean, GitCommandError> =>
+  const originRemoteExists = (
+    cwd: string,
+    executionTarget?: ExecutionTarget,
+  ): Effect.Effect<boolean, GitCommandError> =>
     executeGit("GitCore.originRemoteExists", cwd, ["remote", "get-url", "origin"], {
       allowNonZeroExit: true,
+      executionTarget,
     }).pipe(Effect.map((result) => result.code === 0));
 
   const listRemoteNames = (cwd: string): Effect.Effect<ReadonlyArray<string>, GitCommandError> =>
@@ -1173,6 +1199,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   const computeAheadCountAgainstBase = Effect.fn("computeAheadCountAgainstBase")(function* (
     cwd: string,
     branch: string,
+    executionTarget?: ExecutionTarget,
   ) {
     const baseBranch = yield* resolveBaseBranchForNoUpstream(cwd, branch);
     if (!baseBranch) {
@@ -1183,7 +1210,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       "GitCore.computeAheadCountAgainstBase",
       cwd,
       ["rev-list", "--count", `${baseBranch}..HEAD`],
-      { allowNonZeroExit: true },
+      { allowNonZeroExit: true, executionTarget },
     );
     if (result.code !== 0) {
       return 0;
@@ -1229,13 +1256,17 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     return branchLastCommit;
   });
 
-  const readStatusDetailsLocal = Effect.fn("readStatusDetailsLocal")(function* (cwd: string) {
+  const readStatusDetailsLocal = Effect.fn("readStatusDetailsLocal")(function* (
+    cwd: string,
+    executionTarget?: ExecutionTarget,
+  ) {
     const statusResult = yield* executeGit(
       "GitCore.statusDetails.status",
       cwd,
       ["status", "--porcelain=2", "--branch"],
       {
         allowNonZeroExit: true,
+        executionTarget,
       },
     ).pipe(Effect.catchIf(isMissingGitCwdError, () => Effect.succeed(null)));
 
@@ -1256,21 +1287,30 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     const [unstagedNumstatStdout, stagedNumstatStdout, defaultRefResult, hasOriginRemote] =
       yield* Effect.all(
         [
-          runGitStdout("GitCore.statusDetails.unstagedNumstat", cwd, ["diff", "--numstat"]),
-          runGitStdout("GitCore.statusDetails.stagedNumstat", cwd, [
-            "diff",
-            "--cached",
-            "--numstat",
-          ]),
+          runGitStdout(
+            "GitCore.statusDetails.unstagedNumstat",
+            cwd,
+            ["diff", "--numstat"],
+            false,
+            executionTarget,
+          ),
+          runGitStdout(
+            "GitCore.statusDetails.stagedNumstat",
+            cwd,
+            ["diff", "--cached", "--numstat"],
+            false,
+            executionTarget,
+          ),
           executeGit(
             "GitCore.statusDetails.defaultRef",
             cwd,
             ["symbolic-ref", "refs/remotes/origin/HEAD"],
             {
               allowNonZeroExit: true,
+              executionTarget,
             },
           ),
-          originRemoteExists(cwd).pipe(Effect.catch(() => Effect.succeed(false))),
+          originRemoteExists(cwd, executionTarget).pipe(Effect.catch(() => Effect.succeed(false))),
         ],
         { concurrency: "unbounded" },
       );
@@ -1313,7 +1353,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     }
 
     if (!upstreamRef && branch) {
-      aheadCount = yield* computeAheadCountAgainstBase(cwd, branch).pipe(
+      aheadCount = yield* computeAheadCountAgainstBase(cwd, branch, executionTarget).pipe(
         Effect.catch(() => Effect.succeed(0)),
       );
       behindCount = 0;
@@ -1373,11 +1413,12 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   );
 
   const statusDetails: GitCoreShape["statusDetails"] = Effect.fn("statusDetails")(function* (cwd) {
-    yield* refreshStatusUpstreamIfStale(cwd).pipe(
+    const executionTarget = executionTargetStorage.getStore();
+    yield* refreshStatusUpstreamIfStale(cwd, executionTarget).pipe(
       Effect.catchIf(isMissingGitCwdError, () => Effect.void),
       Effect.ignoreCause({ log: true }),
     );
-    return yield* readStatusDetailsLocal(cwd);
+    return yield* readStatusDetailsLocal(cwd, executionTarget);
   });
 
   const status: GitCoreShape["status"] = (input) =>
@@ -2287,3 +2328,4 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
 });
 
 export const GitCoreLive = Layer.effect(GitCore, makeGitCore());
+import { AsyncLocalStorage } from "node:async_hooks";
