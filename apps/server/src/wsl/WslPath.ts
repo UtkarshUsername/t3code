@@ -40,7 +40,13 @@ export function normalizePosixPath(input: string): string {
 export function resolvePosixChild(root: string, relativePath: string): string | null {
   const normalizedRoot = normalizePosixPath(root);
   const resolved = path.posix.resolve(normalizedRoot, relativePath);
-  if (resolved === normalizedRoot || resolved.startsWith(`${normalizedRoot}/`)) {
+  if (resolved === normalizedRoot) {
+    return null;
+  }
+  if (normalizedRoot === "/") {
+    return resolved;
+  }
+  if (resolved.startsWith(`${normalizedRoot}/`)) {
     return resolved;
   }
   return null;
