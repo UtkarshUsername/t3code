@@ -86,8 +86,11 @@ export const makeMigrationLoader = (throughId?: number) =>
     Object.fromEntries(
       migrationEntries
         .filter(([id]) => throughId === undefined || id <= throughId)
-        .map(([id, name, migration]) => [`${id}_${name}`, migration]),
-    ),
+        .map(
+          ([id, name, migration]) =>
+            [`${id}_${name}`, migration] as const,
+        ),
+    ) as Record<string, Effect.Effect<void, unknown, unknown>>,
   );
 
 /**

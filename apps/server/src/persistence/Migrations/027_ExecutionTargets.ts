@@ -1,16 +1,7 @@
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as Effect from "effect/Effect";
-import { SqlError } from "effect/unstable/sql/SqlError";
 
 const LOCAL_EXECUTION_TARGET_JSON = '{"kind":"local"}';
-
-const isDuplicateColumnError = (error: unknown): boolean => {
-  if (error instanceof SqlError) {
-    const message = error.message.toLowerCase();
-    return message.includes("duplicate column");
-  }
-  return false;
-};
 
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -18,9 +9,7 @@ export default Effect.gen(function* () {
   yield* sql`
     ALTER TABLE projection_projects
     ADD COLUMN execution_target_json TEXT
-  `.pipe(
-    Effect.catch((error) => (isDuplicateColumnError(error) ? Effect.void() : Effect.fail(error))),
-  );
+  `.pipe(Effect.orDie);
 
   yield* sql`
     UPDATE projection_projects
@@ -31,9 +20,7 @@ export default Effect.gen(function* () {
   yield* sql`
     ALTER TABLE provider_session_runtime
     ADD COLUMN execution_target_json TEXT
-  `.pipe(
-    Effect.catch((error) => (isDuplicateColumnError(error) ? Effect.void() : Effect.fail(error))),
-  );
+  `.pipe(Effect.orDie);
 
   yield* sql`
     UPDATE provider_session_runtime
