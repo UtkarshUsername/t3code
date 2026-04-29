@@ -23,12 +23,16 @@
 
 ### Active Bugs Found In Manual Testing
 
-- [ ] Fix WSL git/repository identity detection. WSL projects with git can still show the no-git badge.
+- [x] Fix WSL git/repository identity detection. WSL projects with git no longer show a false no-git badge.
 - [ ] Fix workspace file search for WSL projects. `@` file tagging currently stays on "Searching workspace files...".
 - [ ] Fix terminal open cwd handling for WSL projects. Early terminals can report `[terminal] Terminal cwd does not exist: /home/utkarsh/agents/`.
 - [ ] Fix terminal close/kill for WSL PTYs. Closing terminals can log `failed to kill terminal process` for `SIGTERM`.
 - [ ] Fix thread-title generation for WSL projects. It still invokes local Windows Codex against POSIX cwd and logs `C:\home\...` path failures.
 - [ ] Audit provider/session reaper logs around WSL sessions to distinguish expected idle cleanup from terminal lifecycle noise.
+
+### Lessons Learned
+
+- WSL `executionTarget` can be present at the websocket or service boundary and still get lost later if the code relies on ambient async context. In this codebase, `AsyncLocalStorage` is not reliable across all `Effect` fiber boundaries for git flows. For WSL-sensitive operations, thread `executionTarget` explicitly through helper calls, cache keys, and refresh paths instead of assuming it can be recovered from context deeper in the stack.
 
 ### Partial / Needs Hardening
 
