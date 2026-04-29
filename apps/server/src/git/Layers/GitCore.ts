@@ -1377,8 +1377,9 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     return yield* readStatusDetailsLocal(cwd);
   });
 
-  const status: GitCoreShape["status"] = (input) =>
-    withExecutionTarget(
+  const status: GitCoreShape["status"] = (input) => {
+    console.log("WSL CORESTATUS input", input);
+    return withExecutionTarget(
       input.executionTarget,
       statusDetails(input.cwd).pipe(
         Effect.map((details) => ({
@@ -1395,6 +1396,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
         })),
       ),
     );
+  };
 
   const prepareCommitContext: GitCoreShape["prepareCommitContext"] = Effect.fn(
     "prepareCommitContext",
