@@ -67,8 +67,7 @@ function toPersistenceSqlOrDecodeError(sqlOperation: string, decodeOperation: st
 
 function parseJsonField(value: string | null): unknown | null {
   if (value === null) return null;
-  const parsed = JSON.parse(value);
-  return typeof parsed === "string" ? JSON.parse(parsed) : parsed;
+  return JSON.parse(value);
 }
 
 function decodeRuntimeRow(
