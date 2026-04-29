@@ -54,6 +54,11 @@ const rpcClientMock = {
   filesystem: {
     browse: vi.fn(),
   },
+  wsl: {
+    listDistributions: vi.fn(),
+    browse: vi.fn(),
+    resolvePath: vi.fn(),
+  },
   shell: {
     openInEditor: vi.fn(),
   },
