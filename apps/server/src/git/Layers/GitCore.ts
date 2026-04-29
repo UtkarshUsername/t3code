@@ -669,10 +669,12 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   const withExecutionTarget = <A, E, R>(
     executionTarget: ExecutionTarget | undefined,
     effect: Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E, R> =>
-    executionTarget === undefined
+  ): Effect.Effect<A, E, R> => {
+    console.log("WSL withExecutionTarget", { executionTarget });
+    return executionTarget === undefined
       ? effect
       : executionTargetStorage.run(executionTarget, () => effect);
+  };
 
   let executeRaw: GitCoreShape["execute"];
 
