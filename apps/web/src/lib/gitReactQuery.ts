@@ -104,12 +104,13 @@ export function gitResolvePullRequestQueryOptions(input: {
   reference: string | null;
 }) {
   return queryOptions({
-    queryKey: [
+queryKey: [
       "git",
-      "pull-request",
+      "pull-requests",
       input.environmentId ?? null,
       input.cwd,
       input.reference,
+      input.executionTarget,
     ] as const,
     queryFn: async () => {
       if (!input.cwd || !input.reference || !input.environmentId) {
