@@ -1,6 +1,6 @@
-import * as SqlClient from "effect/unstable_sql/SqlClient";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as Effect from "effect/Effect";
-import { SqlError } from "effect/unstable_sql/SqlError";
+import { SqlError } from "effect/unstable/sql/SqlError";
 
 const LOCAL_EXECUTION_TARGET_JSON = '{"kind":"local"}';
 
