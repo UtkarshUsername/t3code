@@ -106,7 +106,7 @@ export function gitResolvePullRequestQueryOptions(input: {
   return queryOptions({
     queryKey: [
       "git",
-      "pull-requests",
+      "pull-request",
       input.environmentId ?? null,
       input.cwd,
       input.reference,
