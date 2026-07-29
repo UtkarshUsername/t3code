@@ -1530,18 +1530,15 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             if (isUnbornHeadStderr(result.stderr)) {
               return Effect.map(
                 Effect.all([
-                  runGitStdout(
-                    "GitVcsDriver.statusDetails.numstat.unborn",
-                    cwd,
-                    ["diff", "--numstat"],
-                    true,
-                  ),
-                  runGitStdout(
-                    "GitVcsDriver.statusDetails.numstat.unborn.staged",
-                    cwd,
-                    ["diff", "--cached", "--numstat"],
-                    true,
-                  ),
+                  runGitStdout("GitVcsDriver.statusDetails.numstat.unborn", cwd, [
+                    "diff",
+                    "--numstat",
+                  ]),
+                  runGitStdout("GitVcsDriver.statusDetails.numstat.unborn.staged", cwd, [
+                    "diff",
+                    "--cached",
+                    "--numstat",
+                  ]),
                 ]),
                 ([unstagedStdout, stagedStdout]) => {
                   const staged = parseNumstatEntries(stagedStdout);
