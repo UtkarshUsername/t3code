@@ -1519,9 +1519,12 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
     const [numstatStdout, defaultRefResult, hasPrimaryRemote] = yield* Effect.all(
       [
-        executeGit("GitVcsDriver.statusDetails.numstat", cwd, ["diff", "HEAD", "--numstat"], {
-          allowNonZeroExit: true,
-        }).pipe(
+        executeGitWithStableDiagnostics(
+          "GitVcsDriver.statusDetails.numstat",
+          cwd,
+          ["diff", "HEAD", "--numstat"],
+          { allowNonZeroExit: true },
+        ).pipe(
           Effect.flatMap((result) => {
             if (result.exitCode === 0) return Effect.succeed(result.stdout);
             if (isUnbornHeadStderr(result.stderr)) {
