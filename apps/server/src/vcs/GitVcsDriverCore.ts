@@ -415,6 +415,12 @@ function isMissingGitCwdError(error: GitCommandError): boolean {
 function isNonRepositoryGitStderr(stderr: string): boolean {
   return stderr.toLowerCase().includes("not a git repository");
 }
+function isUnbornHeadStderr(stderr: string): boolean {
+  return (
+    stderr.toLowerCase().includes("unknown revision") &&
+    stderr.toLowerCase().includes("path not in the working tree")
+  );
+}
 
 interface Trace2Monitor {
   readonly env: NodeJS.ProcessEnv;
@@ -1513,7 +1519,61 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
     const [numstatStdout, defaultRefResult, hasPrimaryRemote] = yield* Effect.all(
       [
-        runGitStdout("GitVcsDriver.statusDetails.numstat", cwd, ["diff", "HEAD", "--numstat"]),
+        executeGit("GitVcsDriver.statusDetails.numstat", cwd, ["diff", "HEAD", "--numstat"], {
+          allowNonZeroExit: true,
+        }).pipe(
+          Effect.flatMap((result) => {
+            if (result.exitCode === 0) return Effect.succeed(result.stdout);
+            if (isUnbornHeadStderr(result.stderr)) {
+              return Effect.map(
+                Effect.all([
+                  runGitStdout(
+                    "GitVcsDriver.statusDetails.numstat.unborn",
+                    cwd,
+                    ["diff", "--numstat"],
+                    true,
+                  ),
+                  runGitStdout(
+                    "GitVcsDriver.statusDetails.numstat.unborn.staged",
+                    cwd,
+                    ["diff", "--cached", "--numstat"],
+                    true,
+                  ),
+                ]),
+                ([unstagedStdout, stagedStdout]) => {
+                  const staged = parseNumstatEntries(stagedStdout);
+                  const unstaged = parseNumstatEntries(unstagedStdout);
+                  const map = new Map<string, { insertions: number; deletions: number }>();
+                  for (const entry of [...staged, ...unstaged]) {
+                    const existing = map.get(entry.path) ?? {
+                      insertions: 0,
+                      deletions: 0,
+                    };
+                    existing.insertions += entry.insertions;
+                    existing.deletions += entry.deletions;
+                    map.set(entry.path, existing);
+                  }
+                  return Array.from(map.entries())
+                    .map(([p, s]) => `${s.insertions}\t${s.deletions}\t${p}`)
+                    .join("\n");
+                },
+              );
+            }
+            return Effect.fail(
+              new GitCommandError({
+                ...gitCommandContext({
+                  operation: "GitVcsDriver.statusDetails.numstat",
+                  cwd,
+                  args: ["diff", "HEAD", "--numstat"],
+                }),
+                detail: "git diff HEAD --numstat failed.",
+                exitCode: result.exitCode,
+                stdoutLength: result.stdout.length,
+                stderrLength: result.stderr.length,
+              }),
+            );
+          }),
+        ),
         executeGit(
           "GitVcsDriver.statusDetails.defaultRef",
           cwd,
