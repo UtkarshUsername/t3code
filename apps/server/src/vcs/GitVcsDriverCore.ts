@@ -1122,19 +1122,16 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   };
 
   const defaultBranchCache = yield* Cache.makeWith(
-    (cwd: string) => resolveDefaultBranchName(cwd, "origin").pipe(Effect.orElseSucceed(() => null)),
+    (cwd: string) => resolveDefaultBranchName(cwd, "origin"),
     {
       capacity: 2_048,
       timeToLive: () => STATUS_DEFAULT_BRANCH_CACHE_TTL,
     },
   );
-  const originExistsCache = yield* Cache.makeWith(
-    (cwd: string) => originRemoteExists(cwd).pipe(Effect.orElseSucceed(() => false)),
-    {
-      capacity: 2_048,
-      timeToLive: () => STATUS_ORIGIN_EXISTS_CACHE_TTL,
-    },
-  );
+  const originExistsCache = yield* Cache.makeWith((cwd: string) => originRemoteExists(cwd), {
+    capacity: 2_048,
+    timeToLive: () => STATUS_ORIGIN_EXISTS_CACHE_TTL,
+  });
   const invalidateStatusStaticCaches = (cwd: string) =>
     Effect.gen(function* () {
       const cacheKey = normalizeRepositoryPathsCacheKey(cwd);
@@ -1598,8 +1595,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             );
           }),
         ),
-        Cache.get(defaultBranchCache, statusCacheKey),
-        Cache.get(originExistsCache, statusCacheKey),
+        Cache.get(defaultBranchCache, statusCacheKey).pipe(Effect.orElseSucceed(() => null)),
+        Cache.get(originExistsCache, statusCacheKey).pipe(Effect.orElseSucceed(() => false)),
       ],
       { concurrency: "unbounded" },
     );
