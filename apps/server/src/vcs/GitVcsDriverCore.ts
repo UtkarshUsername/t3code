@@ -1137,8 +1137,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   );
   const invalidateStatusStaticCaches = (cwd: string) =>
     Effect.gen(function* () {
-      yield* Cache.invalidate(defaultBranchCache, cwd);
-      yield* Cache.invalidate(originExistsCache, cwd);
+      const cacheKey = normalizeRepositoryPathsCacheKey(cwd);
+      yield* Cache.invalidate(defaultBranchCache, cacheKey);
+      yield* Cache.invalidate(originExistsCache, cacheKey);
     });
 
   const resolveGitCommonDir = Effect.fn("resolveGitCommonDir")(function* (cwd: string) {
@@ -1539,6 +1540,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       });
     }
 
+    const statusCacheKey = normalizeRepositoryPathsCacheKey(cwd);
     const [numstatStdout, defaultBranch, hasPrimaryRemote] = yield* Effect.all(
       [
         executeGitWithStableDiagnostics(
@@ -1596,8 +1598,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             );
           }),
         ),
-        Cache.get(defaultBranchCache, cwd),
-        Cache.get(originExistsCache, cwd),
+        Cache.get(defaultBranchCache, statusCacheKey),
+        Cache.get(originExistsCache, statusCacheKey),
       ],
       { concurrency: "unbounded" },
     );

@@ -153,6 +153,25 @@ it.effect("uses stable diagnostics for every parsed non-repository command", () 
   }).pipe(Effect.provide(layer));
 });
 
+it.effect(
+  "returns consistent default branch and origin remote across repeated local status calls",
+  () =>
+    Effect.gen(function* () {
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      const cwd = yield* makeTmpDir();
+      const { initialBranch } = yield* initRepoWithCommit(cwd);
+
+      const a = yield* driver.statusDetailsLocal(cwd);
+      const b = yield* driver.statusDetailsLocal(cwd);
+
+      assert.equal(a.isRepo, true);
+      assert.equal(a.branch, initialBranch);
+      assert.equal(a.isDefaultBranch, b.isDefaultBranch);
+      assert.equal(a.hasOriginRemote, b.hasOriginRemote);
+      assert.equal(a.hasWorkingTreeChanges, false);
+    }).pipe(Effect.provide(TestLayer)),
+);
+
 it.effect("coalesces concurrent ref pages into one repository snapshot", () =>
   Effect.scoped(
     Effect.gen(function* () {
