@@ -61,6 +61,8 @@ const LIST_REFS_SNAPSHOT_CACHE_CAPACITY = 64;
 const LIST_REFS_SNAPSHOT_CACHE_TTL = Duration.minutes(2);
 const LIST_REFS_REFRESH_COALESCE_TTL = Duration.seconds(5);
 const LIST_REFS_REFRESH_FAILURE_COOLDOWN = Duration.seconds(30);
+const STATUS_DEFAULT_BRANCH_CACHE_TTL = Duration.minutes(5);
+const STATUS_ORIGIN_EXISTS_CACHE_TTL = Duration.minutes(5);
 const STATUS_UPSTREAM_REFRESH_ENV = Object.freeze({
   GCM_INTERACTIVE: "never",
   GIT_ASKPASS: "",
@@ -1119,6 +1121,26 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return Cache.get(refresh ? repositoryPathsRefreshCache : repositoryPathsCache, cacheKey);
   };
 
+  const defaultBranchCache = yield* Cache.makeWith(
+    (cwd: string) => resolveDefaultBranchName(cwd, "origin").pipe(Effect.orElseSucceed(() => null)),
+    {
+      capacity: 2_048,
+      timeToLive: () => STATUS_DEFAULT_BRANCH_CACHE_TTL,
+    },
+  );
+  const originExistsCache = yield* Cache.makeWith(
+    (cwd: string) => originRemoteExists(cwd).pipe(Effect.orElseSucceed(() => false)),
+    {
+      capacity: 2_048,
+      timeToLive: () => STATUS_ORIGIN_EXISTS_CACHE_TTL,
+    },
+  );
+  const invalidateStatusStaticCaches = (cwd: string) =>
+    Effect.gen(function* () {
+      yield* Cache.invalidate(defaultBranchCache, cwd);
+      yield* Cache.invalidate(originExistsCache, cwd);
+    });
+
   const resolveGitCommonDir = Effect.fn("resolveGitCommonDir")(function* (cwd: string) {
     const repositoryPaths = yield* resolveRepositoryPaths(cwd);
     if (repositoryPaths !== null) {
@@ -1517,7 +1539,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       });
     }
 
-    const [numstatStdout, defaultRefResult, hasPrimaryRemote] = yield* Effect.all(
+    const [numstatStdout, defaultBranch, hasPrimaryRemote] = yield* Effect.all(
       [
         executeGitWithStableDiagnostics(
           "GitVcsDriver.statusDetails.numstat",
@@ -1574,21 +1596,12 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             );
           }),
         ),
-        executeGit(
-          "GitVcsDriver.statusDetails.defaultRef",
-          cwd,
-          ["symbolic-ref", "refs/remotes/origin/HEAD"],
-          { allowNonZeroExit: true },
-        ),
-        originRemoteExists(cwd).pipe(Effect.orElseSucceed(() => false)),
+        Cache.get(defaultBranchCache, cwd),
+        Cache.get(originExistsCache, cwd),
       ],
       { concurrency: "unbounded" },
     );
     const statusStdout = statusResult.stdout;
-    const defaultBranch =
-      defaultRefResult.exitCode === 0
-        ? defaultRefResult.stdout.trim().replace(/^refs\/remotes\/origin\//, "")
-        : null;
 
     let refName: string | null = null;
     let upstreamRef: string | null = null;
@@ -2809,7 +2822,14 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     cwd: string,
     effect: Effect.Effect<A, E>,
   ): Effect.Effect<A, E> =>
-    effect.pipe(Effect.ensuring(invalidateListRefsSnapshot(cwd).pipe(Effect.ignore)));
+    effect.pipe(
+      Effect.ensuring(
+        Effect.all([
+          invalidateListRefsSnapshot(cwd).pipe(Effect.ignore),
+          invalidateStatusStaticCaches(cwd).pipe(Effect.ignore),
+        ]),
+      ),
+    );
   const initRepoWithListRefsInvalidation: GitVcsDriver.GitVcsDriver["Service"]["initRepo"] = (
     input,
   ) =>
