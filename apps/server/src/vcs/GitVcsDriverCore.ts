@@ -1122,19 +1122,55 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   };
 
   const defaultBranchCache = yield* Cache.makeWith(
-    (cwd: string) => resolveDefaultBranchName(cwd, "origin"),
+    (gitCommonDir: string) =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const fetchCwd =
+          path.basename(gitCommonDir) === ".git" ? path.dirname(gitCommonDir) : gitCommonDir;
+        return yield* executeGit(
+          "GitVcsDriver.statusDetails.defaultBranch",
+          fetchCwd,
+          ["--git-dir", gitCommonDir, "symbolic-ref", "refs/remotes/origin/HEAD"],
+          { allowNonZeroExit: true },
+        ).pipe(
+          Effect.map((result) => {
+            if (result.exitCode !== 0) return null;
+            return parseDefaultBranchFromRemoteHeadRef(result.stdout, "origin");
+          }),
+        );
+      }),
     {
       capacity: 2_048,
       timeToLive: () => STATUS_DEFAULT_BRANCH_CACHE_TTL,
     },
   );
-  const originExistsCache = yield* Cache.makeWith((cwd: string) => originRemoteExists(cwd), {
-    capacity: 2_048,
-    timeToLive: () => STATUS_ORIGIN_EXISTS_CACHE_TTL,
-  });
+  const originExistsCache = yield* Cache.makeWith(
+    (gitCommonDir: string) =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const fetchCwd =
+          path.basename(gitCommonDir) === ".git" ? path.dirname(gitCommonDir) : gitCommonDir;
+        return yield* executeGit(
+          "GitVcsDriver.statusDetails.originExists",
+          fetchCwd,
+          ["--git-dir", gitCommonDir, "remote", "get-url", "origin"],
+          { allowNonZeroExit: true },
+        ).pipe(Effect.map((result) => result.exitCode === 0));
+      }),
+    {
+      capacity: 2_048,
+      timeToLive: () => STATUS_ORIGIN_EXISTS_CACHE_TTL,
+    },
+  );
   const invalidateStatusStaticCaches = (cwd: string) =>
     Effect.gen(function* () {
-      const cacheKey = normalizeRepositoryPathsCacheKey(cwd);
+      const repositoryPaths = yield* resolveRepositoryPaths(cwd).pipe(
+        Effect.catchTags({
+          GitCommandError: (error) =>
+            isMissingGitCwdError(error) ? Effect.succeed(null) : Effect.fail(error),
+        }),
+      );
+      const cacheKey = repositoryPaths?.gitCommonDir ?? cwd;
       yield* Cache.invalidate(defaultBranchCache, cacheKey);
       yield* Cache.invalidate(originExistsCache, cacheKey);
     });
@@ -1537,7 +1573,13 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       });
     }
 
-    const statusCacheKey = normalizeRepositoryPathsCacheKey(cwd);
+    const repositoryPaths = yield* resolveRepositoryPaths(cwd).pipe(
+      Effect.catchTags({
+        GitCommandError: (error) =>
+          isMissingGitCwdError(error) ? Effect.succeed(null) : Effect.fail(error),
+      }),
+    );
+    const statusCacheKey = repositoryPaths?.gitCommonDir ?? normalizeRepositoryPathsCacheKey(cwd);
     const [numstatStdout, defaultBranch, hasPrimaryRemote] = yield* Effect.all(
       [
         executeGitWithStableDiagnostics(
