@@ -171,6 +171,33 @@ it.effect("invalidates origin remote cache when a driver mutation adds origin", 
   }).pipe(Effect.provide(TestLayer)),
 );
 
+it.effect("re-reads origin remote status after cache TTL expiry and bypassed invalidation", () =>
+  Effect.gen(function* () {
+    const driver = yield* GitVcsDriver.GitVcsDriver;
+    const cwd = yield* makeTmpDir();
+    const remote = yield* makeTmpDir("git-vcs-driver-remote-");
+    yield* initRepoWithCommit(cwd);
+    yield* git(remote, ["init", "--bare"]);
+
+    // First call caches hasOriginRemote = false (5-min TTL)
+    assert.equal((yield* driver.statusDetailsLocal(cwd)).hasOriginRemote, false);
+
+    // Add origin via raw git (bypasses invalidation hook)
+    yield* git(cwd, ["remote", "add", "origin", remote]);
+
+    // Cache still has the stale false (TTL not yet expired)
+    const stillCached = yield* driver.statusDetailsLocal(cwd);
+    assert.equal(stillCached.hasOriginRemote, false);
+
+    // Advance past the 5-minute TTL so the cache entry expires
+    yield* TestClock.adjust("6 minutes");
+
+    // After expiry, the next call re-executes and picks up the remote
+    const afterExpiry = yield* driver.statusDetailsLocal(cwd);
+    assert.equal(afterExpiry.hasOriginRemote, true);
+  }).pipe(Effect.provide(TestLayer)),
+);
+
 it.effect("coalesces concurrent ref pages into one repository snapshot", () =>
   Effect.scoped(
     Effect.gen(function* () {

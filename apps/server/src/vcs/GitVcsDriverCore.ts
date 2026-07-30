@@ -1141,7 +1141,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       }),
     {
       capacity: 2_048,
-      timeToLive: () => STATUS_DEFAULT_BRANCH_CACHE_TTL,
+      timeToLive: Exit.match({
+        onSuccess: () => STATUS_DEFAULT_BRANCH_CACHE_TTL,
+        onFailure: () => Duration.zero,
+      }),
     },
   );
   const originExistsCache = yield* Cache.makeWith(
@@ -1159,7 +1162,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       }),
     {
       capacity: 2_048,
-      timeToLive: () => STATUS_ORIGIN_EXISTS_CACHE_TTL,
+      timeToLive: Exit.match({
+        onSuccess: () => STATUS_ORIGIN_EXISTS_CACHE_TTL,
+        onFailure: () => Duration.zero,
+      }),
     },
   );
   const invalidateStatusStaticCaches = (cwd: string) =>
