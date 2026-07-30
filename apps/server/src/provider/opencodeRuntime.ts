@@ -501,10 +501,10 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       const stderrRef = yield* Ref.make("");
       const readyDeferred = yield* Deferred.make<string, OpenCodeRuntimeError>();
 
-      const setReadyFromStdoutChunk = (chunk: string) =>
-        Ref.updateAndGet(stdoutRef, (stdout) => `${stdout}${chunk}`).pipe(
-          Effect.flatMap((nextStdout) => {
-            const parsed = parseServerUrlFromOutput(nextStdout);
+      const setReadyFromChunk = (ref: Ref.Ref<string>, chunk: string) =>
+        Ref.updateAndGet(ref, (acc) => `${acc}${chunk}`).pipe(
+          Effect.flatMap((next) => {
+            const parsed = parseServerUrlFromOutput(next);
             return parsed
               ? Deferred.succeed(readyDeferred, parsed).pipe(Effect.ignore)
               : Effect.void;
@@ -513,13 +513,13 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
 
       const stdoutFiber = yield* child.stdout.pipe(
         Stream.decodeText(),
-        Stream.runForEach(setReadyFromStdoutChunk),
+        Stream.runForEach((chunk) => setReadyFromChunk(stdoutRef, chunk)),
         Effect.ignore,
         Effect.forkIn(runtimeScope),
       );
       const stderrFiber = yield* child.stderr.pipe(
         Stream.decodeText(),
-        Stream.runForEach((chunk) => Ref.update(stderrRef, (stderr) => `${stderr}${chunk}`)),
+        Stream.runForEach((chunk) => setReadyFromChunk(stderrRef, chunk)),
         Effect.ignore,
         Effect.forkIn(runtimeScope),
       );
