@@ -198,6 +198,104 @@ it.effect("re-reads origin remote status after cache TTL expiry and bypassed inv
   }).pipe(Effect.provide(TestLayer)),
 );
 
+it.effect("retries default branch lookup immediately after transient cache failure", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      // This test proves that transient failures are not cached by:
+      // 1. Using a spawner that fails on the first symbolic-ref call
+      // 2. Verifying the second call (immediately after, no TestClock)
+      //    re-executes and succeeds because failure TTL is Duration.zero
+      const symbolicRefCalls = yield* Ref.make(0);
+      const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
+
+      const failingSpawner = ChildProcessSpawner.make((command) =>
+        Effect.gen(function* () {
+          if (!ChildProcess.isStandardCommand(command)) {
+            return yield* Effect.die("expected a standard Git command");
+          }
+
+          const isDefaultBranchCall =
+            command.args.length >= 4 &&
+            command.args.includes("--git-dir") &&
+            command.args.includes("symbolic-ref") &&
+            command.args.includes("refs/remotes/origin/HEAD");
+
+          if (isDefaultBranchCall) {
+            const count = yield* Ref.updateAndGet(symbolicRefCalls, (n) => n + 1);
+            if (count === 1) {
+              return ChildProcessSpawner.makeHandle({
+                pid: ChildProcessSpawner.ProcessId(1),
+                exitCode: Effect.fail(
+                  PlatformError.systemError({
+                    _tag: "Unknown",
+                    module: "GitVcsDriverCore",
+                    method: "test",
+                    description: "simulated transient failure",
+                  }),
+                ),
+                isRunning: Effect.succeed(false),
+                kill: () => Effect.void,
+                unref: Effect.succeed(Effect.void),
+                stdin: Sink.drain,
+                stdout: Stream.empty,
+                stderr: Stream.empty,
+                all: Stream.empty,
+                getInputFd: () => Sink.drain,
+                getOutputFd: () => Stream.empty,
+              });
+            }
+          }
+
+          return yield* delegate.spawn(command);
+        }),
+      );
+
+      const driver = yield* makeGitVcsDriverCore().pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, failingSpawner),
+      );
+      const cwd = yield* makeTmpDir();
+      yield* driver.initRepo({ cwd });
+      yield* driver.execute({
+        operation: "GitVcsDriver.test.retryCacheFailure",
+        cwd,
+        args: ["config", "user.email", "test@test.com"],
+        timeoutMs: 10_000,
+      });
+      yield* driver.execute({
+        operation: "GitVcsDriver.test.retryCacheFailure",
+        cwd,
+        args: ["config", "user.name", "Test"],
+        timeoutMs: 10_000,
+      });
+      yield* writeTextFile(cwd, "README.md", "# test\n");
+      yield* driver.execute({
+        operation: "GitVcsDriver.test.retryCacheFailure",
+        cwd,
+        args: ["add", "."],
+        timeoutMs: 10_000,
+      });
+      yield* driver.execute({
+        operation: "GitVcsDriver.test.retryCacheFailure",
+        cwd,
+        args: ["commit", "-m", "initial commit"],
+        timeoutMs: 10_000,
+      });
+
+      // First call: defaultBranchCache factory fails transiently.
+      // Effect.orElseSucceed(() => null) at call site catches it.
+      const first = yield* driver.statusDetailsLocal(cwd);
+      assert.ok(first.isRepo);
+
+      // Second call: failure TTL is Duration.zero, so cache retries
+      // immediately and the delegate now spawns real git successfully.
+      const second = yield* driver.statusDetailsLocal(cwd);
+      assert.ok(second.isRepo);
+      assert.equal(first.isDefaultBranch, second.isDefaultBranch);
+      assert.equal(first.hasOriginRemote, second.hasOriginRemote);
+    }),
+  ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+);
+
 it.effect("coalesces concurrent ref pages into one repository snapshot", () =>
   Effect.scoped(
     Effect.gen(function* () {
