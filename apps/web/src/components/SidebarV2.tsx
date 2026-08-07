@@ -404,7 +404,9 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
   // actions: settling clears the pin server-side, and snoozing hides the
   // card until wake with the pin intact underneath. The pin glyph itself
   // is a quick-action that unpins in place; pinning lives in the context
-  // menu.
+  // menu. Like the other lifecycle affordances it is capability-gated so
+  // it hides rather than fails while the descriptor is not loaded.
+  pinningSupported: boolean;
   isPinned: boolean;
   // Compact wake countdown ("2h") for rows in the snoozed shelf.
   snoozeWakeLabelText: string | null;
@@ -999,7 +1001,7 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
               ) : (
                 <span className="flex-1" />
               )}
-              {props.isPinned ? (
+              {props.isPinned && props.pinningSupported ? (
                 <button
                   type="button"
                   aria-label="Unpin thread"
@@ -3121,6 +3123,10 @@ export default function SidebarV2() {
                         snoozeSupported={
                           serverConfigs.get(thread.environmentId)?.environment.capabilities
                             .threadSnooze === true
+                        }
+                        pinningSupported={
+                          serverConfigs.get(thread.environmentId)?.environment.capabilities
+                            .threadPinning === true
                         }
                         isPinned={section === "pinned"}
                         snoozeWakeLabelText={
