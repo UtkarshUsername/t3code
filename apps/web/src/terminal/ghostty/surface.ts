@@ -901,12 +901,24 @@ export class GhosttyTerminalSurface {
     }
     if (isTerminalCopyShortcut(event) && this.hasSelection()) {
       // A plain Ctrl+C/Cmd+C fires the browser's native copy event, caught in
-      // onCopyEvent; not preventing the default keeps that path alive. The
+      // onCopyEvent; not preventing the default keeps that path alive. WebKit
+      // omits the keyboard copy event without a DOM selection, so race the
+      // clipboard write against it the same way paste races its read. The
       // Shift variant has no native event (Chrome binds Ctrl+Shift+C to
       // inspect), so synthesize one with execCommand("copy").
       if (event.shiftKey) {
         event.preventDefault();
         document.execCommand("copy");
+      } else {
+        const clipboard = navigator.clipboard;
+        if (typeof clipboard?.writeText === "function") {
+          // The native copy event (dispatched with the default action) always
+          // wins when it fires; the write covers browsers whose shortcut
+          // produces no copy event.
+          void clipboard.writeText(this.getSelection()).catch(() => {
+            // Clipboard write denied; the native copy event remains the path.
+          });
+        }
       }
       this.suppressedKeyCodes.add(event.code);
       return;
