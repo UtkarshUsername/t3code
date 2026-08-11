@@ -530,6 +530,7 @@ export class GhosttyTerminalSurface {
   private theme: GhosttyTheme;
   private readonly suppressedKeyCodes = new Set<string>();
   private pasteShortcutToken = 0;
+  private copyShortcutToken = 0;
   private wheelRemainder = 0;
   private dprMedia: MediaQueryList | null = null;
   // Read live on every blink decision, and watched so that dropping the
@@ -912,11 +913,19 @@ export class GhosttyTerminalSurface {
       } else {
         const clipboard = navigator.clipboard;
         if (typeof clipboard?.writeText === "function") {
-          // The native copy event (dispatched with the default action) always
-          // wins when it fires; the write covers browsers whose shortcut
-          // produces no copy event.
-          void clipboard.writeText(this.getSelection()).catch(() => {
-            // Clipboard write denied; the native copy event remains the path.
+          // Defer the write past the default action: the native copy event
+          // (dispatched synchronously with the default action) claims the
+          // token first when it fires, and the write covers browsers whose
+          // shortcut produces no copy event. Skipping a write the native
+          // event already handled stops a stale resolution from clobbering a
+          // clipboard the user filled after this copy.
+          const token = ++this.copyShortcutToken;
+          const selection = this.getSelection();
+          void Promise.resolve().then(() => {
+            if (this.disposed || this.copyShortcutToken !== token) return;
+            void clipboard.writeText(selection).catch(() => {
+              // Clipboard write denied; the native copy event remains the path.
+            });
           });
         }
       }
@@ -1010,6 +1019,8 @@ export class GhosttyTerminalSurface {
     if (!this.hasSelection()) return;
     event.preventDefault();
     event.clipboardData?.setData("text/plain", this.getSelection());
+    // The native event beat any deferred write; drop the in-flight fallback.
+    this.copyShortcutToken += 1;
   };
 
   private readonly onPaste = (event: ClipboardEvent) => {
