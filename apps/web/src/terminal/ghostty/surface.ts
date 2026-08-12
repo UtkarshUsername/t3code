@@ -913,9 +913,11 @@ export class GhosttyTerminalSurface {
         document.execCommand("copy");
       } else {
         // A plain Ctrl+C is also SIGINT on non-mac: clear the selection once
-        // it copies so the next Ctrl+C reaches the shell. Cmd+C on mac and the
-        // Shift chord are copy-only, so they keep the selection.
-        this.clearSelectionAfterCopy = !isMacPlatform(navigator.platform);
+        // it copies so the next Ctrl+C reaches the shell. The Shift chord and
+        // Cmd+C are copy-only, so they keep the selection; resetting the flag
+        // up front also drops any clear owed by an earlier gesture that never
+        // completed.
+        this.clearSelectionAfterCopy = !event.shiftKey && !isMacPlatform(navigator.platform);
         const clipboard = navigator.clipboard;
         if (typeof clipboard?.writeText === "function") {
           // Defer the write past the default action: the native copy event
@@ -930,13 +932,18 @@ export class GhosttyTerminalSurface {
             if (this.disposed || this.copyShortcutToken !== token) return;
             void clipboard.writeText(selection).then(
               () => {
+                // The write may have been superseded while in flight; only
+                // touch the selection if this gesture still owns the token.
+                if (this.disposed || this.copyShortcutToken !== token) return;
                 if (this.clearSelectionAfterCopy) {
                   this.clearSelectionAfterCopy = false;
                   this.clearSelection();
                 }
               },
               () => {
-                // Clipboard write denied; the native copy event remains the path.
+                // The write failed and the native event has already had its
+                // chance, so nothing copied and no clear is owed.
+                this.clearSelectionAfterCopy = false;
               },
             );
           });
