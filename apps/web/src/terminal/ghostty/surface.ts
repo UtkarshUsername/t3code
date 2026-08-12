@@ -531,6 +531,7 @@ export class GhosttyTerminalSurface {
   private readonly suppressedKeyCodes = new Set<string>();
   private pasteShortcutToken = 0;
   private copyShortcutToken = 0;
+  private clearSelectionAfterCopy = false;
   private wheelRemainder = 0;
   private dprMedia: MediaQueryList | null = null;
   // Read live on every blink decision, and watched so that dropping the
@@ -911,6 +912,10 @@ export class GhosttyTerminalSurface {
         event.preventDefault();
         document.execCommand("copy");
       } else {
+        // A plain Ctrl+C is also SIGINT on non-mac: clear the selection once
+        // it copies so the next Ctrl+C reaches the shell. Cmd+C on mac and the
+        // Shift chord are copy-only, so they keep the selection.
+        this.clearSelectionAfterCopy = !isMacPlatform(navigator.platform);
         const clipboard = navigator.clipboard;
         if (typeof clipboard?.writeText === "function") {
           // Defer the write past the default action: the native copy event
@@ -923,9 +928,17 @@ export class GhosttyTerminalSurface {
           const selection = this.getSelection();
           void Promise.resolve().then(() => {
             if (this.disposed || this.copyShortcutToken !== token) return;
-            void clipboard.writeText(selection).catch(() => {
-              // Clipboard write denied; the native copy event remains the path.
-            });
+            void clipboard.writeText(selection).then(
+              () => {
+                if (this.clearSelectionAfterCopy) {
+                  this.clearSelectionAfterCopy = false;
+                  this.clearSelection();
+                }
+              },
+              () => {
+                // Clipboard write denied; the native copy event remains the path.
+              },
+            );
           });
         }
       }
@@ -1021,6 +1034,10 @@ export class GhosttyTerminalSurface {
     event.clipboardData?.setData("text/plain", this.getSelection());
     // The native event beat any deferred write; drop the in-flight fallback.
     this.copyShortcutToken += 1;
+    if (this.clearSelectionAfterCopy) {
+      this.clearSelectionAfterCopy = false;
+      this.clearSelection();
+    }
   };
 
   private readonly onPaste = (event: ClipboardEvent) => {
