@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { showContextMenuFallback } from "./contextMenuFallback";
+import { dismissContextMenu, showContextMenuFallback } from "./contextMenuFallback";
 
 type FakeListener = (event: FakeDomEvent) => void;
 
@@ -234,5 +234,25 @@ describe("showContextMenuFallback", () => {
     childButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
     await expect(selectionPromise).resolves.toBe("rename:project-b");
+  });
+});
+
+describe("dismissContextMenu", () => {
+  it("resolves an open menu with null", async () => {
+    const selectionPromise = showContextMenuFallback([
+      { id: "rename", label: "Rename" },
+      { id: "delete", label: "Delete" },
+    ]);
+    expect(findButton("Rename")).toBeTruthy();
+
+    dismissContextMenu();
+
+    await expect(selectionPromise).resolves.toBeNull();
+    expect(findButton("Rename")).toBeUndefined();
+  });
+
+  it("is a no-op when no menu is open", async () => {
+    dismissContextMenu();
+    expect(findButton("Rename")).toBeUndefined();
   });
 });

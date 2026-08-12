@@ -684,6 +684,9 @@ export function TerminalViewport({
           return;
         }
         clearSelectionAction();
+        // A copy shortcut that clears the selection (Ctrl+C) must also close
+        // the context menu that appears with the selection.
+        void localApi?.contextMenu.close();
       }
 
       const handleMouseUp = (event: MouseEvent) => {
