@@ -255,4 +255,18 @@ describe("dismissContextMenu", () => {
     dismissContextMenu();
     expect(findButton("Rename")).toBeUndefined();
   });
+
+  it("dismisses the prior menu when a new one opens", async () => {
+    const firstPromise = showContextMenuFallback([{ id: "first", label: "First" }]);
+    expect(findButton("First")).toBeTruthy();
+
+    const secondPromise = showContextMenuFallback([{ id: "second", label: "Second" }]);
+
+    await expect(firstPromise).resolves.toBeNull();
+    expect(findButton("First")).toBeUndefined();
+    expect(findButton("Second")).toBeTruthy();
+
+    dismissContextMenu();
+    await expect(secondPromise).resolves.toBeNull();
+  });
 });

@@ -319,6 +319,12 @@ export function showContextMenuFallback<T extends string>(
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("contextmenu", onContextMenu, true);
     openMenu(items, position?.x ?? 0, position?.y ?? 0, 0);
+    // Only one fallback menu can be open at a time: a new show must dismiss
+    // any prior one, or its DOM and listeners leak and close() can only ever
+    // reach the newest menu.
+    if (activeContextMenuDismiss) {
+      activeContextMenuDismiss();
+    }
     activeContextMenuDismiss = dismiss;
 
     requestAnimationFrame(() => {
