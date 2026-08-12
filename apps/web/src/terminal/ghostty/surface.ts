@@ -942,8 +942,12 @@ export class GhosttyTerminalSurface {
               },
               () => {
                 // The write failed and the native event has already had its
-                // chance, so nothing copied and no clear is owed.
-                this.clearSelectionAfterCopy = false;
+                // chance, so nothing copied and no clear is owed by this
+                // gesture; a newer one may have just set the flag, so only
+                // drop it if this gesture still owns the token.
+                if (this.copyShortcutToken === token) {
+                  this.clearSelectionAfterCopy = false;
+                }
               },
             );
           });
