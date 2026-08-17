@@ -3123,7 +3123,12 @@ export default function Sidebar() {
             return;
           case "unpin": {
             const confirmed = await settlePromise(() =>
-              api.dialogs.confirm(`Unpin thread "${thread.title}"?`),
+              api.dialogs.confirm(
+                [
+                  `Unpin thread "${thread.title}"?`,
+                  "This will move the thread out of your pinned section.",
+                ].join("\n"),
+              ),
             );
             if (confirmed._tag === "Failure" || !confirmed.value) return;
             attemptUnpin(threadRef);
