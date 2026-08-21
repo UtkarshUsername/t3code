@@ -7,7 +7,7 @@ import type {
   ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import type { EnvironmentThreadShell } from "./models.ts";
 import { scopeThreadShell } from "./models.ts";
@@ -139,16 +139,13 @@ export function createEnvironmentThreadShellAtoms(input: {
   // threadKey() so writer and reader cannot drift (threadKey uses \u0000,
   // while scopedThreadKey uses ":").
   const setOptimisticThreadTitle = (
-    registry: { get: (a: Atom.Atom<any>) => any; set: (a: any, v: any) => void },
+    registry: AtomRegistry.AtomRegistry,
     ref: ScopedThreadRef,
     title: string,
     displayedTitle: string,
   ): void => {
     const key = threadKey(ref);
-    const current = registry.get(optimisticTitlesAtom) as ReadonlyMap<
-      string,
-      OptimisticThreadTitle
-    >;
+    const current = registry.get(optimisticTitlesAtom);
     registry.set(
       optimisticTitlesAtom,
       nextOptimisticThreadTitles(current, key, title, displayedTitle),
@@ -156,15 +153,12 @@ export function createEnvironmentThreadShellAtoms(input: {
   };
 
   const clearOptimisticThreadTitle = (
-    registry: { get: (a: Atom.Atom<any>) => any; set: (a: any, v: any) => void },
+    registry: AtomRegistry.AtomRegistry,
     ref: ScopedThreadRef,
     title: string,
   ): void => {
     const key = threadKey(ref);
-    const current = registry.get(optimisticTitlesAtom) as ReadonlyMap<
-      string,
-      OptimisticThreadTitle
-    >;
+    const current = registry.get(optimisticTitlesAtom);
     registry.set(optimisticTitlesAtom, withoutOptimisticThreadTitle(current, key, title));
   };
 
