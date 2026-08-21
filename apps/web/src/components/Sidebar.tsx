@@ -2382,7 +2382,11 @@ export default function Sidebar() {
 
   const [renamingThreadKey, setRenamingThreadKey] = useState<string | null>(null);
   const [renamingTitle, setRenamingTitle] = useState("");
+  // Bumped whenever a new rename session or submission starts, so a settled
+  // response can tell it is stale and leave a newer editor alone.
+  const renameEpochRef = useRef(0);
   const startThreadRename = useCallback((threadRef: ScopedThreadRef, title: string) => {
+    renameEpochRef.current += 1;
     setRenamingThreadKey(scopedThreadKey(threadRef));
     setRenamingTitle(title);
   }, []);
@@ -2401,7 +2405,10 @@ export default function Sidebar() {
           return;
         }
         // Keep the row's editor showing the typed title until the server
-        // confirms; closing early flashes the stale store title.
+        // confirms; closing early flashes the stale store title. Only the
+        // latest submission may close it, so a slower earlier response can
+        // never clobber a newer rename.
+        const epoch = ++renameEpochRef.current;
         try {
           const result = await updateThreadMetadata({
             environmentId: threadRef.environmentId,
@@ -2418,7 +2425,7 @@ export default function Sidebar() {
             );
           }
         } finally {
-          setRenamingThreadKey(null);
+          if (renameEpochRef.current === epoch) setRenamingThreadKey(null);
         }
       })();
     },

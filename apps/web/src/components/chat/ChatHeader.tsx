@@ -159,7 +159,11 @@ export const ChatHeader = memo(function ChatHeader({
   }
   const renamingTitle = renaming?.threadId === activeThreadId ? renaming.title : null;
   const renameCommittedRef = useRef(false);
+  // Bumped whenever a new rename session or submission starts, so a settled
+  // response can tell it is stale and leave a newer editor alone.
+  const renameEpochRef = useRef(0);
   const startRename = useCallback(() => {
+    renameEpochRef.current += 1;
     renameCommittedRef.current = false;
     setRenaming({ threadId: activeThreadId, title: activeThreadTitle });
   }, [activeThreadId, activeThreadTitle]);
@@ -177,6 +181,7 @@ export const ChatHeader = memo(function ChatHeader({
       }
       // Keep the editor showing the typed title until the server confirms;
       // closing early flashes the stale store title for the whole round-trip.
+      const epoch = ++renameEpochRef.current;
       void updateThreadMetadata({
         environmentId: activeThreadEnvironmentId,
         input: { threadId: activeThreadId, title: resolution.title },
@@ -191,7 +196,9 @@ export const ChatHeader = memo(function ChatHeader({
             });
           }
         })
-        .finally(() => setRenaming(null));
+        .finally(() => {
+          if (renameEpochRef.current === epoch) setRenaming(null);
+        });
     },
     [activeThreadEnvironmentId, activeThreadId, activeThreadTitle, updateThreadMetadata],
   );
