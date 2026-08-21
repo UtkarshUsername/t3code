@@ -15,6 +15,7 @@ import { ChevronDownIcon } from "lucide-react";
 import {
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -159,17 +160,29 @@ export const ChatHeader = memo(function ChatHeader({
   }
   const renamingTitle = renaming?.threadId === activeThreadId ? renaming.title : null;
   const renameCommittedRef = useRef(false);
-  // Bumped whenever a new rename session or submission starts, so a settled
-  // response can tell it is stale and leave a newer editor alone.
-  const renameEpochRef = useRef(0);
+  // Title committed to the server but not yet reflected by activeThreadTitle
+  // (the store learns about renames via a coalesced server-side stream).
+  // Shown in place of the stored title so confirming a rename never flashes
+  // the old one; dropped once the store catches up, or reverted if the
+  // server rejected the rename.
+  const [pendingTitle, setPendingTitle] = useState<{ threadId: ThreadId; title: string } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (pendingTitle === null) return;
+    if (pendingTitle.threadId !== activeThreadId || activeThreadTitle === pendingTitle.title) {
+      setPendingTitle(null);
+    }
+  }, [pendingTitle, activeThreadId, activeThreadTitle]);
+  const displayTitle =
+    pendingTitle?.threadId === activeThreadId ? pendingTitle.title : activeThreadTitle;
   const startRename = useCallback(() => {
-    renameEpochRef.current += 1;
     renameCommittedRef.current = false;
-    setRenaming({ threadId: activeThreadId, title: activeThreadTitle });
-  }, [activeThreadId, activeThreadTitle]);
+    setRenaming({ threadId: activeThreadId, title: displayTitle });
+  }, [activeThreadId, displayTitle]);
   const commitRename = useCallback(
     (title: string) => {
-      const resolution = resolveRenameCommit({ title, originalTitle: activeThreadTitle });
+      const resolution = resolveRenameCommit({ title, originalTitle: displayTitle });
       if (resolution.action === "reject-empty") {
         setRenaming(null);
         toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
@@ -179,28 +192,33 @@ export const ChatHeader = memo(function ChatHeader({
         setRenaming(null);
         return;
       }
-      // Keep the editor showing the typed title until the server confirms;
-      // closing early flashes the stale store title for the whole round-trip.
-      const epoch = ++renameEpochRef.current;
+      // Close immediately and show the committed title optimistically: the
+      // store title arrives via a coalesced server stream, so waiting for it
+      // would flash the old title for a beat. A rejection reverts to it.
+      setRenaming(null);
+      setPendingTitle({ threadId: activeThreadId, title: resolution.title });
       void updateThreadMetadata({
         environmentId: activeThreadEnvironmentId,
         input: { threadId: activeThreadId, title: resolution.title },
-      })
-        .then((result) => {
-          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-            const error = squashAtomCommandFailure(result);
-            toastManager.add({
-              type: "error",
-              title: "Failed to rename thread",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            });
-          }
-        })
-        .finally(() => {
-          if (renameEpochRef.current === epoch) setRenaming(null);
-        });
+      }).then((result) => {
+        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+          setPendingTitle((current) =>
+            current !== null &&
+            current.threadId === activeThreadId &&
+            current.title === resolution.title
+              ? null
+              : current,
+          );
+          const error = squashAtomCommandFailure(result);
+          toastManager.add({
+            type: "error",
+            title: "Failed to rename thread",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          });
+        }
+      });
     },
-    [activeThreadEnvironmentId, activeThreadId, activeThreadTitle, updateThreadMetadata],
+    [activeThreadEnvironmentId, activeThreadId, displayTitle, updateThreadMetadata],
   );
   const { openMenu } = useThreadActionMenu({
     threadRef: isServerThread ? activeThreadRef : null,
@@ -296,31 +314,31 @@ export const ChatHeader = memo(function ChatHeader({
                   <button
                     ref={titleButtonRef}
                     type="button"
-                    aria-label={`Thread actions for ${activeThreadTitle}`}
+                    aria-label={`Thread actions for ${displayTitle}`}
                     aria-haspopup="menu"
                     onClick={openMenuFromTitle}
                     className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 }
               >
-                <h2 className="min-w-0 truncate">{activeThreadTitle}</h2>
+                <h2 className="min-w-0 truncate">{displayTitle}</h2>
                 <ChevronDownIcon
                   aria-hidden
                   className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100 group-focus-visible/thread-title:opacity-100"
                 />
               </TooltipTrigger>
-              <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
+              <TooltipPopup side="top">{displayTitle}</TooltipPopup>
             </Tooltip>
           ) : (
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <h2 aria-label={activeThreadTitle} className="min-w-0 flex-1 truncate">
-                    {activeThreadTitle}
+                  <h2 aria-label={displayTitle} className="min-w-0 flex-1 truncate">
+                    {displayTitle}
                   </h2>
                 }
               />
-              <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
+              <TooltipPopup side="top">{displayTitle}</TooltipPopup>
             </Tooltip>
           )}
         </WorkspaceBreadcrumbItem>

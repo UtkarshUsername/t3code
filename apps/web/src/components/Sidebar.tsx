@@ -2382,55 +2382,84 @@ export default function Sidebar() {
 
   const [renamingThreadKey, setRenamingThreadKey] = useState<string | null>(null);
   const [renamingTitle, setRenamingTitle] = useState("");
-  // Bumped whenever a new rename session or submission starts, so a settled
-  // response can tell it is stale and leave a newer editor alone.
-  const renameEpochRef = useRef(0);
+  // Titles committed to the server but not yet reflected by the thread shells
+  // (the store learns about renames via a coalesced server-side stream).
+  // Shown in place of the stored title so confirming a rename never flashes
+  // the old one; dropped once the store catches up, or reverted if the
+  // server rejected the rename.
+  const [optimisticTitles, setOptimisticTitles] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
   const startThreadRename = useCallback((threadRef: ScopedThreadRef, title: string) => {
-    renameEpochRef.current += 1;
     setRenamingThreadKey(scopedThreadKey(threadRef));
     setRenamingTitle(title);
   }, []);
   const cancelThreadRename = useCallback(() => setRenamingThreadKey(null), []);
   const commitThreadRename = useCallback(
     (threadRef: ScopedThreadRef, title: string, originalTitle: string) => {
-      void (async () => {
-        const trimmed = title.trim();
-        if (trimmed.length === 0) {
-          setRenamingThreadKey(null);
-          toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
-          return;
-        }
-        if (trimmed === originalTitle) {
-          setRenamingThreadKey(null);
-          return;
-        }
-        // Keep the row's editor showing the typed title until the server
-        // confirms; closing early flashes the stale store title. Only the
-        // latest submission may close it, so a slower earlier response can
-        // never clobber a newer rename.
-        const epoch = ++renameEpochRef.current;
-        try {
-          const result = await updateThreadMetadata({
-            environmentId: threadRef.environmentId,
-            input: { threadId: threadRef.threadId, title: trimmed },
+      const trimmed = title.trim();
+      if (trimmed.length === 0) {
+        setRenamingThreadKey(null);
+        toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
+        return;
+      }
+      if (trimmed === originalTitle) {
+        setRenamingThreadKey(null);
+        return;
+      }
+      const threadKey = scopedThreadKey(threadRef);
+      // Close immediately and show the committed title optimistically:
+      // waiting for the store would flash the old title for a beat. A
+      // rejection reverts to the stored title.
+      setRenamingThreadKey(null);
+      setOptimisticTitles((current) => new Map(current).set(threadKey, trimmed));
+      void updateThreadMetadata({
+        environmentId: threadRef.environmentId,
+        input: { threadId: threadRef.threadId, title: trimmed },
+      }).then((result) => {
+        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+          setOptimisticTitles((current) => {
+            if (current.get(threadKey) !== trimmed) return current;
+            const next = new Map(current);
+            next.delete(threadKey);
+            return next;
           });
-          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-            const error = squashAtomCommandFailure(result);
-            toastManager.add(
-              stackedThreadToast({
-                type: "error",
-                title: "Failed to rename thread",
-                description: error instanceof Error ? error.message : "An error occurred.",
-              }),
-            );
-          }
-        } finally {
-          if (renameEpochRef.current === epoch) setRenamingThreadKey(null);
+          const error = squashAtomCommandFailure(result);
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Failed to rename thread",
+              description: error instanceof Error ? error.message : "An error occurred.",
+            }),
+          );
         }
-      })();
+      });
     },
     [updateThreadMetadata],
   );
+  // Stored title for every known thread, used to retire optimistic rename
+  // titles once the coalesced stream catches up.
+  const threadTitlesByKey = useMemo(() => {
+    const titles = new Map<string, string>();
+    for (const thread of threads) {
+      titles.set(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)), thread.title);
+    }
+    return titles;
+  }, [threads]);
+  useEffect(() => {
+    if (optimisticTitles.size === 0) return;
+    setOptimisticTitles((current) => {
+      let next: Map<string, string> | null = null;
+      for (const [key, title] of current) {
+        const storedTitle = threadTitlesByKey.get(key);
+        if (storedTitle === undefined || storedTitle === title) {
+          next ??= new Map(current);
+          next.delete(key);
+        }
+      }
+      return next ?? current;
+    });
+  }, [optimisticTitles, threadTitlesByKey]);
 
   const handleThreadClick = useCallback(
     (event: ReactMouseEvent, threadRef: ScopedThreadRef) => {
@@ -3144,7 +3173,7 @@ export default function Sidebar() {
             attemptUnpin(threadRef);
             return;
           case "rename":
-            startThreadRename(threadRef, thread.title);
+            startThreadRename(threadRef, optimisticTitles.get(threadKey) ?? thread.title);
             return;
           case "regenerate-title": {
             if (isRegeneratingTitle) return;
@@ -3264,6 +3293,7 @@ export default function Sidebar() {
       deleteThread,
       handleMultiSelectContextMenu,
       markThreadUnread,
+      optimisticTitles,
       projectCwdByKey,
       serverConfigs,
       startThreadRename,
@@ -3672,6 +3702,13 @@ export default function Sidebar() {
                     // not from the sidebar second-guessing what still matters.
                     const isCard = section === "active" || section === "pinned";
                     const rowVariant = isCard ? "card" : "slim";
+                    // Optimistic renames shadow the stored title until the
+                    // coalesced stream catches up (see optimisticTitles).
+                    const optimisticTitle = optimisticTitles.get(threadKey);
+                    const rowThread =
+                      optimisticTitle === undefined || optimisticTitle === thread.title
+                        ? thread
+                        : { ...thread, title: optimisticTitle };
                     return (
                       <SidebarThreadRow
                         // Keyed per variant on purpose: when a thread settles,
@@ -3681,7 +3718,7 @@ export default function Sidebar() {
                         // are translucent, so a crossing row reads as text
                         // painted over text).
                         key={`${threadKey}:${rowVariant}`}
-                        thread={thread}
+                        thread={rowThread}
                         variant={rowVariant}
                         // Snoozed rows wake; settled rows un-settle (explicit
                         // settles clear the override, auto-settled rows get
