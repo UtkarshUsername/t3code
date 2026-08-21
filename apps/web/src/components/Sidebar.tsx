@@ -2385,26 +2385,23 @@ export default function Sidebar() {
 
   const [renamingThreadKey, setRenamingThreadKey] = useState<string | null>(null);
   const [renamingTitle, setRenamingTitle] = useState("");
-  // Set when a rename is submitted: the row keeps its inline editor (still
-  // showing what was typed) until the store reflects the rename, so
-  // confirming never flashes the old title. Cleared once the stored title
-  // moves off its pre-rename value - either this rename landed or a racing
-  // change like regeneration won - or when another rename session starts.
-  const [awaitingRename, setAwaitingRename] = useState<{
-    threadKey: string;
-    baseline: string;
-  } | null>(null);
+  // Titles committed but not yet reflected by the thread shells (the store
+  // learns about renames via a coalesced server-side stream). Shown in place
+  // of the stored title so confirming a rename never flashes the old one.
+  // An entry retires as soon as the store moves off its pre-rename value:
+  // either this rename landed or a racing change like regeneration won -
+  // either way that is the visible truth. A second rename before then
+  // overwrites the entry on the same baseline.
+  const [optimisticTitles, setOptimisticTitles] = useState<
+    ReadonlyMap<string, { title: string; baseline: string }>
+  >(() => new Map());
   const startThreadRename = useCallback((threadRef: ScopedThreadRef, title: string) => {
-    setAwaitingRename(null);
     setRenamingThreadKey(scopedThreadKey(threadRef));
     setRenamingTitle(title);
   }, []);
-  const cancelThreadRename = useCallback(() => {
-    setAwaitingRename(null);
-    setRenamingThreadKey(null);
-  }, []);
+  const cancelThreadRename = useCallback(() => setRenamingThreadKey(null), []);
   // Stored title for every known thread, used to tell when the coalesced
-  // stream has caught up with a submitted rename.
+  // stream has caught up with a committed rename.
   const threadTitlesByKey = useMemo(() => {
     const titles = new Map<string, string>();
     for (const thread of threads) {
@@ -2425,19 +2422,27 @@ export default function Sidebar() {
         return;
       }
       const threadKey = scopedThreadKey(threadRef);
-      // Hold the row's editor open until the store catches up; closing now
-      // would flash the stored title for a beat. A rejection closes it.
-      setAwaitingRename({ threadKey, baseline: originalTitle });
+      // Close immediately and keep showing the committed title via the map;
+      // closing without it would flash the stored title for a beat while the
+      // store catches up. A rejection reverts to it.
+      setRenamingThreadKey(null);
+      setOptimisticTitles((current) =>
+        new Map(current).set(threadKey, { title: trimmed, baseline: originalTitle }),
+      );
       void updateThreadMetadata({
         environmentId: threadRef.environmentId,
         input: { threadId: threadRef.threadId, title: trimmed },
       }).then((result) => {
         if (result._tag !== "Failure") return;
-        // Close on every failure, including interrupts: an interrupted
-        // command never ran, so the store will never move off baseline and
-        // only this teardown releases the row's editor.
-        setAwaitingRename((current) => (current?.threadKey === threadKey ? null : current));
-        setRenamingThreadKey((current) => (current === threadKey ? null : current));
+        // Drop the override on every failure, including interrupts: an
+        // interrupted command never ran, so the store will never move off
+        // baseline and only this teardown retires the shown title.
+        setOptimisticTitles((current) => {
+          if (current.get(threadKey)?.title !== trimmed) return current;
+          const next = new Map(current);
+          next.delete(threadKey);
+          return next;
+        });
         if (isAtomCommandInterrupted(result)) return;
         const error = squashAtomCommandFailure(result);
         toastManager.add(
@@ -2452,13 +2457,19 @@ export default function Sidebar() {
     [updateThreadMetadata],
   );
   useEffect(() => {
-    if (awaitingRename === null) return;
-    const storedTitle = threadTitlesByKey.get(awaitingRename.threadKey);
-    if (storedTitle === undefined || storedTitle !== awaitingRename.baseline) {
-      setAwaitingRename(null);
-      setRenamingThreadKey((current) => (current === awaitingRename.threadKey ? null : current));
-    }
-  }, [awaitingRename, threadTitlesByKey]);
+    if (optimisticTitles.size === 0) return;
+    setOptimisticTitles((current) => {
+      let next: Map<string, { title: string; baseline: string }> | null = null;
+      for (const [key, entry] of current) {
+        const storedTitle = threadTitlesByKey.get(key);
+        if (storedTitle === undefined || storedTitle !== entry.baseline) {
+          next ??= new Map(current);
+          next.delete(key);
+        }
+      }
+      return next ?? current;
+    });
+  }, [optimisticTitles, threadTitlesByKey]);
 
   const handleThreadClick = useCallback(
     (event: ReactMouseEvent, threadRef: ScopedThreadRef) => {
@@ -3172,7 +3183,7 @@ export default function Sidebar() {
             attemptUnpin(threadRef);
             return;
           case "rename":
-            startThreadRename(threadRef, thread.title);
+            startThreadRename(threadRef, optimisticTitles.get(threadKey)?.title ?? thread.title);
             return;
           case "regenerate-title": {
             if (isRegeneratingTitle) return;
@@ -3219,7 +3230,9 @@ export default function Sidebar() {
           case "archive": {
             if (confirmThreadArchive) {
               const confirmed = await settlePromise(() =>
-                api.dialogs.confirm(`Archive thread "${thread.title}"?`),
+                api.dialogs.confirm(
+                  `Archive thread "${optimisticTitles.get(threadKey)?.title ?? thread.title}"?`,
+                ),
               );
               if (confirmed._tag === "Failure" || !confirmed.value) return;
             }
@@ -3249,7 +3262,7 @@ export default function Sidebar() {
               const confirmed = await settlePromise(() =>
                 api.dialogs.confirm(
                   [
-                    `Delete thread "${thread.title}"?`,
+                    `Delete thread "${optimisticTitles.get(threadKey)?.title ?? thread.title}"?`,
                     "This permanently clears conversation history for this thread.",
                   ].join("\n"),
                   { variant: "destructive" },
@@ -3292,6 +3305,7 @@ export default function Sidebar() {
       deleteThread,
       handleMultiSelectContextMenu,
       markThreadUnread,
+      optimisticTitles,
       projectCwdByKey,
       serverConfigs,
       startThreadRename,
@@ -3700,6 +3714,13 @@ export default function Sidebar() {
                     // not from the sidebar second-guessing what still matters.
                     const isCard = section === "active" || section === "pinned";
                     const rowVariant = isCard ? "card" : "slim";
+                    // Committed renames shadow the stored title until the
+                    // coalesced stream catches up (see optimisticTitles).
+                    const optimisticTitle = optimisticTitles.get(threadKey)?.title;
+                    const rowThread =
+                      optimisticTitle === undefined || optimisticTitle === thread.title
+                        ? thread
+                        : { ...thread, title: optimisticTitle };
                     return (
                       <SidebarThreadRow
                         // Keyed per variant on purpose: when a thread settles,
@@ -3709,7 +3730,7 @@ export default function Sidebar() {
                         // are translucent, so a crossing row reads as text
                         // painted over text).
                         key={`${threadKey}:${rowVariant}`}
-                        thread={thread}
+                        thread={rowThread}
                         variant={rowVariant}
                         // Snoozed rows wake; settled rows un-settle (explicit
                         // settles clear the override, auto-settled rows get
