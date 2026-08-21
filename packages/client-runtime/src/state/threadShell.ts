@@ -95,8 +95,10 @@ export function createEnvironmentThreadShellAtoms(input: {
 
   // Filter out entries that have fulfilled (store reached final title) or
   // diverged (store left the chain via regenerate-title or another client).
-  // This is a derived view so the map auto-prunes and `nextOptimistic...`
-  // sees a clean baseline for the next rename.
+  // Derived view hides stale entries immediately, and schedules a write-back
+  // so the raw map is actually pruned. Without the write-back a later store
+  // title that re-enters the chain (e.g. another client renaming back to the
+  // baseline) would revive a stale optimistic value.
   const filteredOptimisticTitlesAtom = Atom.make(
     (get): ReadonlyMap<string, OptimisticThreadTitle> => {
       const raw = get(rawOptimisticTitlesAtom);
@@ -116,7 +118,13 @@ export function createEnvironmentThreadShellAtoms(input: {
           pruned.delete(key);
         }
       }
-      return pruned ?? raw;
+      if (pruned !== null) {
+        const { registry } = get;
+        const next = pruned;
+        queueMicrotask(() => registry.set(rawOptimisticTitlesAtom, next));
+        return pruned;
+      }
+      return raw;
     },
   ).pipe(Atom.withLabel("optimistic-thread-titles:filtered"));
 
@@ -125,6 +133,35 @@ export function createEnvironmentThreadShellAtoms(input: {
     (ctx, value: ReadonlyMap<string, OptimisticThreadTitle>) =>
       ctx.set(rawOptimisticTitlesAtom, value),
   ).pipe(Atom.withLabel("optimistic-thread-titles"));
+
+  // Named helpers so call sites do not duplicate registry plumbing.
+  const setOptimisticThreadTitle = (
+    registry: { get: (a: Atom.Atom<any>) => any; set: (a: any, v: any) => void },
+    key: string,
+    title: string,
+    displayedTitle: string,
+  ): void => {
+    const current = registry.get(optimisticTitlesAtom) as ReadonlyMap<
+      string,
+      OptimisticThreadTitle
+    >;
+    registry.set(
+      optimisticTitlesAtom,
+      nextOptimisticThreadTitles(current, key, title, displayedTitle),
+    );
+  };
+
+  const clearOptimisticThreadTitle = (
+    registry: { get: (a: Atom.Atom<any>) => any; set: (a: any, v: any) => void },
+    key: string,
+    title: string,
+  ): void => {
+    const current = registry.get(optimisticTitlesAtom) as ReadonlyMap<
+      string,
+      OptimisticThreadTitle
+    >;
+    registry.set(optimisticTitlesAtom, withoutOptimisticThreadTitle(current, key, title));
+  };
 
   const environmentThreadRefsAtom = Atom.family((environmentId: EnvironmentId) => {
     let previous: ReadonlyArray<ScopedThreadRef> = [];
@@ -282,5 +319,7 @@ export function createEnvironmentThreadShellAtoms(input: {
       threadShellsForProjectRefsAtomFamily(projectRefCollectionKey(refs)),
     threadShellAtom: (ref: ScopedThreadRef) => threadShellAtomFamily(threadKey(ref)),
     optimisticTitlesAtom,
+    setOptimisticThreadTitle,
+    clearOptimisticThreadTitle,
   };
 }

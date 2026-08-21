@@ -10,10 +10,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import {
-  nextOptimisticThreadTitles,
-  withoutOptimisticThreadTitle,
-} from "@t3tools/client-runtime/state/threadShell";
+
 import type { ChangeRequestSettleSource } from "@t3tools/client-runtime/state/thread-settled";
 import { ChevronDownIcon } from "lucide-react";
 import {
@@ -192,27 +189,21 @@ export const ChatHeader = memo(function ChatHeader({
       }
       setRenaming(null);
       const threadKey = scopedThreadKey(activeThreadRef);
-      appAtomRegistry.set(
-        environmentThreadShells.optimisticTitlesAtom,
-        nextOptimisticThreadTitles(
-          appAtomRegistry.get(environmentThreadShells.optimisticTitlesAtom),
-          threadKey,
-          resolution.title,
-          activeThreadTitle,
-        ),
+      environmentThreadShells.setOptimisticThreadTitle(
+        appAtomRegistry,
+        threadKey,
+        resolution.title,
+        activeThreadTitle,
       );
       void updateThreadMetadata({
         environmentId: activeThreadEnvironmentId,
         input: { threadId: activeThreadId, title: resolution.title },
       }).then((result) => {
         if (result._tag !== "Failure") return;
-        appAtomRegistry.set(
-          environmentThreadShells.optimisticTitlesAtom,
-          withoutOptimisticThreadTitle(
-            appAtomRegistry.get(environmentThreadShells.optimisticTitlesAtom),
-            threadKey,
-            resolution.title,
-          ),
+        environmentThreadShells.clearOptimisticThreadTitle(
+          appAtomRegistry,
+          threadKey,
+          resolution.title,
         );
         if (isAtomCommandInterrupted(result)) return;
         const error = squashAtomCommandFailure(result);

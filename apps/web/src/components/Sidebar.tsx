@@ -110,10 +110,6 @@ import { useProjects, useThreadShells } from "../state/entities";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
 import { vcsEnvironment } from "../state/vcs";
 import { appAtomRegistry } from "../rpc/atomRegistry";
-import {
-  nextOptimisticThreadTitles,
-  withoutOptimisticThreadTitle,
-} from "@t3tools/client-runtime/state/threadShell";
 import { environmentThreadShells, threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -2409,28 +2405,18 @@ export default function Sidebar() {
       }
       const threadKey = scopedThreadKey(threadRef);
       setRenamingThreadKey(null);
-      appAtomRegistry.set(
-        environmentThreadShells.optimisticTitlesAtom,
-        nextOptimisticThreadTitles(
-          appAtomRegistry.get(environmentThreadShells.optimisticTitlesAtom),
-          threadKey,
-          trimmed,
-          originalTitle,
-        ),
+      environmentThreadShells.setOptimisticThreadTitle(
+        appAtomRegistry,
+        threadKey,
+        trimmed,
+        originalTitle,
       );
       void updateThreadMetadata({
         environmentId: threadRef.environmentId,
         input: { threadId: threadRef.threadId, title: trimmed },
       }).then((result) => {
         if (result._tag !== "Failure") return;
-        appAtomRegistry.set(
-          environmentThreadShells.optimisticTitlesAtom,
-          withoutOptimisticThreadTitle(
-            appAtomRegistry.get(environmentThreadShells.optimisticTitlesAtom),
-            threadKey,
-            trimmed,
-          ),
-        );
+        environmentThreadShells.clearOptimisticThreadTitle(appAtomRegistry, threadKey, trimmed);
         if (isAtomCommandInterrupted(result)) return;
         const error = squashAtomCommandFailure(result);
         toastManager.add(
