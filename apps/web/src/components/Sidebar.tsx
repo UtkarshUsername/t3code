@@ -2391,25 +2391,34 @@ export default function Sidebar() {
     (threadRef: ScopedThreadRef, title: string, originalTitle: string) => {
       void (async () => {
         const trimmed = title.trim();
-        setRenamingThreadKey(null);
         if (trimmed.length === 0) {
+          setRenamingThreadKey(null);
           toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
           return;
         }
-        if (trimmed === originalTitle) return;
-        const result = await updateThreadMetadata({
-          environmentId: threadRef.environmentId,
-          input: { threadId: threadRef.threadId, title: trimmed },
-        });
-        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Failed to rename thread",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            }),
-          );
+        if (trimmed === originalTitle) {
+          setRenamingThreadKey(null);
+          return;
+        }
+        // Keep the row's editor showing the typed title until the server
+        // confirms; closing early flashes the stale store title.
+        try {
+          const result = await updateThreadMetadata({
+            environmentId: threadRef.environmentId,
+            input: { threadId: threadRef.threadId, title: trimmed },
+          });
+          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+            const error = squashAtomCommandFailure(result);
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: "Failed to rename thread",
+                description: error instanceof Error ? error.message : "An error occurred.",
+              }),
+            );
+          }
+        } finally {
+          setRenamingThreadKey(null);
         }
       })();
     },

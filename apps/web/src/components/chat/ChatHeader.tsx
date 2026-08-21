@@ -165,26 +165,33 @@ export const ChatHeader = memo(function ChatHeader({
   }, [activeThreadId, activeThreadTitle]);
   const commitRename = useCallback(
     (title: string) => {
-      setRenaming(null);
       const resolution = resolveRenameCommit({ title, originalTitle: activeThreadTitle });
       if (resolution.action === "reject-empty") {
+        setRenaming(null);
         toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
         return;
       }
-      if (resolution.action === "noop") return;
+      if (resolution.action === "noop") {
+        setRenaming(null);
+        return;
+      }
+      // Keep the editor showing the typed title until the server confirms;
+      // closing early flashes the stale store title for the whole round-trip.
       void updateThreadMetadata({
         environmentId: activeThreadEnvironmentId,
         input: { threadId: activeThreadId, title: resolution.title },
-      }).then((result) => {
-        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          toastManager.add({
-            type: "error",
-            title: "Failed to rename thread",
-            description: error instanceof Error ? error.message : "An error occurred.",
-          });
-        }
-      });
+      })
+        .then((result) => {
+          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+            const error = squashAtomCommandFailure(result);
+            toastManager.add({
+              type: "error",
+              title: "Failed to rename thread",
+              description: error instanceof Error ? error.message : "An error occurred.",
+            });
+          }
+        })
+        .finally(() => setRenaming(null));
     },
     [activeThreadEnvironmentId, activeThreadId, activeThreadTitle, updateThreadMetadata],
   );
