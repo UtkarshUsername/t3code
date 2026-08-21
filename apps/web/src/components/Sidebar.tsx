@@ -571,6 +571,18 @@ interface SidebarDraftRowData {
   composer: ComposerThreadDraftState;
 }
 
+// Committed renames shadow the stored title until the coalesced stream
+// catches up (see optimisticTitles). Shared by list rows and search so a
+// just-renamed thread reads the same everywhere.
+function withOptimisticTitle<T extends EnvironmentThreadShell>(
+  thread: T,
+  entry: { readonly title: string } | undefined,
+): T {
+  return entry === undefined || entry.title === thread.title
+    ? thread
+    : { ...thread, title: entry.title };
+}
+
 // Draft sessions with user content, surfaced above the pinned block so an
 // interrupted "new thread" stays one click away. Self-contained (own store
 // subscription + closing divider) so per-keystroke composer updates
@@ -2108,9 +2120,25 @@ export default function Sidebar() {
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
   const [activeSearchResultIndex, setActiveSearchResultIndex] = useState(0);
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
+  // Titles committed but not yet reflected by the thread shells (the store
+  // learns about renames via a coalesced server-side stream). Shown in place
+  // of the stored title so confirming a rename never flashes the old one.
+  // An entry retires as soon as the store moves off its pre-rename value:
+  // either this rename landed or a racing change like regeneration won -
+  // either way that is the visible truth. A second rename before then
+  // overwrites the entry on the same baseline.
+  const [optimisticTitles, setOptimisticTitles] = useState<
+    ReadonlyMap<string, { title: string; baseline: string }>
+  >(() => new Map());
   const searchableThreads = useMemo(
-    () => [...pinnedThreads, ...activeThreads, ...snoozedThreads, ...settledThreads],
-    [activeThreads, pinnedThreads, settledThreads, snoozedThreads],
+    () =>
+      [...pinnedThreads, ...activeThreads, ...snoozedThreads, ...settledThreads].map((thread) =>
+        withOptimisticTitle(
+          thread,
+          optimisticTitles.get(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
+        ),
+      ),
+    [activeThreads, pinnedThreads, settledThreads, snoozedThreads, optimisticTitles],
   );
   const threadSearchResults = useMemo(
     () => searchSidebarThreadsByTitle(searchableThreads, threadSearchQuery),
@@ -2385,16 +2413,6 @@ export default function Sidebar() {
 
   const [renamingThreadKey, setRenamingThreadKey] = useState<string | null>(null);
   const [renamingTitle, setRenamingTitle] = useState("");
-  // Titles committed but not yet reflected by the thread shells (the store
-  // learns about renames via a coalesced server-side stream). Shown in place
-  // of the stored title so confirming a rename never flashes the old one.
-  // An entry retires as soon as the store moves off its pre-rename value:
-  // either this rename landed or a racing change like regeneration won -
-  // either way that is the visible truth. A second rename before then
-  // overwrites the entry on the same baseline.
-  const [optimisticTitles, setOptimisticTitles] = useState<
-    ReadonlyMap<string, { title: string; baseline: string }>
-  >(() => new Map());
   const startThreadRename = useCallback((threadRef: ScopedThreadRef, title: string) => {
     setRenamingThreadKey(scopedThreadKey(threadRef));
     setRenamingTitle(title);
@@ -2426,9 +2444,14 @@ export default function Sidebar() {
       // closing without it would flash the stored title for a beat while the
       // store catches up. A rejection reverts to it.
       setRenamingThreadKey(null);
-      setOptimisticTitles((current) =>
-        new Map(current).set(threadKey, { title: trimmed, baseline: originalTitle }),
-      );
+      setOptimisticTitles((current) => {
+        // originalTitle is the displayed title, which on a quick second
+        // rename is still the first override; anchor to its baseline (the
+        // last stored value) so this entry survives until the store actually
+        // moves instead of retiring on the very next frame.
+        const baseline = current.get(threadKey)?.baseline ?? originalTitle;
+        return new Map(current).set(threadKey, { title: trimmed, baseline });
+      });
       void updateThreadMetadata({
         environmentId: threadRef.environmentId,
         input: { threadId: threadRef.threadId, title: trimmed },
@@ -3716,11 +3739,7 @@ export default function Sidebar() {
                     const rowVariant = isCard ? "card" : "slim";
                     // Committed renames shadow the stored title until the
                     // coalesced stream catches up (see optimisticTitles).
-                    const optimisticTitle = optimisticTitles.get(threadKey)?.title;
-                    const rowThread =
-                      optimisticTitle === undefined || optimisticTitle === thread.title
-                        ? thread
-                        : { ...thread, title: optimisticTitle };
+                    const rowThread = withOptimisticTitle(thread, optimisticTitles.get(threadKey));
                     return (
                       <SidebarThreadRow
                         // Keyed per variant on purpose: when a thread settles,
