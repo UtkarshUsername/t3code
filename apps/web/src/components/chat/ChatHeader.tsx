@@ -5,7 +5,7 @@ import {
   type ResolvedKeybindingsConfig,
   type ThreadId,
 } from "@t3tools/contracts";
-import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -188,10 +188,9 @@ export const ChatHeader = memo(function ChatHeader({
         return;
       }
       setRenaming(null);
-      const threadKey = scopedThreadKey(activeThreadRef);
       environmentThreadShells.setOptimisticThreadTitle(
         appAtomRegistry,
-        threadKey,
+        activeThreadRef,
         resolution.title,
         activeThreadTitle,
       );
@@ -202,7 +201,7 @@ export const ChatHeader = memo(function ChatHeader({
         if (result._tag !== "Failure") return;
         environmentThreadShells.clearOptimisticThreadTitle(
           appAtomRegistry,
-          threadKey,
+          activeThreadRef,
           resolution.title,
         );
         if (isAtomCommandInterrupted(result)) return;

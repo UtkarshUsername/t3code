@@ -2403,11 +2403,10 @@ export default function Sidebar() {
         setRenamingThreadKey(null);
         return;
       }
-      const threadKey = scopedThreadKey(threadRef);
       setRenamingThreadKey(null);
       environmentThreadShells.setOptimisticThreadTitle(
         appAtomRegistry,
-        threadKey,
+        threadRef,
         trimmed,
         originalTitle,
       );
@@ -2416,7 +2415,7 @@ export default function Sidebar() {
         input: { threadId: threadRef.threadId, title: trimmed },
       }).then((result) => {
         if (result._tag !== "Failure") return;
-        environmentThreadShells.clearOptimisticThreadTitle(appAtomRegistry, threadKey, trimmed);
+        environmentThreadShells.clearOptimisticThreadTitle(appAtomRegistry, threadRef, trimmed);
         if (isAtomCommandInterrupted(result)) return;
         const error = squashAtomCommandFailure(result);
         toastManager.add(

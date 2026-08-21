@@ -135,12 +135,16 @@ export function createEnvironmentThreadShellAtoms(input: {
   ).pipe(Atom.withLabel("optimistic-thread-titles"));
 
   // Named helpers so call sites do not duplicate registry plumbing.
+  // Helpers take ScopedThreadRef and derive the atom-family key with
+  // threadKey() so writer and reader cannot drift (threadKey uses \u0000,
+  // while scopedThreadKey uses ":").
   const setOptimisticThreadTitle = (
     registry: { get: (a: Atom.Atom<any>) => any; set: (a: any, v: any) => void },
-    key: string,
+    ref: ScopedThreadRef,
     title: string,
     displayedTitle: string,
   ): void => {
+    const key = threadKey(ref);
     const current = registry.get(optimisticTitlesAtom) as ReadonlyMap<
       string,
       OptimisticThreadTitle
@@ -153,9 +157,10 @@ export function createEnvironmentThreadShellAtoms(input: {
 
   const clearOptimisticThreadTitle = (
     registry: { get: (a: Atom.Atom<any>) => any; set: (a: any, v: any) => void },
-    key: string,
+    ref: ScopedThreadRef,
     title: string,
   ): void => {
+    const key = threadKey(ref);
     const current = registry.get(optimisticTitlesAtom) as ReadonlyMap<
       string,
       OptimisticThreadTitle
