@@ -163,14 +163,20 @@ export const ChatHeader = memo(function ChatHeader({
   // Title committed to the server but not yet reflected by activeThreadTitle
   // (the store learns about renames via a coalesced server-side stream).
   // Shown in place of the stored title so confirming a rename never flashes
-  // the old one; dropped once the store catches up, or reverted if the
-  // server rejected the rename.
-  const [pendingTitle, setPendingTitle] = useState<{ threadId: ThreadId; title: string } | null>(
-    null,
-  );
+  // the old one. `previousTitle` is what the store showed when the override
+  // was set: once the store moves off it (our title landed, or a newer
+  // title change like regeneration won), the override retires.
+  const [pendingTitle, setPendingTitle] = useState<{
+    threadId: ThreadId;
+    title: string;
+    previousTitle: string;
+  } | null>(null);
   useEffect(() => {
     if (pendingTitle === null) return;
-    if (pendingTitle.threadId !== activeThreadId || activeThreadTitle === pendingTitle.title) {
+    if (
+      pendingTitle.threadId !== activeThreadId ||
+      activeThreadTitle !== pendingTitle.previousTitle
+    ) {
       setPendingTitle(null);
     }
   }, [pendingTitle, activeThreadId, activeThreadTitle]);
@@ -196,7 +202,13 @@ export const ChatHeader = memo(function ChatHeader({
       // store title arrives via a coalesced server stream, so waiting for it
       // would flash the old title for a beat. A rejection reverts to it.
       setRenaming(null);
-      setPendingTitle({ threadId: activeThreadId, title: resolution.title });
+      // Baseline against the store's current title: the override retires as
+      // soon as the store moves off it, whichever title change wins.
+      setPendingTitle({
+        threadId: activeThreadId,
+        title: resolution.title,
+        previousTitle: activeThreadTitle,
+      });
       void updateThreadMetadata({
         environmentId: activeThreadEnvironmentId,
         input: { threadId: activeThreadId, title: resolution.title },
@@ -218,7 +230,13 @@ export const ChatHeader = memo(function ChatHeader({
         }
       });
     },
-    [activeThreadEnvironmentId, activeThreadId, displayTitle, updateThreadMetadata],
+    [
+      activeThreadEnvironmentId,
+      activeThreadId,
+      activeThreadTitle,
+      displayTitle,
+      updateThreadMetadata,
+    ],
   );
   const { openMenu } = useThreadActionMenu({
     threadRef: isServerThread ? activeThreadRef : null,

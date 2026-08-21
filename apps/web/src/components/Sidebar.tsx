@@ -2385,16 +2385,26 @@ export default function Sidebar() {
   // Titles committed to the server but not yet reflected by the thread shells
   // (the store learns about renames via a coalesced server-side stream).
   // Shown in place of the stored title so confirming a rename never flashes
-  // the old one; dropped once the store catches up, or reverted if the
-  // server rejected the rename.
-  const [optimisticTitles, setOptimisticTitles] = useState<ReadonlyMap<string, string>>(
-    () => new Map(),
-  );
+  // the old one. `previousTitle` is what the store showed when the override
+  // was set: once the store moves off it (our title landed, or a newer
+  // title change like regeneration won), the override retires.
+  const [optimisticTitles, setOptimisticTitles] = useState<
+    ReadonlyMap<string, { title: string; previousTitle: string }>
+  >(() => new Map());
   const startThreadRename = useCallback((threadRef: ScopedThreadRef, title: string) => {
     setRenamingThreadKey(scopedThreadKey(threadRef));
     setRenamingTitle(title);
   }, []);
   const cancelThreadRename = useCallback(() => setRenamingThreadKey(null), []);
+  // Stored title for every known thread, used to baseline and retire
+  // optimistic rename titles once the coalesced stream catches up.
+  const threadTitlesByKey = useMemo(() => {
+    const titles = new Map<string, string>();
+    for (const thread of threads) {
+      titles.set(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)), thread.title);
+    }
+    return titles;
+  }, [threads]);
   const commitThreadRename = useCallback(
     (threadRef: ScopedThreadRef, title: string, originalTitle: string) => {
       const trimmed = title.trim();
@@ -2412,14 +2422,19 @@ export default function Sidebar() {
       // waiting for the store would flash the old title for a beat. A
       // rejection reverts to the stored title.
       setRenamingThreadKey(null);
-      setOptimisticTitles((current) => new Map(current).set(threadKey, trimmed));
+      // Baseline against the store's current title: the override retires as
+      // soon as the store moves off it, whichever title change wins.
+      const previousTitle = threadTitlesByKey.get(threadKey) ?? originalTitle;
+      setOptimisticTitles((current) =>
+        new Map(current).set(threadKey, { title: trimmed, previousTitle }),
+      );
       void updateThreadMetadata({
         environmentId: threadRef.environmentId,
         input: { threadId: threadRef.threadId, title: trimmed },
       }).then((result) => {
         if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
           setOptimisticTitles((current) => {
-            if (current.get(threadKey) !== trimmed) return current;
+            if (current.get(threadKey)?.title !== trimmed) return current;
             const next = new Map(current);
             next.delete(threadKey);
             return next;
@@ -2435,24 +2450,15 @@ export default function Sidebar() {
         }
       });
     },
-    [updateThreadMetadata],
+    [threadTitlesByKey, updateThreadMetadata],
   );
-  // Stored title for every known thread, used to retire optimistic rename
-  // titles once the coalesced stream catches up.
-  const threadTitlesByKey = useMemo(() => {
-    const titles = new Map<string, string>();
-    for (const thread of threads) {
-      titles.set(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)), thread.title);
-    }
-    return titles;
-  }, [threads]);
   useEffect(() => {
     if (optimisticTitles.size === 0) return;
     setOptimisticTitles((current) => {
-      let next: Map<string, string> | null = null;
-      for (const [key, title] of current) {
+      let next: Map<string, { title: string; previousTitle: string }> | null = null;
+      for (const [key, entry] of current) {
         const storedTitle = threadTitlesByKey.get(key);
-        if (storedTitle === undefined || storedTitle === title) {
+        if (storedTitle === undefined || storedTitle !== entry.previousTitle) {
           next ??= new Map(current);
           next.delete(key);
         }
@@ -3173,7 +3179,7 @@ export default function Sidebar() {
             attemptUnpin(threadRef);
             return;
           case "rename":
-            startThreadRename(threadRef, optimisticTitles.get(threadKey) ?? thread.title);
+            startThreadRename(threadRef, optimisticTitles.get(threadKey)?.title ?? thread.title);
             return;
           case "regenerate-title": {
             if (isRegeneratingTitle) return;
@@ -3704,7 +3710,7 @@ export default function Sidebar() {
                     const rowVariant = isCard ? "card" : "slim";
                     // Optimistic renames shadow the stored title until the
                     // coalesced stream catches up (see optimisticTitles).
-                    const optimisticTitle = optimisticTitles.get(threadKey);
+                    const optimisticTitle = optimisticTitles.get(threadKey)?.title;
                     const rowThread =
                       optimisticTitle === undefined || optimisticTitle === thread.title
                         ? thread
