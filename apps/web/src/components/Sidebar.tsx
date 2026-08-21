@@ -2466,11 +2466,13 @@ export default function Sidebar() {
       let next: Map<string, { title: string; chain: readonly string[] }> | null = null;
       for (const [key, entry] of current) {
         const storedTitle = threadTitlesByKey.get(key);
-        if (
-          storedTitle === undefined ||
-          storedTitle === entry.title ||
-          !entry.chain.includes(storedTitle)
-        ) {
+        // Retire once the store reaches the final link or leaves the chain.
+        // Matching an EARLIER link keeps the override up so intermediate
+        // frames never flash. A rename landing back on an earlier title
+        // leaves a visually inert entry until the next title change, which
+        // is fine: it renders exactly what the store renders.
+        const idx = storedTitle === undefined ? -1 : entry.chain.indexOf(storedTitle);
+        if (idx === -1 || idx === entry.chain.length - 1) {
           next ??= new Map(current);
           next.delete(key);
         }
@@ -3238,7 +3240,9 @@ export default function Sidebar() {
           case "archive": {
             if (confirmThreadArchive) {
               const confirmed = await settlePromise(() =>
-                api.dialogs.confirm(`Archive thread "${thread.title}"?`),
+                api.dialogs.confirm(
+                  `Archive thread "${optimisticTitles.get(threadKey)?.title ?? thread.title}"?`,
+                ),
               );
               if (confirmed._tag === "Failure" || !confirmed.value) return;
             }
@@ -3268,7 +3272,7 @@ export default function Sidebar() {
               const confirmed = await settlePromise(() =>
                 api.dialogs.confirm(
                   [
-                    `Delete thread "${thread.title}"?`,
+                    `Delete thread "${optimisticTitles.get(threadKey)?.title ?? thread.title}"?`,
                     "This permanently clears conversation history for this thread.",
                   ].join("\n"),
                   { variant: "destructive" },

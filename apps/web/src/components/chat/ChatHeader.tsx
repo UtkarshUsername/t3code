@@ -175,11 +175,14 @@ export const ChatHeader = memo(function ChatHeader({
   } | null>(null);
   useEffect(() => {
     if (pendingTitle === null) return;
-    if (
-      pendingTitle.threadId !== activeThreadId ||
-      activeThreadTitle === pendingTitle.title ||
-      !pendingTitle.chain.includes(activeThreadTitle)
-    ) {
+    // Retire once the store reaches the final link or leaves the chain.
+    // Matching an EARLIER link keeps the override up so intermediate frames
+    // never flash. A rename landing back on an earlier title leaves a
+    // visually inert override until the next title change, which is fine:
+    // it renders exactly what the store renders.
+    const idx =
+      pendingTitle.threadId === activeThreadId ? pendingTitle.chain.indexOf(activeThreadTitle) : -1;
+    if (idx === -1 || idx === pendingTitle.chain.length - 1) {
       setPendingTitle(null);
     }
   }, [pendingTitle, activeThreadId, activeThreadTitle]);
