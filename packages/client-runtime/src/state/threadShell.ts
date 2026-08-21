@@ -31,9 +31,15 @@ const EMPTY_THREAD_REFS_BY_PROJECT: ReadonlyMap<
 
 // Single fridge note for rename optimism. Every shell reader shadows through
 // it, so sidebar rows, search, header, and dialogs all show the just-committed
-// title without per surface plumbing. Retires when the store moves off the
-// pre rename baseline, which covers both landing and a racing title change.
-export type OptimisticThreadTitle = { readonly title: string; readonly baseline: string };
+// title without per surface plumbing. Chain tracks every committed title from
+// the baseline through the final value so an intermediate store frame (A -> B
+// -> C) does not flash B. Entry retires when the store reaches the final
+// title or leaves the chain (racing regeneration).
+export type OptimisticThreadTitle = {
+  readonly title: string;
+  readonly baseline: string;
+  readonly chain: ReadonlyArray<string>;
+};
 
 export function nextOptimisticThreadTitles(
   current: ReadonlyMap<string, OptimisticThreadTitle>,
@@ -41,9 +47,11 @@ export function nextOptimisticThreadTitles(
   title: string,
   displayedTitle: string,
 ): ReadonlyMap<string, OptimisticThreadTitle> {
-  const baseline = current.get(key)?.baseline ?? displayedTitle;
+  const existing = current.get(key);
+  const chain = existing ? [...existing.chain, title] : [displayedTitle, title];
+  const baseline = chain[0] ?? displayedTitle;
   const next = new Map(current);
-  next.set(key, { title, baseline });
+  next.set(key, { title, baseline, chain });
   return next;
 }
 
@@ -64,10 +72,6 @@ export function createEnvironmentThreadShellAtoms(input: {
     environmentId: EnvironmentId,
   ) => Atom.Atom<OrchestrationShellSnapshot | null>;
 }) {
-  const optimisticTitlesAtom = Atom.make<ReadonlyMap<string, OptimisticThreadTitle>>(
-    new Map(),
-  ).pipe(Atom.withLabel("optimistic-thread-titles"));
-
   const environmentThreadsAtom = Atom.family((environmentId: EnvironmentId) =>
     Atom.make(
       (get): ReadonlyArray<OrchestrationThreadShell> =>
@@ -84,6 +88,43 @@ export function createEnvironmentThreadShellAtoms(input: {
       return new Map(threads.map((thread) => [thread.id, thread] as const));
     }).pipe(Atom.withLabel(`environment-thread-index:${environmentId}`)),
   );
+
+  const rawOptimisticTitlesAtom = Atom.make<ReadonlyMap<string, OptimisticThreadTitle>>(
+    new Map(),
+  ).pipe(Atom.withLabel("optimistic-thread-titles:raw"));
+
+  // Filter out entries that have fulfilled (store reached final title) or
+  // diverged (store left the chain via regenerate-title or another client).
+  // This is a derived view so the map auto-prunes and `nextOptimistic...`
+  // sees a clean baseline for the next rename.
+  const filteredOptimisticTitlesAtom = Atom.make(
+    (get): ReadonlyMap<string, OptimisticThreadTitle> => {
+      const raw = get(rawOptimisticTitlesAtom);
+      if (raw.size === 0) return raw;
+      let pruned: Map<string, OptimisticThreadTitle> | null = null;
+      for (const [key, entry] of raw) {
+        const ref = parseThreadKey(key);
+        const source = get(environmentThreadIndexAtom(ref.environmentId)).get(ref.threadId);
+        if (source === undefined) {
+          pruned ??= new Map(raw);
+          pruned.delete(key);
+          continue;
+        }
+        const chain = entry.chain ?? [entry.baseline, entry.title];
+        if (!chain.includes(source.title) || source.title === entry.title) {
+          pruned ??= new Map(raw);
+          pruned.delete(key);
+        }
+      }
+      return pruned ?? raw;
+    },
+  ).pipe(Atom.withLabel("optimistic-thread-titles:filtered"));
+
+  const optimisticTitlesAtom = Atom.writable(
+    (get) => get(filteredOptimisticTitlesAtom),
+    (ctx, value: ReadonlyMap<string, OptimisticThreadTitle>) =>
+      ctx.set(rawOptimisticTitlesAtom, value),
+  ).pipe(Atom.withLabel("optimistic-thread-titles"));
 
   const environmentThreadRefsAtom = Atom.family((environmentId: EnvironmentId) => {
     let previous: ReadonlyArray<ScopedThreadRef> = [];
@@ -138,23 +179,30 @@ export function createEnvironmentThreadShellAtoms(input: {
     let previousSource: OrchestrationThreadShell | null = null;
     let previousOptimisticTitle: string | undefined = undefined;
     let previousOptimisticBaseline: string | undefined = undefined;
+    let previousOptimisticChain: ReadonlyArray<string> | undefined = undefined;
     let previousValue: EnvironmentThreadShell | null = null;
     return Atom.make((get) => {
       const source = get(environmentThreadIndexAtom(ref.environmentId)).get(ref.threadId) ?? null;
       const optimistic = get(optimisticTitlesAtom).get(key);
+      const chain = optimistic?.chain;
       if (
         source === previousSource &&
         optimistic?.title === previousOptimisticTitle &&
-        optimistic?.baseline === previousOptimisticBaseline
+        optimistic?.baseline === previousOptimisticBaseline &&
+        chain === previousOptimisticChain
       ) {
         return previousValue;
       }
       previousSource = source;
       previousOptimisticTitle = optimistic?.title;
       previousOptimisticBaseline = optimistic?.baseline;
+      previousOptimisticChain = chain;
       if (source === null) {
         previousValue = null;
-      } else if (optimistic !== undefined && source.title === optimistic.baseline) {
+      } else if (optimistic !== undefined) {
+        // Filtered view guarantees this entry is still pending or
+        // is an intermediate of a chained rename (A->B->C while store
+        // still at A or B). Show the final title.
         previousValue = scopeThreadShell(ref.environmentId, {
           ...source,
           title: optimistic.title,
