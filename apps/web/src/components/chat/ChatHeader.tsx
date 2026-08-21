@@ -154,47 +154,35 @@ export const ChatHeader = memo(function ChatHeader({
   // Inline rename, keyed by thread: navigating away drops an in-progress
   // rename instead of committing stale text. Cleared on thread change (not
   // just hidden) so returning to the thread doesn't revive the old draft.
-  const [renaming, setRenaming] = useState<{ threadId: ThreadId; title: string } | null>(null);
+  // Once submitted (`awaiting`), the editor stays mounted still showing what
+  // was typed until activeThreadTitle moves off its pre-rename value: the
+  // store learns about renames via a coalesced server-side stream, so
+  // closing when the command settles would flash the old title for a beat.
+  // Whatever lands first (this rename or a racing change like regeneration)
+  // becomes the visible truth.
+  const [renaming, setRenaming] = useState<{
+    threadId: ThreadId;
+    title: string;
+    awaiting: { baseline: string } | null;
+  } | null>(null);
   if (renaming !== null && renaming.threadId !== activeThreadId) {
     setRenaming(null);
   }
   const renamingTitle = renaming?.threadId === activeThreadId ? renaming.title : null;
   const renameCommittedRef = useRef(false);
-  // Title committed to the server but not yet reflected by activeThreadTitle
-  // (the store learns about renames via a coalesced server-side stream).
-  // Shown in place of the stored title so confirming a rename never flashes
-  // the old one. `chain` is every title this override chain has committed,
-  // oldest first: the store may deliver them one at a time, so the override
-  // stays up while the store walks the chain and retires when the store
-  // reaches the latest title or lands on anything else (a newer title
-  // change like regeneration won).
-  const [pendingTitle, setPendingTitle] = useState<{
-    threadId: ThreadId;
-    title: string;
-    chain: readonly string[];
-  } | null>(null);
   useEffect(() => {
-    if (pendingTitle === null) return;
-    // Retire once the store reaches the final link or leaves the chain.
-    // Matching an EARLIER link keeps the override up so intermediate frames
-    // never flash. A rename landing back on an earlier title leaves a
-    // visually inert override until the next title change, which is fine:
-    // it renders exactly what the store renders.
-    const idx =
-      pendingTitle.threadId === activeThreadId ? pendingTitle.chain.indexOf(activeThreadTitle) : -1;
-    if (idx === -1 || idx === pendingTitle.chain.length - 1) {
-      setPendingTitle(null);
+    if (renaming?.threadId !== activeThreadId || renaming.awaiting === null) return;
+    if (activeThreadTitle !== renaming.awaiting.baseline) {
+      setRenaming(null);
     }
-  }, [pendingTitle, activeThreadId, activeThreadTitle]);
-  const displayTitle =
-    pendingTitle?.threadId === activeThreadId ? pendingTitle.title : activeThreadTitle;
+  }, [renaming, activeThreadId, activeThreadTitle]);
   const startRename = useCallback(() => {
     renameCommittedRef.current = false;
-    setRenaming({ threadId: activeThreadId, title: displayTitle });
-  }, [activeThreadId, displayTitle]);
+    setRenaming({ threadId: activeThreadId, title: activeThreadTitle, awaiting: null });
+  }, [activeThreadId, activeThreadTitle]);
   const commitRename = useCallback(
     (title: string) => {
-      const resolution = resolveRenameCommit({ title, originalTitle: displayTitle });
+      const resolution = resolveRenameCommit({ title, originalTitle: activeThreadTitle });
       if (resolution.action === "reject-empty") {
         setRenaming(null);
         toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
@@ -204,31 +192,22 @@ export const ChatHeader = memo(function ChatHeader({
         setRenaming(null);
         return;
       }
-      // Close immediately and show the committed title optimistically: the
-      // store title arrives via a coalesced server stream, so waiting for it
-      // would flash the old title for a beat. A rejection reverts to it.
-      setRenaming(null);
-      // Extend any override already in flight so the store can walk through
-      // the intermediate titles without flashing them.
-      setPendingTitle((current) => {
-        const existing = current?.threadId === activeThreadId ? current : null;
-        return {
-          threadId: activeThreadId,
-          title: resolution.title,
-          chain: [...(existing ? existing.chain : [activeThreadTitle]), resolution.title],
-        };
+      // Hold the editor open showing the typed title until the store catches
+      // up; closing now would flash the stored title for a beat. A rejection
+      // closes it and reverts.
+      renameCommittedRef.current = true;
+      setRenaming({
+        threadId: activeThreadId,
+        title: resolution.title,
+        awaiting: { baseline: activeThreadTitle },
       });
       void updateThreadMetadata({
         environmentId: activeThreadEnvironmentId,
         input: { threadId: activeThreadId, title: resolution.title },
       }).then((result) => {
         if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          setPendingTitle((current) =>
-            current !== null &&
-            current.threadId === activeThreadId &&
-            current.title === resolution.title
-              ? null
-              : current,
+          setRenaming((current) =>
+            current?.threadId === activeThreadId && current.awaiting !== null ? null : current,
           );
           const error = squashAtomCommandFailure(result);
           toastManager.add({
@@ -239,13 +218,7 @@ export const ChatHeader = memo(function ChatHeader({
         }
       });
     },
-    [
-      activeThreadEnvironmentId,
-      activeThreadId,
-      activeThreadTitle,
-      displayTitle,
-      updateThreadMetadata,
-    ],
+    [activeThreadEnvironmentId, activeThreadId, activeThreadTitle, updateThreadMetadata],
   );
   const { openMenu } = useThreadActionMenu({
     threadRef: isServerThread ? activeThreadRef : null,
@@ -341,31 +314,31 @@ export const ChatHeader = memo(function ChatHeader({
                   <button
                     ref={titleButtonRef}
                     type="button"
-                    aria-label={`Thread actions for ${displayTitle}`}
+                    aria-label={`Thread actions for ${activeThreadTitle}`}
                     aria-haspopup="menu"
                     onClick={openMenuFromTitle}
                     className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 }
               >
-                <h2 className="min-w-0 truncate">{displayTitle}</h2>
+                <h2 className="min-w-0 truncate">{activeThreadTitle}</h2>
                 <ChevronDownIcon
                   aria-hidden
                   className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100 group-focus-visible/thread-title:opacity-100"
                 />
               </TooltipTrigger>
-              <TooltipPopup side="top">{displayTitle}</TooltipPopup>
+              <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
             </Tooltip>
           ) : (
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <h2 aria-label={displayTitle} className="min-w-0 flex-1 truncate">
-                    {displayTitle}
+                  <h2 aria-label={activeThreadTitle} className="min-w-0 flex-1 truncate">
+                    {activeThreadTitle}
                   </h2>
                 }
               />
-              <TooltipPopup side="top">{displayTitle}</TooltipPopup>
+              <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
             </Tooltip>
           )}
         </WorkspaceBreadcrumbItem>
