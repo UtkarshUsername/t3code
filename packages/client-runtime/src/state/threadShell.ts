@@ -29,12 +29,45 @@ const EMPTY_THREAD_REFS_BY_PROJECT: ReadonlyMap<
   ReadonlyArray<ScopedThreadRef>
 > = new Map();
 
+// Single fridge note for rename optimism. Every shell reader shadows through
+// it, so sidebar rows, search, header, and dialogs all show the just-committed
+// title without per surface plumbing. Retires when the store moves off the
+// pre rename baseline, which covers both landing and a racing title change.
+export type OptimisticThreadTitle = { readonly title: string; readonly baseline: string };
+
+export function nextOptimisticThreadTitles(
+  current: ReadonlyMap<string, OptimisticThreadTitle>,
+  key: string,
+  title: string,
+  displayedTitle: string,
+): ReadonlyMap<string, OptimisticThreadTitle> {
+  const baseline = current.get(key)?.baseline ?? displayedTitle;
+  const next = new Map(current);
+  next.set(key, { title, baseline });
+  return next;
+}
+
+export function withoutOptimisticThreadTitle(
+  current: ReadonlyMap<string, OptimisticThreadTitle>,
+  key: string,
+  title: string,
+): ReadonlyMap<string, OptimisticThreadTitle> {
+  if (current.get(key)?.title !== title) return current;
+  const next = new Map(current);
+  next.delete(key);
+  return next;
+}
+
 export function createEnvironmentThreadShellAtoms(input: {
   readonly catalogValueAtom: Atom.Atom<EnvironmentCatalogState>;
   readonly snapshotAtom: (
     environmentId: EnvironmentId,
   ) => Atom.Atom<OrchestrationShellSnapshot | null>;
 }) {
+  const optimisticTitlesAtom = Atom.make<ReadonlyMap<string, OptimisticThreadTitle>>(
+    new Map(),
+  ).pipe(Atom.withLabel("optimistic-thread-titles"));
+
   const environmentThreadsAtom = Atom.family((environmentId: EnvironmentId) =>
     Atom.make(
       (get): ReadonlyArray<OrchestrationThreadShell> =>
@@ -103,14 +136,32 @@ export function createEnvironmentThreadShellAtoms(input: {
   const threadShellAtomFamily = Atom.family((key: string) => {
     const ref = parseThreadKey(key);
     let previousSource: OrchestrationThreadShell | null = null;
+    let previousOptimisticTitle: string | undefined = undefined;
+    let previousOptimisticBaseline: string | undefined = undefined;
     let previousValue: EnvironmentThreadShell | null = null;
     return Atom.make((get) => {
       const source = get(environmentThreadIndexAtom(ref.environmentId)).get(ref.threadId) ?? null;
-      if (source === previousSource) {
+      const optimistic = get(optimisticTitlesAtom).get(key);
+      if (
+        source === previousSource &&
+        optimistic?.title === previousOptimisticTitle &&
+        optimistic?.baseline === previousOptimisticBaseline
+      ) {
         return previousValue;
       }
       previousSource = source;
-      previousValue = source === null ? null : scopeThreadShell(ref.environmentId, source);
+      previousOptimisticTitle = optimistic?.title;
+      previousOptimisticBaseline = optimistic?.baseline;
+      if (source === null) {
+        previousValue = null;
+      } else if (optimistic !== undefined && source.title === optimistic.baseline) {
+        previousValue = scopeThreadShell(ref.environmentId, {
+          ...source,
+          title: optimistic.title,
+        });
+      } else {
+        previousValue = scopeThreadShell(ref.environmentId, source);
+      }
       return previousValue;
     }).pipe(Atom.withLabel(`environment-thread-shell:${key}`));
   });
@@ -182,5 +233,6 @@ export function createEnvironmentThreadShellAtoms(input: {
     threadShellsForProjectRefsAtom: (refs: ReadonlyArray<ScopedProjectRef>) =>
       threadShellsForProjectRefsAtomFamily(projectRefCollectionKey(refs)),
     threadShellAtom: (ref: ScopedThreadRef) => threadShellAtomFamily(threadKey(ref)),
+    optimisticTitlesAtom,
   };
 }

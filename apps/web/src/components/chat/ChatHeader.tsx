@@ -5,11 +5,15 @@ import {
   type ResolvedKeybindingsConfig,
   type ThreadId,
 } from "@t3tools/contracts";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
+import {
+  nextOptimisticThreadTitles,
+  withoutOptimisticThreadTitle,
+} from "@t3tools/client-runtime/state/threadShell";
 import type { ChangeRequestSettleSource } from "@t3tools/client-runtime/state/thread-settled";
 import { ChevronDownIcon } from "lucide-react";
 import {
@@ -36,7 +40,8 @@ import { useRemoteOpenState, type RemoteOpenMode } from "../../remoteOpen";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useT3ProjectFileScripts } from "~/hooks/useT3ProjectFileScripts";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
-import { threadEnvironment } from "../../state/threads";
+import { appAtomRegistry } from "../../rpc/atomRegistry";
+import { environmentThreadShells, threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { ProjectFavicon } from "../ProjectFavicon";
 import {
@@ -169,37 +174,13 @@ export const ChatHeader = memo(function ChatHeader({
   }
   const renamingTitle = renaming?.threadId === activeThreadId ? renaming.title : null;
   const renameCommittedRef = useRef(false);
-  // Committed but not yet reflected by activeThreadTitle (the store learns
-  // about renames via a coalesced server-side stream). Shown in place of the
-  // stored title so confirming a rename never flashes the old one. Retires
-  // as soon as the store moves off its pre-rename value: either this rename
-  // landed or a racing change like regeneration won - either way that is the
-  // visible truth. A second rename before then overwrites the entry on the
-  // same baseline.
-  const [pendingTitle, setPendingTitle] = useState<{
-    threadId: ThreadId;
-    title: string;
-    baseline: string;
-  } | null>(null);
-  useEffect(() => {
-    if (
-      pendingTitle === null ||
-      pendingTitle.threadId !== activeThreadId ||
-      activeThreadTitle === pendingTitle.baseline
-    ) {
-      return;
-    }
-    setPendingTitle(null);
-  }, [pendingTitle, activeThreadId, activeThreadTitle]);
-  const displayTitle =
-    pendingTitle?.threadId === activeThreadId ? pendingTitle.title : activeThreadTitle;
   const startRename = useCallback(() => {
     renameCommittedRef.current = false;
-    setRenaming({ threadId: activeThreadId, title: displayTitle });
-  }, [activeThreadId, displayTitle]);
+    setRenaming({ threadId: activeThreadId, title: activeThreadTitle });
+  }, [activeThreadId, activeThreadTitle]);
   const commitRename = useCallback(
     (title: string) => {
-      const resolution = resolveRenameCommit({ title, originalTitle: displayTitle });
+      const resolution = resolveRenameCommit({ title, originalTitle: activeThreadTitle });
       if (resolution.action === "reject-empty") {
         setRenaming(null);
         toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
@@ -209,27 +190,29 @@ export const ChatHeader = memo(function ChatHeader({
         setRenaming(null);
         return;
       }
-      // Close immediately and keep showing the committed title via
-      // pendingTitle; closing without it would flash the stored title for a
-      // beat while the store catches up. A rejection reverts to it.
       setRenaming(null);
-      setPendingTitle({
-        threadId: activeThreadId,
-        title: resolution.title,
-        baseline: activeThreadTitle,
-      });
+      const threadKey = scopedThreadKey(activeThreadRef);
+      appAtomRegistry.set(
+        environmentThreadShells.optimisticTitlesAtom,
+        nextOptimisticThreadTitles(
+          appAtomRegistry.get(environmentThreadShells.optimisticTitlesAtom),
+          threadKey,
+          resolution.title,
+          activeThreadTitle,
+        ),
+      );
       void updateThreadMetadata({
         environmentId: activeThreadEnvironmentId,
         input: { threadId: activeThreadId, title: resolution.title },
       }).then((result) => {
         if (result._tag !== "Failure") return;
-        // Drop the override on every failure, including interrupts: an
-        // interrupted command never ran, so the store will never move off
-        // baseline and only this teardown retires the shown title.
-        setPendingTitle((current) =>
-          current?.threadId === activeThreadId && current.title === resolution.title
-            ? null
-            : current,
+        appAtomRegistry.set(
+          environmentThreadShells.optimisticTitlesAtom,
+          withoutOptimisticThreadTitle(
+            appAtomRegistry.get(environmentThreadShells.optimisticTitlesAtom),
+            threadKey,
+            resolution.title,
+          ),
         );
         if (isAtomCommandInterrupted(result)) return;
         const error = squashAtomCommandFailure(result);
@@ -243,8 +226,8 @@ export const ChatHeader = memo(function ChatHeader({
     [
       activeThreadEnvironmentId,
       activeThreadId,
+      activeThreadRef,
       activeThreadTitle,
-      displayTitle,
       updateThreadMetadata,
     ],
   );
@@ -253,7 +236,6 @@ export const ChatHeader = memo(function ChatHeader({
     projectCwd: activeProjectCwd,
     changeRequest,
     onStartRename: startRename,
-    titleOverride: displayTitle,
   });
   const titleButtonRef = useRef<HTMLButtonElement | null>(null);
   const titleMenuTimerRef = useRef<number | null>(null);
@@ -392,7 +374,7 @@ export const ChatHeader = memo(function ChatHeader({
                   <button
                     ref={titleButtonRef}
                     type="button"
-                    aria-label={`Thread actions for ${displayTitle}`}
+                    aria-label={`Thread actions for ${activeThreadTitle}`}
                     aria-haspopup="menu"
                     onClick={openMenuFromTitle}
                     onDoubleClick={handleTitleDoubleClick}
@@ -401,25 +383,25 @@ export const ChatHeader = memo(function ChatHeader({
                   />
                 }
               >
-                <h2 className="min-w-0 truncate">{displayTitle}</h2>
+                <h2 className="min-w-0 truncate">{activeThreadTitle}</h2>
                 <ChevronDownIcon
                   aria-hidden
                   data-thread-title-chevron
                   className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100 group-focus-visible/thread-title:opacity-100"
                 />
               </TooltipTrigger>
-              <TooltipPopup side="top">{displayTitle}</TooltipPopup>
+              <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
             </Tooltip>
           ) : (
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <h2 aria-label={displayTitle} className="min-w-0 flex-1 truncate">
-                    {displayTitle}
+                  <h2 aria-label={activeThreadTitle} className="min-w-0 flex-1 truncate">
+                    {activeThreadTitle}
                   </h2>
                 }
               />
-              <TooltipPopup side="top">{displayTitle}</TooltipPopup>
+              <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
             </Tooltip>
           )}
         </WorkspaceBreadcrumbItem>
