@@ -2385,11 +2385,13 @@ export default function Sidebar() {
   // Titles committed to the server but not yet reflected by the thread shells
   // (the store learns about renames via a coalesced server-side stream).
   // Shown in place of the stored title so confirming a rename never flashes
-  // the old one. `previousTitle` is what the store showed when the override
-  // was set: once the store moves off it (our title landed, or a newer
-  // title change like regeneration won), the override retires.
+  // the old one. `chain` is every title this override chain has committed,
+  // oldest first: the store may deliver them one at a time, so the override
+  // stays up while the store walks the chain and retires when the store
+  // reaches the latest title or lands on anything else (a newer title
+  // change like regeneration won).
   const [optimisticTitles, setOptimisticTitles] = useState<
-    ReadonlyMap<string, { title: string; previousTitle: string }>
+    ReadonlyMap<string, { title: string; chain: readonly string[] }>
   >(() => new Map());
   const startThreadRename = useCallback((threadRef: ScopedThreadRef, title: string) => {
     setRenamingThreadKey(scopedThreadKey(threadRef));
@@ -2422,12 +2424,18 @@ export default function Sidebar() {
       // waiting for the store would flash the old title for a beat. A
       // rejection reverts to the stored title.
       setRenamingThreadKey(null);
-      // Baseline against the store's current title: the override retires as
-      // soon as the store moves off it, whichever title change wins.
-      const previousTitle = threadTitlesByKey.get(threadKey) ?? originalTitle;
-      setOptimisticTitles((current) =>
-        new Map(current).set(threadKey, { title: trimmed, previousTitle }),
-      );
+      // Extend any override already in flight so the store can walk through
+      // the intermediate titles without flashing them.
+      setOptimisticTitles((current) => {
+        const existing = current.get(threadKey);
+        const base = existing
+          ? existing.chain
+          : [threadTitlesByKey.get(threadKey) ?? originalTitle];
+        return new Map(current).set(threadKey, {
+          title: trimmed,
+          chain: [...base, trimmed],
+        });
+      });
       void updateThreadMetadata({
         environmentId: threadRef.environmentId,
         input: { threadId: threadRef.threadId, title: trimmed },
@@ -2455,10 +2463,14 @@ export default function Sidebar() {
   useEffect(() => {
     if (optimisticTitles.size === 0) return;
     setOptimisticTitles((current) => {
-      let next: Map<string, { title: string; previousTitle: string }> | null = null;
+      let next: Map<string, { title: string; chain: readonly string[] }> | null = null;
       for (const [key, entry] of current) {
         const storedTitle = threadTitlesByKey.get(key);
-        if (storedTitle === undefined || storedTitle !== entry.previousTitle) {
+        if (
+          storedTitle === undefined ||
+          storedTitle === entry.title ||
+          !entry.chain.includes(storedTitle)
+        ) {
           next ??= new Map(current);
           next.delete(key);
         }

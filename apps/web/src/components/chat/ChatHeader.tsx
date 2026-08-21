@@ -163,19 +163,22 @@ export const ChatHeader = memo(function ChatHeader({
   // Title committed to the server but not yet reflected by activeThreadTitle
   // (the store learns about renames via a coalesced server-side stream).
   // Shown in place of the stored title so confirming a rename never flashes
-  // the old one. `previousTitle` is what the store showed when the override
-  // was set: once the store moves off it (our title landed, or a newer
-  // title change like regeneration won), the override retires.
+  // the old one. `chain` is every title this override chain has committed,
+  // oldest first: the store may deliver them one at a time, so the override
+  // stays up while the store walks the chain and retires when the store
+  // reaches the latest title or lands on anything else (a newer title
+  // change like regeneration won).
   const [pendingTitle, setPendingTitle] = useState<{
     threadId: ThreadId;
     title: string;
-    previousTitle: string;
+    chain: readonly string[];
   } | null>(null);
   useEffect(() => {
     if (pendingTitle === null) return;
     if (
       pendingTitle.threadId !== activeThreadId ||
-      activeThreadTitle !== pendingTitle.previousTitle
+      activeThreadTitle === pendingTitle.title ||
+      !pendingTitle.chain.includes(activeThreadTitle)
     ) {
       setPendingTitle(null);
     }
@@ -202,12 +205,15 @@ export const ChatHeader = memo(function ChatHeader({
       // store title arrives via a coalesced server stream, so waiting for it
       // would flash the old title for a beat. A rejection reverts to it.
       setRenaming(null);
-      // Baseline against the store's current title: the override retires as
-      // soon as the store moves off it, whichever title change wins.
-      setPendingTitle({
-        threadId: activeThreadId,
-        title: resolution.title,
-        previousTitle: activeThreadTitle,
+      // Extend any override already in flight so the store can walk through
+      // the intermediate titles without flashing them.
+      setPendingTitle((current) => {
+        const existing = current?.threadId === activeThreadId ? current : null;
+        return {
+          threadId: activeThreadId,
+          title: resolution.title,
+          chain: [...(existing ? existing.chain : [activeThreadTitle]), resolution.title],
+        };
       });
       void updateThreadMetadata({
         environmentId: activeThreadEnvironmentId,
