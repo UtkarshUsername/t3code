@@ -1022,6 +1022,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   );
   const handleRenameBlur = useCallback(() => {
     if (!renameCommittedRef.current) {
+      // Mark committed so the blur-commit path cannot resubmit if the editor
+      // is refocused while it waits for the store to catch up.
+      renameCommittedRef.current = true;
       onCommitRename(threadRef, renamingTitle, thread.title);
     }
   }, [onCommitRename, renamingTitle, thread.title, threadRef]);
@@ -2429,18 +2432,21 @@ export default function Sidebar() {
         environmentId: threadRef.environmentId,
         input: { threadId: threadRef.threadId, title: trimmed },
       }).then((result) => {
-        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          setAwaitingRename((current) => (current?.threadKey === threadKey ? null : current));
-          setRenamingThreadKey((current) => (current === threadKey ? null : current));
-          const error = squashAtomCommandFailure(result);
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Failed to rename thread",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            }),
-          );
-        }
+        if (result._tag !== "Failure") return;
+        // Close on every failure, including interrupts: an interrupted
+        // command never ran, so the store will never move off baseline and
+        // only this teardown releases the row's editor.
+        setAwaitingRename((current) => (current?.threadKey === threadKey ? null : current));
+        setRenamingThreadKey((current) => (current === threadKey ? null : current));
+        if (isAtomCommandInterrupted(result)) return;
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Failed to rename thread",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
       });
     },
     [updateThreadMetadata],

@@ -205,17 +205,20 @@ export const ChatHeader = memo(function ChatHeader({
         environmentId: activeThreadEnvironmentId,
         input: { threadId: activeThreadId, title: resolution.title },
       }).then((result) => {
-        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          setRenaming((current) =>
-            current?.threadId === activeThreadId && current.awaiting !== null ? null : current,
-          );
-          const error = squashAtomCommandFailure(result);
-          toastManager.add({
-            type: "error",
-            title: "Failed to rename thread",
-            description: error instanceof Error ? error.message : "An error occurred.",
-          });
-        }
+        if (result._tag !== "Failure") return;
+        // Close on every failure, including interrupts: an interrupted
+        // command never ran, so the store will never move off baseline and
+        // only this teardown closes the editor.
+        setRenaming((current) =>
+          current?.threadId === activeThreadId && current.awaiting !== null ? null : current,
+        );
+        if (isAtomCommandInterrupted(result)) return;
+        const error = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Failed to rename thread",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        });
       });
     },
     [activeThreadEnvironmentId, activeThreadId, activeThreadTitle, updateThreadMetadata],
