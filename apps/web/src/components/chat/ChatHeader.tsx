@@ -244,6 +244,7 @@ export const ChatHeader = memo(function ChatHeader({
     projectCwd: activeProjectCwd,
     changeRequest,
     onStartRename: startRename,
+    titleOverride: displayTitle,
   });
   const titleButtonRef = useRef<HTMLButtonElement | null>(null);
   const openMenuFromTitle = useCallback(() => {

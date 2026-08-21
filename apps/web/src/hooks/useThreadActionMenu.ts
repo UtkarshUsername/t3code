@@ -63,8 +63,10 @@ export function useThreadActionMenu(input: {
   /** PR feeding auto-settle classification, as resolved by the caller. */
   readonly changeRequest: ChangeRequestSettleSource | null;
   readonly onStartRename: () => void;
+  /** What the caller currently displays as the title, so confirm dialogs name the thread the way the screen does while a just-committed rename is landing. */
+  readonly titleOverride?: string;
 }) {
-  const { threadRef, projectCwd, changeRequest, onStartRename } = input;
+  const { threadRef, projectCwd, changeRequest, onStartRename, titleOverride } = input;
   const {
     settleThread,
     unsettleThread,
@@ -115,6 +117,9 @@ export function useThreadActionMenu(input: {
         // what the user is looking at.
         const thread = readThreadShell(threadRef);
         if (!thread) return;
+        // Confirm dialogs name the thread the way the screen does: while a
+        // just-committed rename is still landing, that is the override.
+        const shownTitle = titleOverride ?? thread.title;
         const now = new Date();
         const supports = {
           settlement: readEnvironmentSupportsSettlement(threadRef.environmentId),
@@ -259,7 +264,7 @@ export function useThreadActionMenu(input: {
           case "archive": {
             if (confirmThreadArchive) {
               const confirmed = await settlePromise(() =>
-                api.dialogs.confirm(`Archive thread "${thread.title}"?`),
+                api.dialogs.confirm(`Archive thread "${shownTitle}"?`),
               );
               if (confirmed._tag === "Failure" || !confirmed.value) return;
             }
@@ -282,7 +287,7 @@ export function useThreadActionMenu(input: {
               const confirmed = await settlePromise(() =>
                 api.dialogs.confirm(
                   [
-                    `Delete thread "${thread.title}"?`,
+                    `Delete thread "${shownTitle}"?`,
                     "This permanently clears conversation history for this thread.",
                   ].join("\n"),
                   { variant: "destructive" },
@@ -328,6 +333,7 @@ export function useThreadActionMenu(input: {
       snoozeThread,
       threadRef,
       timestampFormat,
+      titleOverride,
       unpinThread,
       unsettleThread,
       unsnoozeThread,
