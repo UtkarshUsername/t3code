@@ -1140,7 +1140,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       !props.isActive &&
       !isSelected &&
       "opacity-70 transition-opacity hover:opacity-100",
-    isFileDragOver && "bg-sidebar-row-hover ring-1 ring-sidebar-ring",
+    isFileDragOver && "bg-sidebar-row-hover ring-1 ring-ring",
   );
 
   const title = isRenaming ? (
@@ -2367,12 +2367,15 @@ export default function Sidebar() {
       const threadKey = scopedThreadKey(threadRef);
       if (routeThreadKeyRef.current === threadKey) return;
       await navigateToThread(threadRef);
-      if (
+      // A newer drop may have replaced ours while the navigation was in
+      // flight; only clear the stash if it still belongs to this drop.
+      const landed =
         router.buildLocation({
           to: "/$environmentId/$threadId",
           params: buildThreadRouteParams(threadRef),
-        }).pathname !== router.state.location.pathname
-      ) {
+        }).pathname === router.state.location.pathname;
+      const pending = useSidebarPendingFileDropStore.getState().pending;
+      if (!landed && pending !== null && scopedThreadKey(pending.threadRef) === threadKey) {
         clearPendingFileDrop();
       }
     },

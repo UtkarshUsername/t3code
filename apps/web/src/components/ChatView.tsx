@@ -6257,6 +6257,35 @@ function ChatViewContent(props: ChatViewProps) {
     void onRevertToTurnCountRef.current(targetTurnCount);
   }, []);
 
+  // Files dropped on a sidebar row land here once the dropped-on thread is
+  // actually open, then take the exact same path as a workspace drop:
+  // validate, compress, focus the composer, never send. Kept above the
+  // no-active-thread early return so hook order never changes.
+  const pendingSidebarFileDrop = useSidebarPendingFileDropStore((state) => state.pending);
+  const consumePendingFileDrop = useSidebarPendingFileDropStore(
+    (state) => state.consumePendingFileDrop,
+  );
+  useEffect(() => {
+    if (pendingSidebarFileDrop === null) return;
+    if (
+      activeThreadId === null ||
+      pendingSidebarFileDrop.threadRef.threadId !== activeThreadId ||
+      activeThreadEnvironmentId !== pendingSidebarFileDrop.threadRef.environmentId
+    ) {
+      return;
+    }
+    const files = consumePendingFileDrop(pendingSidebarFileDrop.threadRef);
+    if (files !== null) {
+      composerRef.current?.addDroppedFiles(files);
+    }
+  }, [
+    activeThreadId,
+    activeThreadEnvironmentId,
+    composerRef,
+    consumePendingFileDrop,
+    pendingSidebarFileDrop,
+  ]);
+
   // Empty state: no active thread
   if (!activeThread) {
     return <NoActiveThreadState />;
@@ -6409,34 +6438,6 @@ function ChatViewContent(props: ChatViewProps) {
       </Suspense>
     ) : null
   ) : null;
-
-  const pendingSidebarFileDrop = useSidebarPendingFileDropStore((state) => state.pending);
-  const consumePendingFileDrop = useSidebarPendingFileDropStore(
-    (state) => state.consumePendingFileDrop,
-  );
-  // Files dropped on a sidebar row land here once the dropped-on thread is
-  // actually open, then take the exact same path as a workspace drop:
-  // validate, compress, focus the composer, never send.
-  useEffect(() => {
-    if (pendingSidebarFileDrop === null) return;
-    if (
-      activeThreadId === null ||
-      pendingSidebarFileDrop.threadRef.threadId !== activeThreadId ||
-      activeThreadEnvironmentId !== pendingSidebarFileDrop.threadRef.environmentId
-    ) {
-      return;
-    }
-    const files = consumePendingFileDrop(pendingSidebarFileDrop.threadRef);
-    if (files !== null) {
-      composerRef.current?.addDroppedFiles(files);
-    }
-  }, [
-    activeThreadId,
-    activeThreadEnvironmentId,
-    composerRef,
-    consumePendingFileDrop,
-    pendingSidebarFileDrop,
-  ]);
 
   const workspaceFileDropHandlers = makeWorkspaceFileDropHandlers({
     setDragActive: setIsWorkspaceFileDragActive,
