@@ -6,6 +6,8 @@ import { threadHasStarted } from "../components/ChatView.logic";
 import { finalizePromotedDraftThreadByRef, useComposerDraftStore } from "../composerDraftStore";
 import { resolveThreadRouteRef, resolveThreadRouteRenderState } from "../threadRoutes";
 import { resolveThreadSyncPhase } from "../threadSync";
+import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { SidebarInset } from "~/components/ui/sidebar";
 import {
   useEnvironmentThreadRefs,
@@ -63,6 +65,12 @@ function ChatThreadRouteView() {
     }
 
     if (renderState === "missing" && environmentHasAnyThreads) {
+      // Navigation already resolved onto this path, so a drop aimed here
+      // passed its landing check; it can never be attached now, release it.
+      const { pending, clearPendingFileDrop } = useSidebarPendingFileDropStore.getState();
+      if (pending && scopedThreadKey(pending.threadRef) === scopedThreadKey(threadRef)) {
+        clearPendingFileDrop();
+      }
       void navigate({ to: "/", replace: true });
     }
   }, [bootstrapComplete, environmentHasAnyThreads, navigate, renderState, threadRef]);
