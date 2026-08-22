@@ -1140,7 +1140,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       !props.isActive &&
       !isSelected &&
       "opacity-70 transition-opacity hover:opacity-100",
-    isFileDragOver && "bg-sidebar-row-hover ring-1 ring-ring",
+    isFileDragOver && "bg-sidebar-row-hover ring-1 ring-inset ring-primary/70",
   );
 
   const title = isRenaming ? (
