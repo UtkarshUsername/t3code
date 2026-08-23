@@ -16,12 +16,14 @@ export interface PluginDefinition {
   readonly id: string;
   readonly version: string;
   readonly requires?: ReadonlyArray<string>;
+  readonly optional?: ReadonlyArray<string>;
   readonly provides?: Readonly<Record<string, unknown>>;
   readonly activate: (context: PluginActivationContext) => void | Promise<void>;
 }
 
 export interface PluginActivationContext {
   readonly resolve: <Service>(capability: string) => Service;
+  readonly resolveOptional: <Service>(capability: string) => Service | undefined;
   readonly register: {
     (slot: string, contribution: Contribution): void;
     <Value>(slot: string, contribution: Contribution, value: Value): void;

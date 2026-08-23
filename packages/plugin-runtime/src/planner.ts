@@ -50,6 +50,108 @@ export const isPluginPlanningError = Schema.is(PluginPlanningError);
 const createNullPrototypeRecord = <Value>(): Record<string, Value> =>
   Object.create(null) as Record<string, Value>;
 
+const orderWithOptionalDependencies = (
+  definitions: ReadonlyArray<PluginDefinition>,
+  providersByCapability: ReadonlyMap<string, PluginDefinition>,
+): ReadonlyArray<PluginDefinition> => {
+  const activeById = new Map(definitions.map((definition) => [definition.id, definition]));
+  const originalIndex = new Map(definitions.map((definition, index) => [definition.id, index]));
+  const outgoing = new Map(definitions.map((definition) => [definition.id, new Set<string>()]));
+  const indegree = new Map(definitions.map((definition) => [definition.id, 0]));
+  const addEdge = (providerId: string, consumerId: string): boolean => {
+    const consumers = outgoing.get(providerId);
+    if (consumers === undefined || consumers.has(consumerId)) return false;
+    consumers.add(consumerId);
+    indegree.set(consumerId, (indegree.get(consumerId) ?? 0) + 1);
+    return true;
+  };
+  const hasPath = (start: string, target: string): boolean => {
+    const pending = [start];
+    const visited = new Set<string>();
+    while (pending.length > 0) {
+      const id = pending.pop();
+      if (id === undefined || visited.has(id)) continue;
+      if (id === target) return true;
+      visited.add(id);
+      pending.push(...(outgoing.get(id) ?? []));
+    }
+    return false;
+  };
+
+  for (const definition of definitions) {
+    for (const capability of definition.requires ?? []) {
+      const provider = providersByCapability.get(capability);
+      if (provider !== undefined && activeById.has(provider.id)) {
+        addEdge(provider.id, definition.id);
+      }
+    }
+  }
+  let optionalEdgeAdded = false;
+  for (const definition of definitions) {
+    for (const capability of [...(definition.optional ?? [])].sort()) {
+      const provider = providersByCapability.get(capability);
+      if (
+        provider === undefined ||
+        !activeById.has(provider.id) ||
+        provider.id === definition.id ||
+        hasPath(definition.id, provider.id)
+      ) {
+        continue;
+      }
+      optionalEdgeAdded = addEdge(provider.id, definition.id) || optionalEdgeAdded;
+    }
+  }
+
+  if (!optionalEdgeAdded) return definitions;
+
+  const byOriginalOrder = (left: string, right: string) =>
+    (originalIndex.get(left) ?? 0) - (originalIndex.get(right) ?? 0);
+  const ready: Array<string> = [];
+  const pushReady = (id: string) => {
+    ready.push(id);
+    for (let index = ready.length - 1; index > 0; ) {
+      const parent = Math.floor((index - 1) / 2);
+      if (byOriginalOrder(ready[parent]!, ready[index]!) <= 0) break;
+      [ready[parent], ready[index]] = [ready[index]!, ready[parent]!];
+      index = parent;
+    }
+  };
+  const popReady = (): string | undefined => {
+    const first = ready[0];
+    const last = ready.pop();
+    if (first === undefined || last === undefined || ready.length === 0) return first;
+    ready[0] = last;
+    for (let index = 0; ; ) {
+      const left = index * 2 + 1;
+      const right = left + 1;
+      if (left >= ready.length) break;
+      const smallest =
+        right < ready.length && byOriginalOrder(ready[right]!, ready[left]!) < 0 ? right : left;
+      if (byOriginalOrder(ready[index]!, ready[smallest]!) <= 0) break;
+      [ready[index], ready[smallest]] = [ready[smallest]!, ready[index]!];
+      index = smallest;
+    }
+    return first;
+  };
+  for (const definition of definitions) {
+    if (indegree.get(definition.id) === 0) pushReady(definition.id);
+  }
+  const ordered: Array<PluginDefinition> = [];
+  while (ready.length > 0) {
+    const id = popReady();
+    if (id === undefined) break;
+    const definition = activeById.get(id);
+    if (definition === undefined) continue;
+    ordered.push(definition);
+    for (const consumerId of outgoing.get(id) ?? []) {
+      const remaining = (indegree.get(consumerId) ?? 0) - 1;
+      indegree.set(consumerId, remaining);
+      if (remaining === 0) pushReady(consumerId);
+    }
+  }
+  return ordered;
+};
+
 export const planComposition = (
   definitions: ReadonlyArray<PluginDefinition>,
 ): PlannedComposition => {
@@ -144,7 +246,7 @@ export const planComposition = (
     }
   }
 
-  return { blocked, definitions: ordered };
+  return { blocked, definitions: orderWithOptionalDependencies(ordered, providersByCapability) };
 };
 
 const sameStrings = (left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean => {
@@ -163,6 +265,7 @@ const sameDefinition = (left: PluginDefinition, right: PluginDefinition): boolea
     return false;
   }
   if (!sameStrings(left.requires ?? [], right.requires ?? [])) return false;
+  if (!sameStrings(left.optional ?? [], right.optional ?? [])) return false;
 
   const leftProvides = left.provides ?? {};
   const rightProvides = right.provides ?? {};
@@ -187,7 +290,7 @@ const dependentsByPlugin = (definitions: ReadonlyArray<PluginDefinition>) => {
     }
   }
   for (const definition of definitions) {
-    for (const capability of definition.requires ?? []) {
+    for (const capability of [...(definition.requires ?? []), ...(definition.optional ?? [])]) {
       const providerId = providers.get(capability);
       if (providerId === undefined) continue;
       const values = dependents.get(providerId) ?? new Set<string>();

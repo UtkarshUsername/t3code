@@ -102,10 +102,19 @@ const makeDefinition = (
   onCleanupError: (error: unknown) => void,
 ): PluginDefinition => {
   const declaredCommands = new Set(discovered.manifest.contributes?.commands ?? []);
+  const providedCapabilities = Object.fromEntries(
+    (discovered.manifest.provides ?? []).map((capability) => [
+      capability,
+      Object.freeze({ capability, packageId: discovered.manifest.id }),
+    ]),
+  );
 
   return {
     id: discovered.manifest.id,
     version: discovered.manifest.version,
+    requires: [...(discovered.manifest.requires ?? [])],
+    optional: [...(discovered.manifest.optional ?? [])],
+    provides: providedCapabilities,
     activate(context: PluginActivationContext) {
       context.onDispose(onRetired);
       const api: PluginPackageApi = {
@@ -393,10 +402,11 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
   const statusUnlocked = Effect.fn("PluginPackageManager.status")(function* (
     operation: PluginPackageOperation,
   ): Effect.fn.Return<PluginPackageStatusSnapshot, PluginPackageOperationError> {
-    const [discovery, enabledIds] = yield* Effect.all(
+    const [discovery, enabledIds, composition] = yield* Effect.all(
       [
         discover(operation),
         readEnabledIds.pipe(Effect.mapError((error) => operationError(operation, error))),
+        catalog.composition,
       ],
       { concurrency: "unbounded" },
     );
@@ -410,15 +420,29 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
       const packageManifest = activeManifest ?? discovered.get(id)?.manifest;
       if (packageManifest === undefined) continue;
       const enabled = enabledIds.has(id);
-      const active = activeDefinitions.has(id);
+      const active = composition.active.includes(id);
+      const blocked = composition.blocked[id];
+      const packageError = packageErrors.get(id);
       const error =
-        packageErrors.get(id) ?? (enabled && !active ? "enabled package is not active" : undefined);
+        packageError ??
+        blocked ??
+        (enabled && !active ? "enabled package is not active" : undefined);
+      const state =
+        packageError !== undefined
+          ? "error"
+          : blocked !== undefined
+            ? "blocked"
+            : error !== undefined
+              ? "error"
+              : active
+                ? "active"
+                : "disabled";
       packages.push({
         id: packageManifest.id,
         version: packageManifest.version,
         apiVersion: packageManifest.apiVersion,
         enabled,
-        state: error !== undefined ? "error" : active ? "active" : "disabled",
+        state,
         capabilities: [...packageManifest.capabilities],
         contributions: { commands: [...(packageManifest.contributes?.commands ?? [])] },
         ...(error === undefined ? {} : { error }),

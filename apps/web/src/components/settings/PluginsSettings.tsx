@@ -33,6 +33,7 @@ import { searchableSetting } from "./settingsSearch";
 const statePresentation = {
   active: { label: "Active", variant: "success" },
   disabled: { label: "Disabled", variant: "secondary" },
+  blocked: { label: "Blocked", variant: "warning" },
   error: { label: "Error", variant: "error" },
 } as const;
 

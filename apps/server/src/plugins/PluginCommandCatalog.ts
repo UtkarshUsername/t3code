@@ -134,6 +134,7 @@ export class PluginCommandCatalog extends Context.Service<
   PluginCommandCatalog,
   {
     readonly list: Effect.Effect<PluginCommandCatalogSnapshot>;
+    readonly composition: Effect.Effect<PluginRuntimeSnapshot>;
     readonly changes: Stream.Stream<PluginCommandCatalogSnapshot>;
     readonly invoke: (
       input: PluginCommandInvokeInput,
@@ -216,6 +217,7 @@ export const make = Effect.gen(function* () {
 
   return PluginCommandCatalog.of({
     changes: SubscriptionRef.changes(state),
+    composition: runtime.snapshot,
     invoke,
     list: SubscriptionRef.get(state),
     reconcile,

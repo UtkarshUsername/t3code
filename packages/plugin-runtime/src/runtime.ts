@@ -89,7 +89,7 @@ class PluginUndeclaredCapabilityError extends Schema.TaggedErrorClass<PluginUnde
 class PluginActivationContextExpiredError extends Schema.TaggedErrorClass<PluginActivationContextExpiredError>()(
   "PluginActivationContextExpiredError",
   {
-    method: Schema.Literals(["resolve", "register", "onDispose"]),
+    method: Schema.Literals(["resolve", "resolveOptional", "register", "onDispose"]),
     pluginId: Schema.String,
   },
 ) {
@@ -306,6 +306,8 @@ const snapshotDefinitions = (
   definitions.map((definition) => {
     const requires =
       definition.requires === undefined ? undefined : Object.freeze([...definition.requires]);
+    const optional =
+      definition.optional === undefined ? undefined : Object.freeze([...definition.optional]);
     const provides =
       definition.provides === undefined
         ? undefined
@@ -315,6 +317,7 @@ const snapshotDefinitions = (
       version: definition.version,
       activate: definition.activate,
       ...(requires === undefined ? {} : { requires }),
+      ...(optional === undefined ? {} : { optional }),
       ...(provides === undefined ? {} : { provides }),
     });
   });
@@ -486,7 +489,9 @@ export const make = (options: PluginRuntimeOptions = {}) =>
           const finalizers: Array<() => void | Promise<void>> = [];
           const plugin: LivePlugin = { definition, scope, contributions, cleanupErrors };
           let activating = true;
-          const assertActivating = (method: "resolve" | "register" | "onDispose") => {
+          const assertActivating = (
+            method: "resolve" | "resolveOptional" | "register" | "onDispose",
+          ) => {
             if (!activating) {
               throw new PluginActivationContextExpiredError({ method, pluginId: definition.id });
             }
@@ -502,6 +507,13 @@ export const make = (options: PluginRuntimeOptions = {}) =>
                 throw new PluginResolutionError({ capability, pluginId: definition.id });
               }
               return capabilities.get(capability) as Service;
+            },
+            resolveOptional: <Service>(capability: string): Service | undefined => {
+              assertActivating("resolveOptional");
+              if (!(definition.optional ?? []).includes(capability)) {
+                throw new PluginUndeclaredCapabilityError({ capability, pluginId: definition.id });
+              }
+              return capabilities.get(capability) as Service | undefined;
             },
             register: (
               slot: string,

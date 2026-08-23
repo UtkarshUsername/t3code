@@ -55,6 +55,19 @@ export default function activate(api) {
 }
 `;
 
+const commandPluginSource = (id: string, label: string) => `
+export default function activate(api) {
+  api.registerCommand(
+    {
+      id: ${encodeJsonString(id)},
+      label: ${encodeJsonString(label)},
+      surfaces: ["web", "desktop"]
+    },
+    () => ({ message: ${encodeJsonString(label)}, tone: "success" })
+  );
+}
+`;
+
 const pluginSourceWithHelper = `
 import { message } from "./message.mjs";
 
@@ -294,6 +307,90 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
       expect(decodePersistedEnabledPlugins(persisted).enabledPluginIds ?? []).toEqual([]);
       expect(yield* fileSystem.readFileString(`${packageDirectory}/disposed.log`)).toBe(
         "disposed\ndisposed\n",
+      );
+    }),
+  );
+
+  it.effect("maps package dependencies into deterministic activation and blocked status", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3code-plugin-package-dependency-test-",
+      });
+      const providerId = "com.acme.database";
+      const consumerId = "com.acme.issues";
+      const providerCommandId = "acme.database.status";
+      const consumerCommandId = "acme.issues.create";
+      const databaseCapability = "acme.database@1";
+      const providerManifest = {
+        ...manifest,
+        id: providerId,
+        provides: [databaseCapability],
+        contributes: { commands: [providerCommandId] },
+      } as const;
+      const consumerManifest = {
+        ...manifest,
+        id: consumerId,
+        requires: [databaseCapability],
+        contributes: { commands: [consumerCommandId] },
+      } as const;
+      for (const [id, packageManifest, source] of [
+        [providerId, providerManifest, commandPluginSource(providerCommandId, "database provider")],
+        [consumerId, consumerManifest, commandPluginSource(consumerCommandId, "issues consumer")],
+      ] as const) {
+        const directory = `${baseDir}/userdata/plugins/${id}`;
+        yield* fileSystem.makeDirectory(directory, { recursive: true });
+        yield* fileSystem.writeFileString(
+          `${directory}/t3-plugin.json`,
+          encodeManifest(packageManifest),
+        );
+        yield* fileSystem.writeFileString(`${directory}/index.mjs`, source);
+      }
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+
+          const blocked = yield* manager.enable(consumerId);
+          expect(blocked.packages.find(({ id }) => id === consumerId)).toMatchObject({
+            enabled: true,
+            state: "blocked",
+            error: `Missing dependency: ${databaseCapability}`,
+          });
+          expect((yield* catalog.list).commands.map(({ id }) => id)).not.toContain(
+            consumerCommandId,
+          );
+
+          const active = yield* manager.enable(providerId);
+          expect(active.packages.find(({ id }) => id === providerId)).toMatchObject({
+            enabled: true,
+            state: "active",
+          });
+          expect(active.packages.find(({ id }) => id === consumerId)).toMatchObject({
+            enabled: true,
+            state: "active",
+          });
+          const commandIds = (yield* catalog.list).commands.map(({ id }) => id);
+          expect(commandIds.indexOf(providerCommandId)).toBeLessThan(
+            commandIds.indexOf(consumerCommandId),
+          );
+
+          const providerDisabled = yield* manager.disable(providerId);
+          expect(providerDisabled.packages.find(({ id }) => id === providerId)).toMatchObject({
+            enabled: false,
+            state: "disabled",
+          });
+          expect(providerDisabled.packages.find(({ id }) => id === consumerId)).toMatchObject({
+            enabled: true,
+            state: "blocked",
+            error: `Missing dependency: ${databaseCapability}`,
+          });
+          const remainingCommandIds = (yield* catalog.list).commands.map(({ id }) => id);
+          expect(remainingCommandIds).not.toContain(providerCommandId);
+          expect(remainingCommandIds).not.toContain(consumerCommandId);
+        }),
       );
     }),
   );

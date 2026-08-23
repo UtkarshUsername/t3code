@@ -76,6 +76,19 @@ const consumer = (): PluginDefinition => ({
   },
 });
 
+const optionalConsumer = (): PluginDefinition => ({
+  id: "acme.optional-issues",
+  version: "1.0.0",
+  optional: ["acme.database@1"],
+  activate(context) {
+    const database = context.resolveOptional<{ readonly name: string }>("acme.database@1");
+    context.register("commands", {
+      id: "create-optional-issue",
+      label: database?.name ?? "database unavailable",
+    });
+  },
+});
+
 export function defineRuntimeContract(name: string, createRuntime: TestPluginRuntimeFactory) {
   describe(name, () => {
     it.effect("activates providers before consumers regardless of manifest order", () =>
@@ -109,6 +122,50 @@ export function defineRuntimeContract(name: string, createRuntime: TestPluginRun
           expect(snapshot.active).toEqual(["acme.clock"]);
           expect(snapshot.blocked["acme.issues"]).toContain("acme.database@1");
           expect(contributionLabels(snapshot, "status")).toEqual(["clock"]);
+          yield* runtime.dispose;
+        }),
+      ),
+    );
+
+    it.effect("orders available optional dependencies without blocking a missing one", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* createRuntime();
+          const consumerDefinition = optionalConsumer();
+
+          const withoutProvider = yield* runtime.reconcile([consumerDefinition]);
+          expect(withoutProvider.active).toEqual(["acme.optional-issues"]);
+          expect(contributionLabels(withoutProvider, "commands")).toEqual(["database unavailable"]);
+
+          const withProvider = yield* runtime.reconcile([consumerDefinition, provider()]);
+          expect(withProvider.active).toEqual(["acme.database", "acme.optional-issues"]);
+          expect(contributionLabels(withProvider, "commands")).toEqual(["database-1.0.0"]);
+          yield* runtime.dispose;
+        }),
+      ),
+    );
+
+    it.effect("drops optional ordering edges that would create a cycle", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* createRuntime();
+          const first: PluginDefinition = {
+            id: "acme.first",
+            version: "1.0.0",
+            optional: ["acme.second@1"],
+            provides: { "acme.first@1": "first" },
+            activate() {},
+          };
+          const second: PluginDefinition = {
+            id: "acme.second",
+            version: "1.0.0",
+            optional: ["acme.first@1"],
+            provides: { "acme.second@1": "second" },
+            activate() {},
+          };
+
+          const snapshot = yield* runtime.reconcile([first, second]);
+          expect(snapshot.active).toEqual(["acme.second", "acme.first"]);
           yield* runtime.dispose;
         }),
       ),
@@ -927,6 +984,19 @@ export function defineRuntimeContract(name: string, createRuntime: TestPluginRun
           );
           expect(failureMessage(undeclaredFailure)).toContain("did not declare");
           expect((yield* runtime.snapshot).active).toEqual([]);
+
+          const undeclaredOptionalConsumer: PluginDefinition = {
+            id: "acme.undeclared-optional-consumer",
+            version: "1.0.0",
+            activate(context) {
+              context.resolveOptional("acme.database@1");
+            },
+          };
+          const undeclaredOptionalFailure = yield* failureOf(
+            runtime.reconcile([provider(), undeclaredOptionalConsumer]),
+          );
+          expect(failureMessage(undeclaredOptionalFailure)).toContain("did not declare");
+          expect((yield* runtime.snapshot).active).toEqual([]);
           yield* runtime.dispose;
         }),
       ),
@@ -1022,6 +1092,35 @@ export function defineRuntimeContract(name: string, createRuntime: TestPluginRun
           yield* runtime.dispose;
         }),
       ),
+    );
+
+    it.effect(
+      "rejects duplicate capability providers without disturbing the current composition",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const runtime = yield* createRuntime();
+            yield* runtime.reconcile([provider()]);
+            const first: PluginDefinition = {
+              id: "acme.first-provider",
+              version: "1.0.0",
+              provides: { "acme.shared@1": "first" },
+              activate() {},
+            };
+            const second: PluginDefinition = {
+              id: "acme.second-provider",
+              version: "1.0.0",
+              provides: { "acme.shared@1": "second" },
+              activate() {},
+            };
+
+            expect(failureMessage(yield* failureOf(runtime.reconcile([first, second])))).toContain(
+              "Duplicate capability",
+            );
+            expect((yield* runtime.snapshot).active).toEqual(["acme.database"]);
+            yield* runtime.dispose;
+          }),
+        ),
     );
 
     it.effect("rejects dependency cycles without disturbing the current composition", () =>

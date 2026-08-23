@@ -14,7 +14,7 @@ export const PluginPackageCapability = Schema.String.check(
 );
 export type PluginPackageCapability = typeof PluginPackageCapability.Type;
 
-export const PluginPackageState = Schema.Literals(["disabled", "active", "error"]);
+export const PluginPackageState = Schema.Literals(["disabled", "active", "blocked", "error"]);
 export type PluginPackageState = typeof PluginPackageState.Type;
 
 export const PluginPackageContributions = Schema.Struct({

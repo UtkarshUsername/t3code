@@ -183,6 +183,28 @@ describe("PluginsSettingsPanel", () => {
     ).not.toBeNull();
   });
 
+  it("presents dependency-blocked packages distinctly from activation errors", () => {
+    query.data = {
+      errors: [],
+      packages: [
+        {
+          ...snapshot.packages[0]!,
+          state: "blocked",
+          error: "Missing dependency: acme.database@1",
+        },
+      ],
+    };
+    const panel = renderPanel();
+    const blockedRow = renderPackageRow(panel, "com.acme.active");
+
+    expect(
+      visitElements(
+        blockedRow,
+        (element) => element.props.variant === "warning" && element.props.children === "Blocked",
+      ),
+    ).not.toBeNull();
+  });
+
   it("routes disable, enable, reload, and refresh to the primary environment", async () => {
     const panel = renderPanel();
     const activeRow = renderPackageRow(panel, "com.acme.active");

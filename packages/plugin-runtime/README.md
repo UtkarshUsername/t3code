@@ -6,6 +6,12 @@ it uses a deterministic, stack-safe reconciliation planner and one effect child 
 
 cordis is not a dependency. a pure-only executor was rejected because plugin lifetimes and async cleanup should be owned by effect scopes.
 
+## dependencies
+
+`requires` capabilities block activation when no active provider exists. `optional` capabilities order an available provider before the consumer but do not block activation when absent; optional edges that would create a cycle are ignored deterministically. required cycles and duplicate capability providers reject before publication.
+
+activation code reads required capabilities with `resolve(...)` and optional capabilities with `resolveOptional(...)`. undeclared access fails activation. changing, adding, or removing a provider restarts its required and optional dependents while unrelated plugin scopes remain live.
+
 ## contributions
 
 plugins register detached, deeply frozen, json-compatible declarative metadata and an optional host-only live value. snapshots and `contributions(slot)` expose only frozen metadata. executable values never cross the rpc boundary.

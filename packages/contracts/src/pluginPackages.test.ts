@@ -56,6 +56,28 @@ describe("plugin package contracts", () => {
     });
   });
 
+  it("decodes an enabled package blocked by dependency resolution", () => {
+    expect(
+      decodeStatus({
+        errors: [],
+        packages: [
+          {
+            id: "com.acme.issues",
+            version: "1.0.0",
+            apiVersion: 1,
+            enabled: true,
+            state: "blocked",
+            capabilities: ["t3.commands@1"],
+            contributions: { commands: ["acme.issues.create"] },
+            error: "Missing dependency: acme.database@1",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      packages: [{ id: "com.acme.issues", state: "blocked" }],
+    });
+  });
+
   it("rejects malformed package ids and action payloads", () => {
     expect(() => decodeAction({ id: "runtime-status" })).toThrow();
     expect(() => decodeAction({ id: `com.${"a".repeat(252)}` })).toThrow();
