@@ -119,3 +119,9 @@ export const PREVIEW_RECORDING_INPUT_CHANNEL = "desktop:preview-recording-input"
 
 export const RECEIVE_PROVIDER_AUTH_CALLBACK_CHANNEL = "desktop:receive-provider-auth-callback";
 export const CANCEL_PROVIDER_AUTH_CALLBACK_CHANNEL = "desktop:cancel-provider-auth-callback";
+export const SPEECH_GET_STATUS_CHANNEL = "desktop:speech-get-status";
+export const SPEECH_START_CHANNEL = "desktop:speech-start";
+export const SPEECH_STOP_CHANNEL = "desktop:speech-stop";
+export const SPEECH_CANCEL_CHANNEL = "desktop:speech-cancel";
+export const SPEECH_REMOVE_MODEL_CHANNEL = "desktop:speech-remove-model";
+export const SPEECH_EVENT_CHANNEL = "desktop:speech-event";
