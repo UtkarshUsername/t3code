@@ -155,10 +155,10 @@ it.layer(NodeServices.layer)("plugin host capability broker", (it) => {
             const escapedDirectory = path.join(path.dirname(linked), "escape");
             yield* fileSystem.makeDirectory(outsideDirectory);
             yield* fileSystem.symlink(outsideDirectory, escapedDirectory);
-            expect((yield* Effect.exit(api.files.writeText("escape/leak.txt", "leak")))._tag).toBe(
-              "Failure",
-            );
-            expect(yield* fileSystem.exists(path.join(outsideDirectory, "leak.txt"))).toBe(false);
+            expect(
+              (yield* Effect.exit(api.files.writeText("escape/new/sub/leak.txt", "leak")))._tag,
+            ).toBe("Failure");
+            expect(yield* fileSystem.exists(path.join(outsideDirectory, "new"))).toBe(false);
           }),
         );
       }),

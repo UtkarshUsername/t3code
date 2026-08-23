@@ -33,7 +33,7 @@ const Permission = Schema.Union([
     Schema.isMaxLength(136),
   ),
   Schema.String.check(
-    Schema.isPattern(/^network:https:\/\/[A-Za-z0-9.-]+(?::[1-9]\d{0,4})?$/),
+    Schema.isPattern(/^network:https:\/\/[A-Za-z0-9.-]+(?::(?!443$)[1-9]\d{0,4})?$/),
     Schema.isMaxLength(255),
   ),
   Schema.String.check(

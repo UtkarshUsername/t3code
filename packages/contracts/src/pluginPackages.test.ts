@@ -102,7 +102,7 @@ describe("plugin package contracts", () => {
             enabled: false,
             state: "disabled",
             capabilities: [],
-            permissions: ["filesystem:/tmp"],
+            permissions: ["network:https://example.com:443"],
             grantedPermissions: [],
             contributions: { commands: [] },
           },

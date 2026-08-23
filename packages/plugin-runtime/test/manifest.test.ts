@@ -71,6 +71,7 @@ describe("PluginManifest", () => {
       "settings:read",
       "filesystem:/tmp",
       "network:file:///tmp/secret",
+      "network:https://example.com:443",
       "process:../sh",
       "secrets:UPPERCASE",
       "unknown:anything",

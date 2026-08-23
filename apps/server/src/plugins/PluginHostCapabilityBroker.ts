@@ -416,9 +416,40 @@ const make = Effect.gen(function* () {
       pluginId: string,
       relativePath: string,
     ): Effect.fn.Return<string, PluginHostCapabilityError> {
+      const pluginRoot = path.join(pluginDataRoot, pluginId);
       const root = path.join(pluginDataRoot, pluginId, "files");
       const lexical = yield* resolveFilePath(pluginId, relativePath);
       const parent = path.dirname(lexical);
+      let existingAncestor = parent;
+      while (existingAncestor !== pluginRoot) {
+        const exists = yield* fileSystem
+          .exists(existingAncestor)
+          .pipe(
+            Effect.mapError((cause) =>
+              fail(pluginId, "filesystem write", `could not inspect ${relativePath}`, cause),
+            ),
+          );
+        if (exists) break;
+        existingAncestor = path.dirname(existingAncestor);
+      }
+      const [canonicalPluginRoot, canonicalAncestor] = yield* Effect.all(
+        [fileSystem.realPath(pluginRoot), fileSystem.realPath(existingAncestor)],
+        { concurrency: "unbounded" },
+      ).pipe(
+        Effect.mapError((cause) =>
+          fail(pluginId, "filesystem write", `could not resolve ${relativePath}`, cause),
+        ),
+      );
+      if (
+        !isContained(canonicalPluginRoot, canonicalAncestor) ||
+        path.normalize(existingAncestor) !== path.normalize(canonicalAncestor)
+      ) {
+        return yield* fail(
+          pluginId,
+          "filesystem write",
+          "symbolic links are not allowed in plugin data",
+        );
+      }
       yield* fileSystem
         .makeDirectory(parent, { recursive: true })
         .pipe(
