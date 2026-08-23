@@ -168,6 +168,7 @@ export function PluginsSettingsPanel() {
         }
         if (!isAtomCommandInterrupted(result)) {
           const error = squashAtomCommandFailure(result);
+          status.refresh();
           toastManager.add({
             type: "error",
             title: `Could not ${action} plugin`,

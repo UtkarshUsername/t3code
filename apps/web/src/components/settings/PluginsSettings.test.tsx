@@ -1,5 +1,7 @@
 import type { ReactElement } from "react";
 import { EnvironmentId, type PluginPackageStatusSnapshot } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
+import { AsyncResult } from "effect/unstable/reactivity";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { visitElements } from "../../test/reactElementTree";
@@ -82,6 +84,12 @@ vi.mock("../../state/use-atom-command", () => ({
   },
 }));
 
+vi.mock("../ui/toast", () => ({
+  toastManager: { add: vi.fn() },
+}));
+
+import { toastManager } from "../ui/toast";
+
 import { PluginsSettingsPanel } from "./PluginsSettings";
 
 const snapshot: PluginPackageStatusSnapshot = {
@@ -141,6 +149,7 @@ describe("PluginsSettingsPanel", () => {
     query.error = null;
     query.isPending = false;
     query.refresh.mockReset();
+    vi.mocked(toastManager.add).mockReset();
     commands.enable.mockReset().mockResolvedValue({ _tag: "Success", value: snapshot });
     commands.disable.mockReset().mockResolvedValue({ _tag: "Success", value: snapshot });
     commands.reload.mockReset().mockResolvedValue({ _tag: "Success", value: snapshot });
@@ -214,6 +223,44 @@ describe("PluginsSettingsPanel", () => {
       input: { id: "com.acme.active" },
     });
     expect(query.refresh).toHaveBeenCalledTimes(4);
+  });
+
+  it("refreshes status and reports a toast when a lifecycle action fails", async () => {
+    commands.reload.mockResolvedValue(
+      AsyncResult.failure(Cause.fail(new Error("reload exploded"))),
+    );
+    const panel = renderPanel();
+    const activeRow = renderPackageRow(panel, "com.acme.active");
+    const reload = visitElements(
+      activeRow,
+      (element) => element.props["aria-label"] === "Reload com.acme.active",
+    );
+    (reload?.props.onClick as (() => void) | undefined)?.();
+    await flushPromises();
+
+    expect(commands.reload).toHaveBeenCalledWith({
+      environmentId,
+      input: { id: "com.acme.active" },
+    });
+    expect(query.refresh).toHaveBeenCalledTimes(1);
+    expect(toastManager.add).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "error", title: "Could not reload plugin" }),
+    );
+  });
+
+  it("does not refresh or toast when a lifecycle action is interrupted", async () => {
+    commands.disable.mockResolvedValue(AsyncResult.failure(Cause.interrupt(1)));
+    const panel = renderPanel();
+    const activeRow = renderPackageRow(panel, "com.acme.active");
+    const disable = visitElements(
+      activeRow,
+      (element) => element.props["aria-label"] === "Disable com.acme.active",
+    );
+    (disable?.props.onCheckedChange as ((checked: boolean) => void) | undefined)?.(false);
+    await flushPromises();
+
+    expect(query.refresh).not.toHaveBeenCalled();
+    expect(toastManager.add).not.toHaveBeenCalled();
   });
 
   it("keeps an empty environment actionable", () => {
