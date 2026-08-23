@@ -217,6 +217,14 @@ describe("PluginsSettingsPanel", () => {
       visitElements(
         activeRow,
         (element) =>
+          element.props.title === "t3.commands@1" &&
+          element.props.className === "min-w-0 max-w-full",
+      ),
+    ).not.toBeNull();
+    expect(
+      visitElements(
+        activeRow,
+        (element) =>
           element.props["data-plugin-permission"] === "state:read-write" &&
           element.props["data-granted"] === true,
       ),
@@ -226,7 +234,9 @@ describe("PluginsSettingsPanel", () => {
         activeRow,
         (element) =>
           element.props["data-plugin-permission"] === "network:https://api.acme.test" &&
-          element.props["data-granted"] === false,
+          element.props["data-granted"] === false &&
+          element.props.className === "min-w-0 max-w-full" &&
+          element.props.title === "network:https://api.acme.test approval required",
       ),
     ).not.toBeNull();
   });

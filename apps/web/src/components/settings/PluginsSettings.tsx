@@ -66,8 +66,8 @@ function PluginPackageRow({
       <Badge variant={state.variant}>{state.label}</Badge>
       <Badge variant="outline">v{pluginPackage.version}</Badge>
       {pluginPackage.capabilities.map((capability) => (
-        <Badge key={capability} variant="info">
-          {capability}
+        <Badge key={capability} variant="info" className="min-w-0 max-w-full" title={capability}>
+          <span className="truncate">{capability}</span>
         </Badge>
       ))}
       {pluginPackage.permissions.map((permission) => {
@@ -76,11 +76,15 @@ function PluginPackageRow({
           <Badge
             key={permission}
             variant={granted ? "success" : "warning"}
+            className="min-w-0 max-w-full"
+            title={`${permission}${granted ? " granted" : " approval required"}`}
             data-plugin-permission={permission}
             data-granted={granted}
           >
-            {permission}
-            {granted ? " granted" : " approval required"}
+            <span className="truncate">
+              {permission}
+              {granted ? " granted" : " approval required"}
+            </span>
           </Badge>
         );
       })}
