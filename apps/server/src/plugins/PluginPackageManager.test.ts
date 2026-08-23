@@ -2,7 +2,9 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { ServerSettingsError } from "@t3tools/contracts";
 import { it } from "@effect/vitest";
 import { expect } from "vite-plus/test";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -19,6 +21,8 @@ import * as PluginPackageManager from "./PluginPackageManager.ts";
 
 const packageId = "com.acme.runtime-status";
 const commandId = "acme.runtime-status";
+let testSymbolSequence = 0;
+const nextTestSymbol = (prefix: string) => `${prefix}-${testSymbolSequence++}`;
 
 const manifest = {
   manifestVersion: 1,
@@ -64,6 +68,49 @@ export default function activate(api) {
       surfaces: ["web", "desktop"]
     },
     () => ({ message: ${encodeJsonString(label)}, tone: "success" })
+  );
+}
+`;
+
+const retryingCommandPluginSource = (
+  id: string,
+  label: string,
+  attemptsSymbol: string,
+  failThroughAttempt = 1,
+) => `
+export default function activate(api) {
+  const key = Symbol.for(${encodeJsonString(attemptsSymbol)});
+  const attempts = (Reflect.get(globalThis, key) ?? 0) + 1;
+  Reflect.set(globalThis, key, attempts);
+  if (attempts <= ${String(failThroughAttempt)}) throw new Error("startup activation failed");
+  api.registerCommand(
+    {
+      id: ${encodeJsonString(id)},
+      label: ${encodeJsonString(label)},
+      surfaces: ["web", "desktop"]
+    },
+    () => ({ message: ${encodeJsonString(label)}, tone: "success" })
+  );
+}
+`;
+
+const gatedCommandPluginSource = (
+  id: string,
+  gateEnabledSymbol: string,
+  startedSymbol: string,
+  releaseSymbol: string,
+) => `
+export default async function activate(api) {
+  if (Reflect.get(globalThis, Symbol.for(${encodeJsonString(gateEnabledSymbol)})) === true) {
+    const markStarted = Reflect.get(globalThis, Symbol.for(${encodeJsonString(startedSymbol)}));
+    if (typeof markStarted === "function") markStarted();
+    await new Promise((resolve) => {
+      Reflect.set(globalThis, Symbol.for(${encodeJsonString(releaseSymbol)}), resolve);
+    });
+  }
+  api.registerCommand(
+    { id: ${encodeJsonString(id)}, label: "gated", surfaces: ["web"] },
+    () => ({ message: "gated", tone: "success" })
   );
 }
 `;
@@ -203,6 +250,170 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
       expect(exit._tag).toBe("Success");
       if (exit._tag === "Success") {
         expect(exit.value._tag).toBe("Failure");
+      }
+    }),
+  );
+
+  it.effect("retries a transient package activation failure during startup", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3code-plugin-package-startup-retry-test-",
+      });
+      const packageDirectory = `${baseDir}/userdata/plugins/${packageId}`;
+      const attemptsSymbol = nextTestSymbol("t3code-plugin-startup-retry");
+      yield* fileSystem.makeDirectory(packageDirectory, { recursive: true });
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/t3-plugin.json`,
+        encodeManifest(manifest),
+      );
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/index.mjs`,
+        retryingCommandPluginSource(commandId, "startup retry", attemptsSymbol),
+      );
+      Reflect.set(globalThis, Symbol.for(attemptsSymbol), 1);
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          yield* manager.enable(packageId);
+        }),
+      );
+      Reflect.set(globalThis, Symbol.for(attemptsSymbol), 0);
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+          expect(yield* manager.status).toMatchObject({
+            packages: [{ id: packageId, state: "active" }],
+          });
+          expect((yield* catalog.list).commands.map(({ id }) => id)).toContain(commandId);
+        }),
+      );
+      expect(Reflect.get(globalThis, Symbol.for(attemptsSymbol))).toBe(2);
+      Reflect.deleteProperty(globalThis, Symbol.for(attemptsSymbol));
+    }),
+  );
+
+  it.effect("continues startup after a persistent package failure", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3code-plugin-package-startup-isolation-test-",
+      });
+      const failingId = "com.acme.a-failing";
+      const workingId = "com.acme.z-working";
+      const failingCommandId = "acme.failing.status";
+      const workingCommandId = "acme.working.status";
+      const attemptsSymbol = nextTestSymbol("t3code-plugin-startup-failing");
+      for (const [id, declaredCommand] of [
+        [failingId, failingCommandId],
+        [workingId, workingCommandId],
+      ] as const) {
+        const directory = `${baseDir}/userdata/plugins/${id}`;
+        yield* fileSystem.makeDirectory(directory, { recursive: true });
+        yield* fileSystem.writeFileString(
+          `${directory}/t3-plugin.json`,
+          encodeManifest({ ...manifest, id, contributes: { commands: [declaredCommand] } }),
+        );
+        yield* fileSystem.writeFileString(
+          `${directory}/index.mjs`,
+          id === failingId
+            ? retryingCommandPluginSource(declaredCommand, id, attemptsSymbol, 2)
+            : commandPluginSource(declaredCommand, id),
+        );
+      }
+      Reflect.set(globalThis, Symbol.for(attemptsSymbol), 2);
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          yield* manager.enable(failingId);
+          yield* manager.enable(workingId);
+        }),
+      );
+      Reflect.set(globalThis, Symbol.for(attemptsSymbol), 0);
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+          const status = yield* manager.status;
+          expect(status.packages.find(({ id }) => id === failingId)).toMatchObject({
+            enabled: true,
+            state: "error",
+            error: "startup activation failed",
+          });
+          expect(status.packages.find(({ id }) => id === workingId)).toMatchObject({
+            enabled: true,
+            state: "active",
+          });
+          const commandIds = (yield* catalog.list).commands.map(({ id }) => id);
+          expect(commandIds).not.toContain(failingCommandId);
+          expect(commandIds).toContain(workingCommandId);
+        }),
+      );
+      expect(Reflect.get(globalThis, Symbol.for(attemptsSymbol))).toBe(2);
+      Reflect.deleteProperty(globalThis, Symbol.for(attemptsSymbol));
+    }),
+  );
+
+  it.effect("preserves interruption during startup activation", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3code-plugin-package-startup-interruption-test-",
+      });
+      const packageDirectory = `${baseDir}/userdata/plugins/${packageId}`;
+      const gateEnabledSymbol = nextTestSymbol("t3code-plugin-startup-gate");
+      const startedSymbol = `${gateEnabledSymbol}-started`;
+      const releaseSymbol = `${gateEnabledSymbol}-release`;
+      yield* fileSystem.makeDirectory(packageDirectory, { recursive: true });
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/t3-plugin.json`,
+        encodeManifest(manifest),
+      );
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/index.mjs`,
+        gatedCommandPluginSource(commandId, gateEnabledSymbol, startedSymbol, releaseSymbol),
+      );
+      Reflect.set(globalThis, Symbol.for(gateEnabledSymbol), false);
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          yield* manager.enable(packageId);
+        }),
+      );
+
+      let markStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve;
+      });
+      Reflect.set(globalThis, Symbol.for(gateEnabledSymbol), true);
+      Reflect.set(globalThis, Symbol.for(startedSymbol), markStarted);
+      const startup = yield* Effect.forkChild(
+        useEnvironment(baseDir, Effect.asVoid(PluginPackageManager.PluginPackageManager)),
+      );
+      yield* Effect.promise(() => started);
+      const interrupting = yield* Effect.forkChild(Fiber.interrupt(startup));
+      yield* Effect.yieldNow;
+      const release = Reflect.get(globalThis, Symbol.for(releaseSymbol));
+      expect(release).toBeTypeOf("function");
+      if (typeof release === "function") release();
+      yield* Fiber.join(interrupting);
+      const exit = yield* Fiber.await(startup);
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true);
+
+      for (const symbol of [gateEnabledSymbol, startedSymbol, releaseSymbol]) {
+        Reflect.deleteProperty(globalThis, Symbol.for(symbol));
       }
     }),
   );

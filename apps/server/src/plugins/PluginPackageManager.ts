@@ -624,29 +624,30 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
       yield* Effect.logWarning("Enabled local plugin package was not discovered", { id });
       continue;
     }
-    const startup = yield* Effect.exit(
-      Effect.gen(function* () {
-        const loaded = yield* loadDefinition(pluginPackage, "status");
-        const reconciled = yield* Effect.exit(
-          catalog
-            .reconcile(definitionList([id, loaded.definition]))
-            .pipe(Effect.mapError((error) => operationError("status", error, id))),
-        );
-        if (reconciled._tag === "Failure") {
-          yield* removeCacheDirectory(loaded.cacheDirectory);
-          return yield* Effect.failCause(reconciled.cause);
-        }
-        activeDefinitions.set(id, loaded.definition);
-        activeCacheDirectories.set(id, loaded.cacheDirectory);
-        activeManifests.set(id, pluginPackage.manifest);
-        activeRetirements.set(id, loaded.retired);
+    yield* Effect.gen(function* () {
+      const loaded = yield* loadDefinition(pluginPackage, "status");
+      const reconciled = yield* Effect.exit(
+        catalog
+          .reconcile(definitionList([id, loaded.definition]))
+          .pipe(Effect.mapError((error) => operationError("status", error, id))),
+      );
+      if (reconciled._tag === "Failure") {
+        yield* removeCacheDirectory(loaded.cacheDirectory);
+        return yield* Effect.failCause(reconciled.cause);
+      }
+      activeDefinitions.set(id, loaded.definition);
+      activeCacheDirectories.set(id, loaded.cacheDirectory);
+      activeManifests.set(id, pluginPackage.manifest);
+      activeRetirements.set(id, loaded.retired);
+    }).pipe(
+      Effect.retry({ times: 1 }),
+      Effect.catchCause((cause) => {
+        if (Cause.hasInterrupts(cause)) return Effect.failCause(cause);
+        const detail = detailFromCause(cause);
+        packageErrors.set(id, detail);
+        return Effect.logWarning("Failed to activate enabled local plugin package", { id, detail });
       }),
     );
-    if (startup._tag === "Failure") {
-      const detail = detailFromCause(startup.cause);
-      packageErrors.set(id, detail);
-      yield* Effect.logWarning("Failed to activate enabled local plugin package", { id, detail });
-    }
   }
 
   yield* Effect.addFinalizer(() =>
