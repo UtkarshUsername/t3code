@@ -248,7 +248,7 @@ describe("PluginsSettingsPanel", () => {
     );
   });
 
-  it("does not refresh or toast when a lifecycle action is interrupted", async () => {
+  it("refreshes status without a toast when a lifecycle action is interrupted", async () => {
     commands.disable.mockResolvedValue(AsyncResult.failure(Cause.interrupt(1)));
     const panel = renderPanel();
     const activeRow = renderPackageRow(panel, "com.acme.active");
@@ -259,7 +259,7 @@ describe("PluginsSettingsPanel", () => {
     (disable?.props.onCheckedChange as ((checked: boolean) => void) | undefined)?.(false);
     await flushPromises();
 
-    expect(query.refresh).not.toHaveBeenCalled();
+    expect(query.refresh).toHaveBeenCalledTimes(1);
     expect(toastManager.add).not.toHaveBeenCalled();
   });
 

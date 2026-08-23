@@ -6,7 +6,7 @@ import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
-import type { PluginDefinition } from "@t3tools/plugin-runtime";
+import { PluginRuntime, type PluginDefinition } from "@t3tools/plugin-runtime";
 
 import * as PluginCommandCatalog from "./PluginCommandCatalog.ts";
 
@@ -242,5 +242,67 @@ describe("plugin command catalog", () => {
         tone: "success",
       });
     }).pipe(Effect.provide(PluginCommandCatalog.layer)),
+  );
+
+  it.effect("does not invoke against a runtime generation before publishing its catalog", () =>
+    Effect.gen(function* () {
+      let generation = 0;
+      let blockPublication = false;
+      let markPublicationStarted!: () => void;
+      let releasePublication!: () => void;
+      const publicationStarted = new Promise<void>((resolve) => {
+        markPublicationStarted = resolve;
+      });
+      const publicationGate = new Promise<void>((resolve) => {
+        releasePublication = resolve;
+      });
+      const runtime = PluginRuntime.PluginRuntime.of({
+        reconcile: () =>
+          Effect.sync(() => {
+            generation += 1;
+            return { active: [], blocked: {}, contributions: {} };
+          }),
+        snapshot: Effect.succeed({ active: [], blocked: {}, contributions: {} }),
+        contributions: () =>
+          Effect.suspend(() => {
+            if (!blockPublication) {
+              return Effect.succeed({ generation, entries: [] });
+            }
+            return Effect.promise(() => {
+              markPublicationStarted();
+              return publicationGate;
+            }).pipe(Effect.as({ generation, entries: [] }));
+          }),
+        useContribution: (_slot, id, expectedGeneration) =>
+          Effect.fail(
+            expectedGeneration === generation
+              ? new PluginRuntime.PluginContributionNotFoundError({ id, slot: "commands" })
+              : new PluginRuntime.PluginContributionGenerationError({
+                  actual: generation,
+                  expected: expectedGeneration,
+                }),
+          ),
+        dispose: Effect.void,
+      });
+      const catalog = yield* PluginCommandCatalog.make.pipe(
+        Effect.provideService(PluginRuntime.PluginRuntime, runtime),
+      );
+      const first = yield* catalog.list;
+      blockPublication = true;
+      const replacement = yield* Effect.forkChild(catalog.reconcile([]));
+      yield* Effect.promise(() => publicationStarted);
+      const invocation = yield* Effect.forkChild(
+        Effect.exit(catalog.invoke({ generation: first.generation, id: "acme.hello" })),
+      );
+      yield* Effect.yieldNow;
+      const waitedForPublication = invocation.pollUnsafe() === undefined;
+      releasePublication();
+
+      const second = yield* Fiber.join(replacement);
+      const invocationExit = yield* Fiber.join(invocation);
+      expect(waitedForPublication).toBe(true);
+      expect(yield* catalog.list).toBe(second);
+      expect(Exit.isFailure(invocationExit)).toBe(true);
+    }),
   );
 });

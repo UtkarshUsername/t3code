@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { PluginCommandId } from "./pluginCommands.ts";
 
 export const PluginPackageId = Schema.String.check(
   Schema.isPattern(/^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+$/),
@@ -17,7 +18,7 @@ export const PluginPackageState = Schema.Literals(["disabled", "active", "error"
 export type PluginPackageState = typeof PluginPackageState.Type;
 
 export const PluginPackageContributions = Schema.Struct({
-  commands: Schema.Array(PluginPackageId),
+  commands: Schema.Array(PluginCommandId),
 });
 export type PluginPackageContributions = typeof PluginPackageContributions.Type;
 

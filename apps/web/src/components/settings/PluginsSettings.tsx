@@ -162,13 +162,12 @@ export function PluginsSettingsPanel() {
           input: { id: pluginPackage.id },
         });
         setPending(null);
+        status.refresh();
         if (result._tag === "Success") {
-          status.refresh();
           return;
         }
         if (!isAtomCommandInterrupted(result)) {
           const error = squashAtomCommandFailure(result);
-          status.refresh();
           toastManager.add({
             type: "error",
             title: `Could not ${action} plugin`,

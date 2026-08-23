@@ -47,6 +47,18 @@ describe("PluginManifest", () => {
     ).toThrow();
   });
 
+  it("rejects command ids longer than the invocation contract", () => {
+    expect(() =>
+      decodeManifest({
+        ...validManifest,
+        contributes: {
+          ...validManifest.contributes,
+          commands: [`acme.${"x".repeat(196)}`],
+        },
+      }),
+    ).toThrow();
+  });
+
   it("rejects malformed versions and capability ids", () => {
     expect(() => decodeManifest({ ...validManifest, version: "next" })).toThrow();
     expect(() => decodeManifest({ ...validManifest, version: "01.2.3" })).toThrow();

@@ -62,6 +62,25 @@ describe("plugin package contracts", () => {
     expect(() => decodeAction({ id: "com.acme.runtime-status", extra: true })).toThrow();
   });
 
+  it("rejects declared command ids that cannot be invoked", () => {
+    expect(() =>
+      decodeStatus({
+        errors: [],
+        packages: [
+          {
+            id: "com.acme.runtime-status",
+            version: "1.0.0",
+            apiVersion: 1,
+            enabled: false,
+            state: "disabled",
+            capabilities: ["t3.commands@1"],
+            contributions: { commands: [`acme.${"x".repeat(196)}`] },
+          },
+        ],
+      }),
+    ).toThrow();
+  });
+
   it("preserves operation causes without putting failure text in the stable message", () => {
     const cause = new Error("disk exploded");
     const error = new PluginPackageOperationError({ cause, operation: "enable" });

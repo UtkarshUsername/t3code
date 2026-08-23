@@ -186,30 +186,32 @@ export const make = Effect.gen(function* () {
   const invoke = Effect.fn("PluginCommandCatalog.invoke")(function* (
     input: PluginCommandInvokeInput,
   ) {
-    return yield* runtime
-      .useContribution<
-        PluginCommandHandler,
-        PluginCommandInvocationResult,
-        PluginCommandExecutionError,
-        never
-      >(COMMAND_SLOT, input.id, input.generation, (handler) => handler)
-      .pipe(
-        Effect.mapError((error) => {
-          if (isContributionGenerationError(error)) {
-            return new PluginCommandCatalogChangedError({
-              actualGeneration: error.actual,
-              expectedGeneration: error.expected,
+    return yield* reconcileSemaphore.withPermits(1)(
+      runtime
+        .useContribution<
+          PluginCommandHandler,
+          PluginCommandInvocationResult,
+          PluginCommandExecutionError,
+          never
+        >(COMMAND_SLOT, input.id, input.generation, (handler) => handler)
+        .pipe(
+          Effect.mapError((error) => {
+            if (isContributionGenerationError(error)) {
+              return new PluginCommandCatalogChangedError({
+                actualGeneration: error.actual,
+                expectedGeneration: error.expected,
+              });
+            }
+            if (isContributionNotFoundError(error)) {
+              return new PluginCommandNotFoundError({ id: input.id });
+            }
+            return new PluginCommandInvocationError({
+              cause: error,
+              id: input.id,
             });
-          }
-          if (isContributionNotFoundError(error)) {
-            return new PluginCommandNotFoundError({ id: input.id });
-          }
-          return new PluginCommandInvocationError({
-            cause: error,
-            id: input.id,
-          });
-        }),
-      );
+          }),
+        ),
+    );
   });
 
   return PluginCommandCatalog.of({

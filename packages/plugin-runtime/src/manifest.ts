@@ -5,6 +5,11 @@ const NamespacedId = Schema.String.check(
   Schema.isMaxLength(255),
 );
 
+const CommandId = Schema.String.check(
+  Schema.isPattern(/^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+$/),
+  Schema.isMaxLength(200),
+);
+
 const SemanticVersion = Schema.String.check(
   Schema.isPattern(
     /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
@@ -19,7 +24,7 @@ const RelativeEntrypoint = Schema.String.check(
 const Permission = Schema.String.check(Schema.isPattern(/^[a-z][a-z-]*:.+$/));
 
 const ContributionCatalog = Schema.Struct({
-  commands: Schema.optional(Schema.Array(NamespacedId)),
+  commands: Schema.optional(Schema.Array(CommandId)),
   settings: Schema.optional(Schema.Array(NamespacedId)),
   views: Schema.optional(Schema.Array(NamespacedId)),
   mobileCards: Schema.optional(Schema.Array(NamespacedId)),
