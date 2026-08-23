@@ -1928,7 +1928,7 @@ export function GeneralSettingsPanel() {
       <SettingsSection title="General">
         {window.desktopBridge?.speech && speechStatus?.supported ? (
           <SettingsRow
-            title="Local voice input"
+            {...searchableSetting("local-voice-input")}
             description={
               speechStatus.state === "missing-model"
                 ? "Downloads a 48 MiB English model on first use. Audio stays on this device."
