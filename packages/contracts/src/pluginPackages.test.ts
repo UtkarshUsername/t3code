@@ -91,24 +91,29 @@ describe("plugin package contracts", () => {
   });
 
   it("rejects unsupported host permissions in package status", () => {
-    expect(() =>
-      decodeStatus({
-        errors: [],
-        packages: [
-          {
-            id: "com.acme.runtime-status",
-            version: "1.0.0",
-            apiVersion: 1,
-            enabled: false,
-            state: "disabled",
-            capabilities: [],
-            permissions: ["network:https://example.com:443"],
-            grantedPermissions: [],
-            contributions: { commands: [] },
-          },
-        ],
-      }),
-    ).toThrow();
+    for (const permission of [
+      "network:https://example.com:443",
+      "network:https://example.com:99999",
+    ]) {
+      expect(() =>
+        decodeStatus({
+          errors: [],
+          packages: [
+            {
+              id: "com.acme.runtime-status",
+              version: "1.0.0",
+              apiVersion: 1,
+              enabled: false,
+              state: "disabled",
+              capabilities: [],
+              permissions: [permission],
+              grantedPermissions: [],
+              contributions: { commands: [] },
+            },
+          ],
+        }),
+      ).toThrow();
+    }
   });
 
   it("rejects declared command ids that cannot be invoked", () => {

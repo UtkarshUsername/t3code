@@ -72,6 +72,7 @@ describe("PluginManifest", () => {
       "filesystem:/tmp",
       "network:file:///tmp/secret",
       "network:https://example.com:443",
+      "network:https://example.com:99999",
       "process:../sh",
       "secrets:UPPERCASE",
       "unknown:anything",

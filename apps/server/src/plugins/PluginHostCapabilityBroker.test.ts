@@ -137,6 +137,11 @@ it.layer(NodeServices.layer)("plugin host capability broker", (it) => {
             yield* api.files.writeText("nested/value.txt", "plugin-owned");
             expect(yield* api.files.readText("nested/value.txt")).toBe("plugin-owned");
             expect((yield* Effect.exit(api.files.readText("../outside.txt")))._tag).toBe("Failure");
+            yield* fileSystem.writeFileString(
+              path.join(baseDir, "userdata", "plugin-data", pluginId, "files", "oversized.txt"),
+              "x".repeat(1_000_001),
+            );
+            expect((yield* Effect.exit(api.files.readText("oversized.txt")))._tag).toBe("Failure");
 
             const outside = path.join(baseDir, "outside.txt");
             const linked = path.join(

@@ -26,7 +26,9 @@ export const PluginHostPermission = Schema.Union([
     Schema.isMaxLength(136),
   ),
   Schema.String.check(
-    Schema.isPattern(/^network:https:\/\/[A-Za-z0-9.-]+(?::(?!443$)[1-9]\d{0,4})?$/),
+    Schema.isPattern(
+      /^network:https:\/\/[A-Za-z0-9.-]+(?::(?!443$)(?:[1-9]\d{0,3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5]))?$/,
+    ),
     Schema.isMaxLength(255),
   ),
   Schema.String.check(

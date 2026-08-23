@@ -121,7 +121,7 @@ export class PluginHostCapabilityBroker extends Context.Service<
   }
 >()("t3/plugins/PluginHostCapabilityBroker") {}
 
-const make = Effect.gen(function* () {
+export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig.ServerConfig;
@@ -592,13 +592,27 @@ const make = Effect.gen(function* () {
                 relativePath,
                 "filesystem read",
               );
-              return yield* fileSystem
+              const info = yield* fileSystem
+                .stat(filePath)
+                .pipe(
+                  Effect.mapError((cause) =>
+                    fail(pluginId, "filesystem read", `could not inspect ${relativePath}`, cause),
+                  ),
+                );
+              if (info.size > BigInt(MAX_DATA_FILE_BYTES)) {
+                return yield* fail(pluginId, "filesystem read", "file exceeds plugin data limit");
+              }
+              const contents = yield* fileSystem
                 .readFileString(filePath)
                 .pipe(
                   Effect.mapError((cause) =>
                     fail(pluginId, "filesystem read", `could not read ${relativePath}`, cause),
                   ),
                 );
+              if (Buffer.byteLength(contents, "utf8") > MAX_DATA_FILE_BYTES) {
+                return yield* fail(pluginId, "filesystem read", "file exceeds plugin data limit");
+              }
+              return contents;
             }),
           writeText: (relativePath, contents) =>
             Effect.gen(function* () {
@@ -643,19 +657,29 @@ const make = Effect.gen(function* () {
                 `network:${parsed.origin}`,
                 "network fetch",
               );
+              // The Undici dispatcher client does not follow redirects. Reject every redirect response
+              // so a future client change cannot widen this origin grant.
               const response = yield* httpClient.get(parsed).pipe(
                 Effect.timeout(EXTERNAL_OPERATION_TIMEOUT),
                 Effect.mapError((cause) =>
-                  fail(pluginId, "network fetch", `request failed for ${url}`, cause),
+                  fail(pluginId, "network fetch", `request failed for ${parsed.origin}`, cause),
                 ),
               );
+              if (response.status >= 300 && response.status < 400) {
+                return yield* fail(pluginId, "network fetch", "redirect responses are not allowed");
+              }
               const body = textDecoder.decode(
                 yield* collectBounded(pluginId, "network fetch", response.stream).pipe(
                   Effect.timeout(EXTERNAL_OPERATION_TIMEOUT),
                   Effect.mapError((cause) =>
                     isPluginHostCapabilityError(cause)
                       ? cause
-                      : fail(pluginId, "network fetch", `response timed out for ${url}`, cause),
+                      : fail(
+                          pluginId,
+                          "network fetch",
+                          `response timed out for ${parsed.origin}`,
+                          cause,
+                        ),
                   ),
                 ),
               );
