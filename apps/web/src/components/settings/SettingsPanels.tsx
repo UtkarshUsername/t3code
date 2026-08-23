@@ -2210,7 +2210,7 @@ export function GeneralSettingsPanel() {
                 <span className="text-xs text-muted-foreground">Download on first use</span>
               ) : (
                 <Button
-                  variant="outline"
+                  variant="destructive-outline"
                   size="sm"
                   disabled={
                     speechStatus.state === "recording" ||
