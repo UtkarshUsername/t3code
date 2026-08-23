@@ -6,6 +6,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   type BackgroundActivityProfile,
   type DesktopUpdateChannel,
+  type DesktopSpeechStatus,
   ProviderDriverKind,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
@@ -1864,6 +1865,15 @@ export function GeneralSettingsPanel() {
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
   const [backgroundActivityDialogOpen, setBackgroundActivityDialogOpen] = useState(false);
+  const [speechStatus, setSpeechStatus] = useState<DesktopSpeechStatus | null>(null);
+  useEffect(() => {
+    const speech = window.desktopBridge?.speech;
+    if (!speech) return;
+    void speech.getStatus().then(setSpeechStatus);
+    return speech.onEvent((event) => {
+      if (event.type === "status") setSpeechStatus(event.status);
+    });
+  }, []);
   const lastEnabledProjectGroupingMode = useRef<SidebarProjectGroupingMode>(
     readLastEnabledProjectGroupingMode(),
   );
@@ -1916,6 +1926,36 @@ export function GeneralSettingsPanel() {
   return (
     <SettingsPageContainer>
       <SettingsSection title="General">
+        {window.desktopBridge?.speech && speechStatus?.supported ? (
+          <SettingsRow
+            title="Local voice input"
+            description={
+              speechStatus.state === "missing-model"
+                ? "Downloads a 48 MiB English model on first use. Audio stays on this device."
+                : "Moonshine Streaming Tiny is stored locally. Microphone audio is not saved."
+            }
+            control={
+              speechStatus.state === "missing-model" ? (
+                <span className="text-xs text-muted-foreground">Download on first use</span>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    speechStatus.state === "recording" ||
+                    speechStatus.state === "transcribing" ||
+                    speechStatus.state === "downloading"
+                  }
+                  onClick={() =>
+                    void window.desktopBridge?.speech?.removeModel().then(setSpeechStatus)
+                  }
+                >
+                  Remove model
+                </Button>
+              )
+            }
+          />
+        ) : null}
         <SettingsRow
           {...searchableSetting("project-grouping")}
           description="Combine matching repositories across environments."
