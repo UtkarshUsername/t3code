@@ -113,3 +113,9 @@ export const PREVIEW_POINTER_EVENT_CHANNEL = "desktop:preview-pointer-event";
 export const MAC_PERMISSION_HELPER_CHANNEL = "desktop:mac-permission-helper";
 
 export const CHECK_SYSTEM_PERMISSION_CHANNEL = "desktop:check-system-permission";
+export const SPEECH_GET_STATUS_CHANNEL = "desktop:speech-get-status";
+export const SPEECH_START_CHANNEL = "desktop:speech-start";
+export const SPEECH_STOP_CHANNEL = "desktop:speech-stop";
+export const SPEECH_CANCEL_CHANNEL = "desktop:speech-cancel";
+export const SPEECH_REMOVE_MODEL_CHANNEL = "desktop:speech-remove-model";
+export const SPEECH_EVENT_CHANNEL = "desktop:speech-event";
