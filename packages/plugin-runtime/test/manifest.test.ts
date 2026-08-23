@@ -59,7 +59,7 @@ describe("PluginManifest", () => {
     ).toThrow();
   });
 
-  it("rejects malformed versions and capability ids", () => {
+  it("rejects malformed versions, capability ids, and host permissions", () => {
     expect(() => decodeManifest({ ...validManifest, version: "next" })).toThrow();
     expect(() => decodeManifest({ ...validManifest, version: "01.2.3" })).toThrow();
     expect(() => decodeManifest({ ...validManifest, version: "1.2.3-.." })).toThrow();
@@ -67,6 +67,16 @@ describe("PluginManifest", () => {
       "1.2.3+build.7",
     );
     expect(() => decodeManifest({ ...validManifest, requires: ["t3.commands"] })).toThrow();
+    for (const permission of [
+      "settings:read",
+      "filesystem:/tmp",
+      "network:file:///tmp/secret",
+      "process:../sh",
+      "secrets:UPPERCASE",
+      "unknown:anything",
+    ]) {
+      expect(() => decodeManifest({ ...validManifest, permissions: [permission] })).toThrow();
+    }
   });
 
   it("rejects entrypoints that escape the plugin directory", () => {

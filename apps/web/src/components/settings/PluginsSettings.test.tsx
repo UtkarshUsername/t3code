@@ -102,6 +102,8 @@ const snapshot: PluginPackageStatusSnapshot = {
       enabled: true,
       state: "active",
       capabilities: ["t3.commands@1"],
+      permissions: ["state:read-write", "network:https://api.acme.test"],
+      grantedPermissions: ["state:read-write"],
       contributions: { commands: ["acme.active.run"] },
     },
     {
@@ -111,6 +113,8 @@ const snapshot: PluginPackageStatusSnapshot = {
       enabled: false,
       state: "disabled",
       capabilities: ["t3.commands@1"],
+      permissions: ["filesystem:data"],
+      grantedPermissions: [],
       contributions: { commands: [] },
     },
   ],
@@ -201,6 +205,28 @@ describe("PluginsSettingsPanel", () => {
       visitElements(
         blockedRow,
         (element) => element.props.variant === "warning" && element.props.children === "Blocked",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("shows granted and pending host permissions", () => {
+    const panel = renderPanel();
+    const activeRow = renderPackageRow(panel, "com.acme.active");
+
+    expect(
+      visitElements(
+        activeRow,
+        (element) =>
+          element.props["data-plugin-permission"] === "state:read-write" &&
+          element.props["data-granted"] === true,
+      ),
+    ).not.toBeNull();
+    expect(
+      visitElements(
+        activeRow,
+        (element) =>
+          element.props["data-plugin-permission"] === "network:https://api.acme.test" &&
+          element.props["data-granted"] === false,
       ),
     ).not.toBeNull();
   });

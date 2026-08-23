@@ -10,6 +10,22 @@ copy this directory into the active environment's plugin directory:
 
 for a normal local install, `<active-environment>` is usually `~/.t3`. development servers use the worktree's `.t3` directory, and an explicit `T3CODE_HOME` or `--base-dir` uses that configured directory.
 
-t3 code discovers the package without a rebuild. use `pluginPackages.status` to inspect it and `pluginPackages.enable` with the manifest id to enable it for that environment. `pluginPackages.reload` re-evaluates the entrypoint, and `pluginPackages.disable` removes its contributions. once enabled, `example.runtime-status` appears in the web and desktop command palettes.
+t3 code discovers the package without a rebuild. use `pluginPackages.status` to inspect it and `pluginPackages.enable` with the manifest id to enable it for that environment. enabling a plugin grants the host permissions currently declared in its manifest. a reload that adds permissions is rejected until the plugin is disabled and enabled again. `pluginPackages.reload` re-evaluates the entrypoint, and `pluginPackages.disable` removes its contributions. once enabled, `example.runtime-status` appears in the web and desktop command palettes.
+
+## host capabilities and plugin-owned data
+
+manifest permissions are explicit, bounded grants:
+
+- `settings:read-write`, `state:read-write`, and `cache:read-write` expose detached JSON key/value stores.
+- `secrets:<name>` exposes one plugin-namespaced secret.
+- `filesystem:data` exposes text files under the plugin's own data directory and rejects traversal and symlink escapes.
+- `network:https://host` allows text responses from one HTTPS origin.
+- `process:<command>` allows one exact executable name with no shell, a minimal environment, timeout, and output limits.
+
+plugin data lives under the active environment's `plugin-data/<plugin-id>/` directory. settings and state survive reloads and restarts. cache is separately clearable. secrets use the server secret store and never share names with another plugin.
+
+host operations return Effect values. command handlers may return those values directly and compose them with `api.effect.succeed`, `api.effect.map`, and `api.effect.flatMap`. synchronous and Promise handlers remain supported.
+
+these APIs define the boundary that isolated workers will use later. packages still run in the server process today, so trusted code can bypass the broker by importing Node APIs.
 
 local packages run in the server process and are fully trusted. marketplace distribution, signing, sandboxing, and renderer code are not part of this mvp.

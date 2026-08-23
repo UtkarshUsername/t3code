@@ -14,6 +14,28 @@ export const PluginPackageCapability = Schema.String.check(
 );
 export type PluginPackageCapability = typeof PluginPackageCapability.Type;
 
+export const PluginHostPermission = Schema.Union([
+  Schema.Literals([
+    "settings:read-write",
+    "state:read-write",
+    "cache:read-write",
+    "filesystem:data",
+  ]),
+  Schema.String.check(
+    Schema.isPattern(/^secrets:[a-z0-9][a-z0-9._-]{0,127}$/),
+    Schema.isMaxLength(136),
+  ),
+  Schema.String.check(
+    Schema.isPattern(/^network:https:\/\/[A-Za-z0-9.-]+(?::[1-9]\d{0,4})?$/),
+    Schema.isMaxLength(255),
+  ),
+  Schema.String.check(
+    Schema.isPattern(/^process:[A-Za-z0-9._+-]{1,128}$/),
+    Schema.isMaxLength(136),
+  ),
+]);
+export type PluginHostPermission = typeof PluginHostPermission.Type;
+
 export const PluginPackageState = Schema.Literals(["disabled", "active", "blocked", "error"]);
 export type PluginPackageState = typeof PluginPackageState.Type;
 
@@ -29,6 +51,8 @@ export const PluginPackageStatus = Schema.Struct({
   enabled: Schema.Boolean,
   state: PluginPackageState,
   capabilities: Schema.Array(PluginPackageCapability),
+  permissions: Schema.Array(PluginHostPermission),
+  grantedPermissions: Schema.Array(PluginHostPermission),
   contributions: PluginPackageContributions,
   error: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(2_000))),
 });

@@ -69,6 +69,7 @@ import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as PluginCommandCatalog from "./plugins/PluginCommandCatalog.ts";
+import * as PluginHostCapabilityBroker from "./plugins/PluginHostCapabilityBroker.ts";
 import * as PluginPackageManager from "./plugins/PluginPackageManager.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import {
@@ -2508,5 +2509,10 @@ export const websocketRpcRouteLayer = Layer.unwrap(
     );
   }),
 ).pipe(
-  Layer.provide(PluginPackageManager.layer.pipe(Layer.provideMerge(PluginCommandCatalog.layer))),
+  Layer.provide(
+    PluginPackageManager.layer.pipe(
+      Layer.provideMerge(PluginCommandCatalog.layer),
+      Layer.provideMerge(PluginHostCapabilityBroker.layer),
+    ),
+  ),
 );

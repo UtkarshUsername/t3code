@@ -59,6 +59,7 @@ function PluginPackageRow({
 }) {
   const state = statePresentation[pluginPackage.state];
   const commands = pluginPackage.contributions.commands;
+  const grantedPermissions = new Set(pluginPackage.grantedPermissions);
   const busy = pendingAction !== null;
   const status = (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -69,6 +70,20 @@ function PluginPackageRow({
           {capability}
         </Badge>
       ))}
+      {pluginPackage.permissions.map((permission) => {
+        const granted = grantedPermissions.has(permission);
+        return (
+          <Badge
+            key={permission}
+            variant={granted ? "success" : "warning"}
+            data-plugin-permission={permission}
+            data-granted={granted}
+          >
+            {permission}
+            {granted ? " granted" : " approval required"}
+          </Badge>
+        );
+      })}
     </div>
   );
 
@@ -217,8 +232,9 @@ export function PluginsSettingsPanel() {
           <ShieldAlertIcon />
           <AlertTitle>Trusted local code</AlertTitle>
           <AlertDescription>
-            Plugins run inside this environment's server process with its filesystem and network
-            access. Only install code you trust.
+            Host APIs enforce declared grants and keep plugin data namespaced. Plugins still run
+            inside this environment's server process and can bypass those APIs with Node until
+            execution isolation lands. Only install code you trust.
           </AlertDescription>
         </Alert>
 

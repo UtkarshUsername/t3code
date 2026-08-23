@@ -17,6 +17,7 @@ import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as PluginCommandCatalog from "./PluginCommandCatalog.ts";
+import * as PluginHostCapabilityBroker from "./PluginHostCapabilityBroker.ts";
 import * as PluginPackageManager from "./PluginPackageManager.ts";
 
 const packageId = "com.acme.runtime-status";
@@ -68,6 +69,21 @@ export default function activate(api) {
       surfaces: ["web", "desktop"]
     },
     () => ({ message: ${encodeJsonString(label)}, tone: "success" })
+  );
+}
+`;
+
+const statefulCommandPluginSource = (id: string) => `
+export default function activate(api) {
+  api.registerCommand(
+    { id: ${encodeJsonString(id)}, label: "Increment plugin state", surfaces: ["web"] },
+    () => api.effect.flatMap(api.host.state.get("count"), (stored) => {
+      const next = typeof stored === "number" ? stored + 1 : 1;
+      return api.effect.flatMap(
+        api.host.state.set("count", next),
+        () => api.effect.succeed({ message: String(next), tone: "success" })
+      );
+    })
   );
 }
 `;
@@ -169,6 +185,10 @@ interface EnvironmentLayerOptions {
 
 const makeEnvironmentLayer = (baseDir: string, options?: EnvironmentLayerOptions) => {
   const configLayer = Layer.fresh(ServerConfig.layerTest(process.cwd(), baseDir));
+  const capabilityBrokerLayer = PluginHostCapabilityBroker.layer.pipe(
+    Layer.provide(ServerSecretStore.layer),
+    Layer.provideMerge(configLayer),
+  );
   const liveSettingsLayer = ServerSettings.layer.pipe(
     Layer.provide(ServerSecretStore.layer),
     Layer.provideMerge(configLayer),
@@ -213,6 +233,7 @@ const makeEnvironmentLayer = (baseDir: string, options?: EnvironmentLayerOptions
 
   return PluginPackageManager.layer.pipe(
     Layer.provideMerge(PluginCommandCatalog.layer),
+    Layer.provideMerge(capabilityBrokerLayer),
     Layer.provideMerge(settingsLayer),
     Layer.provideMerge(configLayer),
   );
@@ -229,6 +250,119 @@ const useEnvironment = <A, E>(
 ) => Effect.scoped(effect.pipe(Effect.provide(makeEnvironmentLayer(baseDir, options))));
 
 it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
+  it.effect("grants declared host capabilities and preserves plugin-owned state", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3code-plugin-package-host-capability-test-",
+      });
+      const packageDirectory = `${baseDir}/userdata/plugins/${packageId}`;
+      yield* fileSystem.makeDirectory(packageDirectory, { recursive: true });
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/t3-plugin.json`,
+        encodeManifest({ ...manifest, permissions: ["state:read-write"] }),
+      );
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/index.mjs`,
+        statefulCommandPluginSource(commandId),
+      );
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+          const enabled = yield* manager.enable(packageId);
+          expect(enabled.packages[0]).toMatchObject({
+            permissions: ["state:read-write"],
+            grantedPermissions: ["state:read-write"],
+          });
+          const first = yield* catalog.list;
+          expect(yield* catalog.invoke({ generation: first.generation, id: commandId })).toEqual({
+            message: "1",
+            tone: "success",
+          });
+        }),
+      );
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+          const restored = yield* catalog.list;
+          expect(yield* catalog.invoke({ generation: restored.generation, id: commandId })).toEqual(
+            {
+              message: "2",
+              tone: "success",
+            },
+          );
+        }),
+      );
+    }),
+  );
+
+  it.effect("requires disable and re-enable before granting added host permissions", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3code-plugin-package-permission-escalation-test-",
+      });
+      const packageDirectory = `${baseDir}/userdata/plugins/${packageId}`;
+      yield* fileSystem.makeDirectory(packageDirectory, { recursive: true });
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/t3-plugin.json`,
+        encodeManifest(manifest),
+      );
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/index.mjs`,
+        commandPluginSource(commandId, "old generation"),
+      );
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+          yield* manager.enable(packageId);
+          const oldCatalog = yield* catalog.list;
+
+          yield* fileSystem.writeFileString(
+            `${packageDirectory}/t3-plugin.json`,
+            encodeManifest({ ...manifest, permissions: ["state:read-write"] }),
+          );
+          yield* fileSystem.writeFileString(
+            `${packageDirectory}/index.mjs`,
+            statefulCommandPluginSource(commandId),
+          );
+
+          const reload = yield* Effect.exit(manager.reload(packageId));
+          expect(reload._tag).toBe("Failure");
+          expect(yield* catalog.list).toBe(oldCatalog);
+          expect(yield* manager.status).toMatchObject({
+            packages: [
+              {
+                state: "error",
+                permissions: ["state:read-write"],
+                grantedPermissions: [],
+                error: expect.stringContaining("permission approval required"),
+              },
+            ],
+          });
+
+          yield* manager.disable(packageId);
+          yield* manager.enable(packageId);
+          const approved = yield* catalog.list;
+          expect(yield* catalog.invoke({ generation: approved.generation, id: commandId })).toEqual(
+            {
+              message: "1",
+              tone: "success",
+            },
+          );
+        }),
+      );
+    }),
+  );
+
   it.effect("keeps the environment available when package manager startup fails", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -738,7 +872,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
       yield* fileSystem.makeDirectory(packageDirectory, { recursive: true });
       yield* fileSystem.writeFileString(
         `${packageDirectory}/t3-plugin.json`,
-        encodeManifest(manifest),
+        encodeManifest({ ...manifest, permissions: ["state:read-write"] }),
       );
       yield* fileSystem.writeFileString(
         `${packageDirectory}/index.mjs`,
@@ -755,7 +889,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
             commandId,
           );
           expect(yield* manager.status).toMatchObject({
-            packages: [{ id: packageId, enabled: false }],
+            packages: [{ id: packageId, enabled: false, grantedPermissions: [] }],
           });
         }),
         { persistenceFailures: { remaining: 1 } },

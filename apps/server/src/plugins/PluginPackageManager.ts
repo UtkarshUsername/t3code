@@ -26,6 +26,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as PluginCommandCatalog from "./PluginCommandCatalog.ts";
+import * as PluginHostCapabilityBroker from "./PluginHostCapabilityBroker.ts";
 
 const MANIFEST_FILE_NAME = "t3-plugin.json";
 const COMMAND_CAPABILITY = "t3.commands@1";
@@ -47,6 +48,15 @@ interface LoadedDefinition {
 }
 
 export interface PluginPackageApi {
+  readonly host: PluginHostCapabilityBroker.PluginHostApi;
+  readonly effect: {
+    readonly succeed: <A>(value: A) => Effect.Effect<A>;
+    readonly map: <A, B, E>(effect: Effect.Effect<A, E>, f: (value: A) => B) => Effect.Effect<B, E>;
+    readonly flatMap: <A, B, E, E2>(
+      effect: Effect.Effect<A, E>,
+      f: (value: A) => Effect.Effect<B, E2>,
+    ) => Effect.Effect<B, E | E2>;
+  };
   readonly onDispose: (cleanup: () => void | Promise<void>) => void;
   readonly registerCommand: (
     command: {
@@ -55,7 +65,7 @@ export interface PluginPackageApi {
       readonly description?: string;
       readonly surfaces: ReadonlyArray<"web" | "desktop" | "mobile">;
     },
-    handler: () => unknown | Promise<unknown>,
+    handler: () => unknown | Promise<unknown> | Effect.Effect<unknown, unknown>,
   ) => void;
 }
 
@@ -98,6 +108,7 @@ const operationError = (
 const makeDefinition = (
   discovered: DiscoveredPackage,
   activatePackage: PluginPackageActivator,
+  host: PluginHostCapabilityBroker.PluginHostApi,
   onRetired: () => void,
   onCleanupError: (error: unknown) => void,
 ): PluginDefinition => {
@@ -118,6 +129,12 @@ const makeDefinition = (
     activate(context: PluginActivationContext) {
       context.onDispose(onRetired);
       const api: PluginPackageApi = {
+        host,
+        effect: {
+          succeed: Effect.succeed,
+          map: (effect, f) => Effect.map(effect, f),
+          flatMap: (effect, f) => Effect.flatMap(effect, f),
+        },
         onDispose(cleanup) {
           context.onDispose(async () => {
             try {
@@ -135,13 +152,40 @@ const makeDefinition = (
           if (!declaredCommands.has(command.id)) {
             throw new Error(`Command ${command.id} is not declared in the manifest`);
           }
+          const invokeHandler: Effect.Effect<
+            unknown,
+            PluginCommandCatalog.PluginCommandExecutionError
+          > = Effect.try({
+            try: handler,
+            catch: (cause) =>
+              new PluginCommandCatalog.PluginCommandExecutionError({ cause, id: command.id }),
+          }).pipe(
+            Effect.flatMap((result) => {
+              if (Effect.isEffect(result)) {
+                const pluginEffect = result as Effect.Effect<unknown, unknown>;
+                return pluginEffect.pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new PluginCommandCatalog.PluginCommandExecutionError({
+                        cause,
+                        id: command.id,
+                      }),
+                  ),
+                );
+              }
+              return Effect.tryPromise({
+                try: () => Promise.resolve(result),
+                catch: (cause) =>
+                  new PluginCommandCatalog.PluginCommandExecutionError({
+                    cause,
+                    id: command.id,
+                  }),
+              });
+            }),
+          );
           PluginCommandCatalog.registerPluginCommand(context, {
             command,
-            handler: Effect.tryPromise({
-              try: async () => handler(),
-              catch: (cause) =>
-                new PluginCommandCatalog.PluginCommandExecutionError({ cause, id: command.id }),
-            }).pipe(
+            handler: invokeHandler.pipe(
               Effect.flatMap((result) =>
                 decodeInvocationResult(result).pipe(
                   Effect.mapError(
@@ -193,6 +237,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const settings = yield* ServerSettings.ServerSettingsService;
   const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+  const hostCapabilities = yield* PluginHostCapabilityBroker.PluginHostCapabilityBroker;
   const semaphore = yield* Semaphore.make(1);
   const pluginsDirectory = path.join(config.stateDir, "plugins");
   const pluginCacheDirectory = path.join(config.stateDir, "plugin-cache");
@@ -298,6 +343,9 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
     discovered: DiscoveredPackage,
     operation: PluginPackageOperation,
   ) {
+    const host = yield* hostCapabilities
+      .open(discovered.manifest.id, discovered.manifest.permissions ?? [])
+      .pipe(Effect.mapError((error) => operationError(operation, error, discovered.manifest.id)));
     const serverEntrypoint = discovered.manifest.entrypoints.server;
     if (serverEntrypoint === undefined) {
       return yield* operationError(
@@ -368,7 +416,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
     });
     return {
       cacheDirectory,
-      definition: makeDefinition(discovered, loaded.value, markRetired, (error) => {
+      definition: makeDefinition(discovered, loaded.value, host, markRetired, (error) => {
         packageErrors.set(discovered.manifest.id, detailFromUnknown(error));
       }),
       retired,
@@ -402,11 +450,14 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
   const statusUnlocked = Effect.fn("PluginPackageManager.status")(function* (
     operation: PluginPackageOperation,
   ): Effect.fn.Return<PluginPackageStatusSnapshot, PluginPackageOperationError> {
-    const [discovery, enabledIds, composition] = yield* Effect.all(
+    const [discovery, enabledIds, composition, grantSnapshot] = yield* Effect.all(
       [
         discover(operation),
         readEnabledIds.pipe(Effect.mapError((error) => operationError(operation, error))),
         catalog.composition,
+        hostCapabilities.snapshot.pipe(
+          Effect.mapError((error) => operationError(operation, error)),
+        ),
       ],
       { concurrency: "unbounded" },
     );
@@ -417,8 +468,13 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
 
     for (const id of [...packageIds].sort()) {
       const activeManifest = activeManifests.get(id);
-      const packageManifest = activeManifest ?? discovered.get(id)?.manifest;
+      const discoveredManifest = discovered.get(id)?.manifest;
+      const packageManifest = activeManifest ?? discoveredManifest;
       if (packageManifest === undefined) continue;
+      const requestedPermissions = [
+        ...new Set((discoveredManifest ?? packageManifest).permissions ?? []),
+      ].sort();
+      const grantedPermissionSet = new Set(grantSnapshot.get(id) ?? []);
       const enabled = enabledIds.has(id);
       const active = composition.active.includes(id);
       const blocked = composition.blocked[id];
@@ -444,6 +500,10 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
         enabled,
         state,
         capabilities: [...packageManifest.capabilities],
+        permissions: requestedPermissions,
+        grantedPermissions: requestedPermissions.filter((permission) =>
+          grantedPermissionSet.has(permission),
+        ),
         contributions: { commands: [...(packageManifest.contributes?.commands ?? [])] },
         ...(error === undefined ? {} : { error }),
       });
@@ -477,11 +537,38 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
           packageErrors.delete(id);
 
           const previousEnabledIds = new Set(enabledIds);
+          const previousGrants = yield* restore(
+            hostCapabilities
+              .granted(id)
+              .pipe(Effect.mapError((error) => operationError(operation, error, id))),
+          );
+          if (operation === "enable") {
+            const granted = yield* Effect.exit(
+              restore(
+                hostCapabilities
+                  .grant(id, pluginPackage.manifest.permissions ?? [])
+                  .pipe(Effect.mapError((error) => operationError(operation, error, id))),
+              ),
+            );
+            if (granted._tag === "Failure") {
+              packageErrors.set(id, detailFromCause(granted.cause));
+              return yield* Effect.failCause(granted.cause);
+            }
+          }
+          const restorePreviousGrants = hostCapabilities.grant(id, previousGrants).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Failed to restore plugin capability grants", {
+                id,
+                error: detailFromCause(cause),
+              }),
+            ),
+          );
           const previousCacheDirectory = activeCacheDirectories.get(id);
           const previousRetirement = activeRetirements.get(id);
           const loadedExit = yield* Effect.exit(restore(loadDefinition(pluginPackage, operation)));
           if (loadedExit._tag === "Failure") {
             packageErrors.set(id, detailFromCause(loadedExit.cause));
+            if (operation === "enable") yield* restorePreviousGrants;
             return yield* Effect.failCause(loadedExit.cause);
           }
           const loaded = loadedExit.value;
@@ -490,6 +577,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
             const persisted = yield* Effect.exit(persistEnabledIds(enabledIds, operation, id));
             if (persisted._tag === "Failure") {
               packageErrors.set(id, detailFromCause(persisted.cause));
+              yield* restorePreviousGrants;
               yield* removeCacheDirectory(loaded.cacheDirectory);
               return yield* Effect.failCause(persisted.cause);
             }
@@ -509,6 +597,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
                 const rolledBack = yield* Effect.exit(
                   persistEnabledIds(previousEnabledIds, operation, id),
                 );
+                yield* restorePreviousGrants;
                 if (rolledBack._tag === "Failure") {
                   packageErrors.set(id, detailFromCause(reconciled.cause));
                   yield* removeCacheDirectory(loaded.cacheDirectory);

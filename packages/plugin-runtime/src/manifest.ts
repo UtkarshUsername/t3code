@@ -21,7 +21,26 @@ const CapabilityId = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9.-]*@
 const RelativeEntrypoint = Schema.String.check(
   Schema.isPattern(/^\.\/(?!(?:\.\.(?:\/|$)|.*\/\.\.(?:\/|$)))[A-Za-z0-9_./-]+$/),
 );
-const Permission = Schema.String.check(Schema.isPattern(/^[a-z][a-z-]*:.+$/));
+const Permission = Schema.Union([
+  Schema.Literals([
+    "settings:read-write",
+    "state:read-write",
+    "cache:read-write",
+    "filesystem:data",
+  ]),
+  Schema.String.check(
+    Schema.isPattern(/^secrets:[a-z0-9][a-z0-9._-]{0,127}$/),
+    Schema.isMaxLength(136),
+  ),
+  Schema.String.check(
+    Schema.isPattern(/^network:https:\/\/[A-Za-z0-9.-]+(?::[1-9]\d{0,4})?$/),
+    Schema.isMaxLength(255),
+  ),
+  Schema.String.check(
+    Schema.isPattern(/^process:[A-Za-z0-9._+-]{1,128}$/),
+    Schema.isMaxLength(136),
+  ),
+]);
 
 const ContributionCatalog = Schema.Struct({
   commands: Schema.optional(Schema.Array(CommandId)),

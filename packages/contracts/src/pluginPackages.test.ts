@@ -24,6 +24,8 @@ describe("plugin package contracts", () => {
             enabled: true,
             state: "active",
             capabilities: ["t3.commands@1"],
+            permissions: ["state:read-write", "network:https://api.acme.test"],
+            grantedPermissions: ["state:read-write"],
             contributions: { commands: ["acme.runtime-status"] },
           },
         ],
@@ -38,6 +40,8 @@ describe("plugin package contracts", () => {
           enabled: true,
           state: "active",
           capabilities: ["t3.commands@1"],
+          permissions: ["state:read-write", "network:https://api.acme.test"],
+          grantedPermissions: ["state:read-write"],
           contributions: { commands: ["acme.runtime-status"] },
         },
       ],
@@ -68,6 +72,8 @@ describe("plugin package contracts", () => {
             enabled: true,
             state: "blocked",
             capabilities: ["t3.commands@1"],
+            permissions: [],
+            grantedPermissions: [],
             contributions: { commands: ["acme.issues.create"] },
             error: "Missing dependency: acme.database@1",
           },
@@ -84,6 +90,27 @@ describe("plugin package contracts", () => {
     expect(() => decodeAction({ id: "com.acme.runtime-status", extra: true })).toThrow();
   });
 
+  it("rejects unsupported host permissions in package status", () => {
+    expect(() =>
+      decodeStatus({
+        errors: [],
+        packages: [
+          {
+            id: "com.acme.runtime-status",
+            version: "1.0.0",
+            apiVersion: 1,
+            enabled: false,
+            state: "disabled",
+            capabilities: [],
+            permissions: ["filesystem:/tmp"],
+            grantedPermissions: [],
+            contributions: { commands: [] },
+          },
+        ],
+      }),
+    ).toThrow();
+  });
+
   it("rejects declared command ids that cannot be invoked", () => {
     expect(() =>
       decodeStatus({
@@ -96,6 +123,8 @@ describe("plugin package contracts", () => {
             enabled: false,
             state: "disabled",
             capabilities: ["t3.commands@1"],
+            permissions: [],
+            grantedPermissions: [],
             contributions: { commands: [`acme.${"x".repeat(196)}`] },
           },
         ],
