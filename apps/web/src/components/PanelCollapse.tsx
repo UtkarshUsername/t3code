@@ -56,6 +56,11 @@ export function usePanelCollapse(input: {
   const nodeRef = React.useRef<HTMLElement | null>(null);
   const [flight, setFlight] = React.useState<PanelCollapseFlight | null>(null);
   const flightRef = React.useRef<PanelCollapseFlight | null>(null);
+  // Captured at arm time. Retirement must clean up THIS element: the shared
+  // ref can be reattached to another drawer's wrapper before the old
+  // wrapper's detach runs (thread switches), so nodeRef cannot be trusted
+  // to point at the flying node.
+  const flightNodeRef = React.useRef<HTMLElement | null>(null);
   const endTimerRef = React.useRef<number | null>(null);
   // Captured at requestClose so a late commit targets the panel that began
   // closing, even if the surrounding component re-rendered meanwhile.
@@ -72,8 +77,8 @@ export function usePanelCollapse(input: {
   const latestRef = React.useRef(latest);
   latestRef.current = latest;
 
-  const clearWrapperStyles = React.useCallback(() => {
-    const node = nodeRef.current;
+  const clearWrapperStyles = React.useCallback((target?: HTMLElement | null) => {
+    const node = target ?? nodeRef.current;
     if (!node) return;
     node.style.transition = "";
     node.style.width = "";
@@ -95,16 +100,18 @@ export function usePanelCollapse(input: {
         endTimerRef.current = null;
       }
       flightRef.current = null;
-      clearWrapperStyles();
+      clearWrapperStyles(flightNodeRef.current ?? nodeRef.current);
+      flightNodeRef.current = null;
       setFlight(null);
+      const onClose = pendingOnCloseRef.current;
       const superseded =
         pendingSupersedeRef.current !== undefined &&
         pendingSupersedeRef.current !== latestRef.current.supersedeKey;
-      if (current.direction === "out" && (options.commit || !superseded)) {
-        pendingOnCloseRef.current?.();
-      }
       pendingOnCloseRef.current = null;
       pendingSupersedeRef.current = undefined;
+      if (current.direction === "out" && (options.commit || !superseded)) {
+        onClose?.();
+      }
     },
     [clearWrapperStyles],
   );
@@ -118,7 +125,7 @@ export function usePanelCollapse(input: {
   // transition actually interpolates between the pinned start and end values.
   React.useEffect(() => {
     if (!flight) return;
-    const node = nodeRef.current;
+    const node = flightNodeRef.current ?? nodeRef.current;
     if (!node) {
       // The wrapper never mounted or already detached (caller bailed on
       // missing data); retire synchronously instead of sticking in flight.
@@ -154,7 +161,7 @@ export function usePanelCollapse(input: {
   // flight, then let the effect above flip to the end value next frame.
   React.useLayoutEffect(() => {
     if (!flight) return;
-    const node = nodeRef.current;
+    const node = flightNodeRef.current ?? nodeRef.current;
     if (!node) return;
     node.style.flex = "0 0 auto";
     node.style.transition = "none";
@@ -190,6 +197,7 @@ export function usePanelCollapse(input: {
     const natural = Math.ceil(dimension === "width" ? rect.width : rect.height);
     if (natural <= 0) return;
     const nextFlight: PanelCollapseFlight = { direction: "in", size: natural };
+    flightNodeRef.current = node;
     flightRef.current = nextFlight;
     setFlight(nextFlight);
   }, [open, input.identity]);
@@ -229,6 +237,7 @@ export function usePanelCollapse(input: {
     pendingOnCloseRef.current = current.onClose;
     pendingSupersedeRef.current = current.supersedeKey;
     const nextFlight: PanelCollapseFlight = { direction: "out", size };
+    flightNodeRef.current = node;
     flightRef.current = nextFlight;
     setFlight(nextFlight);
   }, []);
