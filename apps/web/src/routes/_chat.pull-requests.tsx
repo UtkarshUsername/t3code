@@ -26,7 +26,15 @@ import {
   RefreshCwIcon,
   SearchIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   filterPullRequestsByInvolvement,
@@ -1217,6 +1225,18 @@ function PullRequestsRouteView() {
 
   // The panel close is deferred until its width collapse lands, so during
   // the animation the store, URL selection, and titlebar all still read open.
+  // The panel close is deferred until its width collapse lands, so during
+  // the animation the store, URL selection, and titlebar all still read open.
+  // The deferred URL write must not fire after the route unmounted
+  // mid-collapse: updateSearch is bound to this route's path with
+  // replace, which would yank the user back here from wherever they went.
+  const routeAliveRef = useRef(true);
+  useLayoutEffect(() => {
+    routeAliveRef.current = true;
+    return () => {
+      routeAliveRef.current = false;
+    };
+  }, []);
   const panelCollapse = usePanelCollapse({
     open:
       rightPanelState.isOpen && activePullRequestSurface !== null && panelEnvironmentId !== null,
@@ -1230,6 +1250,7 @@ function PullRequestsRouteView() {
     onClose: () => {
       if (rightPanelRef === null) return;
       useRightPanelStore.getState().close(rightPanelRef);
+      if (!routeAliveRef.current) return;
       updateSearch(clearedSelection);
     },
   });
