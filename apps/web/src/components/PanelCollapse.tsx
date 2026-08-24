@@ -205,11 +205,16 @@ export type PanelCollapseState = ReturnType<typeof usePanelCollapse>;
 
 /**
  * Wrapper around a collapsible panel. Renders identically to the bare panel
- * while idle; while a flight runs it pins the animated dimension and clips
+ * while idle; while a flight runs it pins the animated dimension, clips
  * overflow, and holds the content box at its measured size so flexible
  * children (a maximized `flex-1` shell) get clipped instead of reflowing on
- * every frame. The pinned box carries `data-panel-collapse` too so
- * PreviewPanelShell's clamp walk still reaches past both wrappers.
+ * every frame.
+ *
+ * The content box stays mounted in every state (`display: contents` while
+ * idle): swapping element types at this slot would remount the whole panel
+ * subtree on each animated open and close, tearing down terminals, previews,
+ * and other local state mid-transition. Both boxes carry
+ * `data-panel-collapse` so PreviewPanelShell's clamp walk reaches past them.
  */
 export function PanelCollapseFrame(props: {
   state: Pick<PanelCollapseState, "ref" | "flight">;
@@ -226,21 +231,21 @@ export function PanelCollapseFrame(props: {
       style={flight ? { flex: "0 0 auto" } : undefined}
     >
       <React.Suspense fallback={null}>
-        {flight ? (
-          <div
-            data-panel-collapse=""
-            style={{
-              [props.dimension]: `${flight.size}px`,
-              flex: "0 0 auto",
-              minWidth: 0,
-              minHeight: 0,
-            }}
-          >
-            {props.children}
-          </div>
-        ) : (
-          props.children
-        )}
+        <div
+          data-panel-collapse=""
+          style={
+            flight
+              ? {
+                  [props.dimension]: `${flight.size}px`,
+                  flex: "0 0 auto",
+                  minWidth: 0,
+                  minHeight: 0,
+                }
+              : { display: "contents" }
+          }
+        >
+          {props.children}
+        </div>
       </React.Suspense>
     </div>
   );
