@@ -409,6 +409,91 @@ it.layer(NodeServices.layer)("plugin worker supervisor", (it) => {
     ),
   );
 
+  it.effect("does not expose worker stderr through crash failures", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const directory = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3code-plugin-worker-stderr-test-",
+        });
+        const entrypointPath = path.join(directory, "index.mjs");
+        yield* fileSystem.writeFileString(
+          entrypointPath,
+          `export default function activate(api) {
+            api.registerCommand(
+              { id: "acme.stderr", label: "Stderr", surfaces: ["web"] },
+              () => new Promise(() => {
+                process.stderr.write("sensitive-worker-value", () => process.exit(29));
+              })
+            );
+          }`,
+        );
+        const supervisor = yield* PluginWorkerSupervisor.PluginWorkerSupervisor;
+        const worker = yield* supervisor.start({
+          pluginId: "com.acme.stderr",
+          entrypointPath,
+          host: makeHost(),
+        });
+
+        const invocation = yield* Effect.exit(worker.invoke("acme.stderr"));
+        expect(invocation._tag).toBe("Failure");
+        if (invocation._tag === "Failure") {
+          const failure = Cause.squash(invocation.cause);
+          expect(failure instanceof Error ? failure.message : String(failure)).not.toContain(
+            "sensitive-worker-value",
+          );
+        }
+        yield* waitForHealth(worker, "restarting");
+        yield* TestClock.adjust("1 second");
+        yield* waitForHealth(worker, "running");
+        yield* worker.dispose;
+      }).pipe(Effect.provide(PluginWorkerSupervisor.layer)),
+    ),
+  );
+
+  it.effect("reports an explicit worker disposal timeout", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const directory = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3code-plugin-worker-dispose-timeout-test-",
+        });
+        const entrypointPath = path.join(directory, "index.mjs");
+        yield* fileSystem.writeFileString(
+          entrypointPath,
+          `export default function activate(api) {
+            api.onDispose(() => new Promise(() => {}));
+          }`,
+        );
+        const supervisor = yield* PluginWorkerSupervisor.PluginWorkerSupervisor;
+        const worker = yield* supervisor.start(
+          {
+            pluginId: "com.acme.dispose-timeout",
+            entrypointPath,
+            host: makeHost(),
+          },
+          { disposeTimeout: "10 millis" },
+        );
+
+        const disposal = yield* Effect.forkChild(Effect.exit(worker.dispose));
+        yield* Effect.yieldNow;
+        yield* TestClock.adjust("20 millis");
+        yield* Effect.yieldNow;
+        yield* TestClock.adjust("2 seconds");
+        const disposed = yield* Fiber.join(disposal);
+        expect(disposed._tag).toBe("Failure");
+        if (disposed._tag === "Failure") {
+          const failure = Cause.squash(disposed.cause);
+          expect(failure instanceof Error ? failure.message : String(failure)).toContain(
+            "worker disposal timed out",
+          );
+        }
+      }).pipe(Effect.provide(PluginWorkerSupervisor.layer)),
+    ),
+  );
+
   it.effect("runs worker cleanup during disposal", () =>
     Effect.scoped(
       Effect.gen(function* () {

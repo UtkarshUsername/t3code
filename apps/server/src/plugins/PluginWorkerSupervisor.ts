@@ -228,7 +228,6 @@ export const make = Effect.gen(function* () {
         const hostCallSemaphore = yield* Semaphore.make(HOST_CALL_CONCURRENCY);
         const encoder = new TextEncoder();
         const protocolDecoder = new TextDecoder();
-        const stderrDecoder = new TextDecoder();
         let protocolBuffer = "";
         let pendingHostCalls = 0;
         const pending = new Map<
@@ -238,7 +237,7 @@ export const make = Effect.gen(function* () {
         let requestSequence = 0;
         let closing = false;
         let crashReported = false;
-        let stderr = "";
+        let stderrBytes = 0;
 
         const send = (message: PluginWorkerParentMessage): boolean => {
           let line: string;
@@ -256,12 +255,12 @@ export const make = Effect.gen(function* () {
           pending.clear();
         };
 
-        const reportCrash = (detail: string) => {
+        const reportCrash = (detail: string, cause?: unknown) => {
           if (closing || crashReported || disposed) return;
           crashReported = true;
           health = { state: "restarting", detail, restartCount };
-          failPending(workerError("invocation", detail));
-          Deferred.doneUnsafe(activation, Effect.fail(workerError("activation", detail)));
+          failPending(workerError("invocation", detail, cause));
+          Deferred.doneUnsafe(activation, Effect.fail(workerError("activation", detail, cause)));
           Queue.offerUnsafe(crashes, { sessionId, detail });
         };
 
@@ -415,7 +414,7 @@ export const make = Effect.gen(function* () {
           Stream.runForEach(readProtocolChunk),
           Effect.catchCause((cause) =>
             Effect.sync(() =>
-              reportCrash(`worker protocol failed: ${detailFromCause(cause)}`),
+              reportCrash(`worker protocol failed: ${detailFromCause(cause)}`, Cause.squash(cause)),
             ).pipe(Effect.tap(() => handle.kill().pipe(Effect.ignore))),
           ),
         );
@@ -424,10 +423,7 @@ export const make = Effect.gen(function* () {
         const stderrReader = handle.stderr.pipe(
           Stream.runForEach((chunk) =>
             Effect.sync(() => {
-              if (stderr.length >= MAX_STDERR_BYTES) return;
-              stderr += stderrDecoder
-                .decode(chunk, { stream: true })
-                .slice(0, MAX_STDERR_BYTES - stderr.length);
+              stderrBytes = Math.min(MAX_STDERR_BYTES, stderrBytes + chunk.byteLength);
             }),
           ),
           Effect.ignore,
@@ -438,9 +434,8 @@ export const make = Effect.gen(function* () {
           Effect.tap((exitCode) =>
             Effect.sync(() => {
               if (!closing) {
-                const diagnostic = stderr.trim().slice(0, 500);
                 reportCrash(
-                  `worker exited with code ${String(exitCode)}${diagnostic.length === 0 ? "" : `: ${diagnostic}`}`,
+                  `worker exited with code ${String(exitCode)}${stderrBytes === 0 ? "" : ` after ${String(stderrBytes)} stderr bytes`}`,
                 );
               }
             }),
@@ -575,7 +570,15 @@ export const make = Effect.gen(function* () {
                   current === undefined || wasCrashed
                     ? undefined
                     : yield* Effect.exit(
-                        current.requestDispose.pipe(Effect.timeout(options.disposeTimeout)),
+                        current.requestDispose.pipe(
+                          Effect.timeout(options.disposeTimeout),
+                          Effect.catchTags({
+                            TimeoutError: (cause) =>
+                              Effect.fail(
+                                workerError("dispose", "worker disposal timed out", cause),
+                              ),
+                          }),
+                        ),
                       );
                 yield* Scope.close(workerScope, Exit.void);
                 if (disposeExit?._tag === "Failure") {
