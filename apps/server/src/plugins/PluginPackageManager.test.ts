@@ -1,7 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { ServerSettingsError } from "@t3tools/contracts";
 import { it } from "@effect/vitest";
-import { expect } from "vite-plus/test";
+import { expect, vi } from "vite-plus/test";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -9,8 +9,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
-import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 import { PluginManifest } from "@t3tools/plugin-runtime/manifest";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
@@ -19,11 +19,27 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as PluginCommandCatalog from "./PluginCommandCatalog.ts";
 import * as PluginHostCapabilityBroker from "./PluginHostCapabilityBroker.ts";
 import * as PluginPackageManager from "./PluginPackageManager.ts";
+import * as PluginWorkerSupervisor from "./PluginWorkerSupervisor.ts";
 
 const packageId = "com.acme.runtime-status";
 const commandId = "acme.runtime-status";
-let testSymbolSequence = 0;
-const nextTestSymbol = (prefix: string) => `${prefix}-${testSymbolSequence++}`;
+
+const waitForFile = (fileSystem: FileSystem.FileSystem, filePath: string, expected: boolean) =>
+  Effect.gen(function* () {
+    let observed: boolean | undefined;
+    const observer = yield* Effect.forkChild(
+      Effect.forever(
+        fileSystem.exists(filePath).pipe(
+          Effect.tap((exists) => Effect.sync(() => void (observed = exists))),
+          Effect.flatMap(() => Effect.yieldNow),
+        ),
+      ),
+    );
+    yield* Effect.promise(() =>
+      vi.waitFor(() => expect(observed).toBe(expected), { interval: 5, timeout: 2_000 }),
+    );
+    yield* Fiber.interrupt(observer);
+  });
 
 const manifest = {
   manifestVersion: 1,
@@ -88,16 +104,30 @@ export default function activate(api) {
 }
 `;
 
+const crashOnceCommandPluginSource = (id: string) => `
+export default function activate(api) {
+  api.registerCommand(
+    { id: ${encodeJsonString(id)}, label: "Crash once", surfaces: ["web"] },
+    () => api.effect.flatMap(api.host.state.get("crashed"), (crashed) => {
+      if (crashed === true) return api.effect.succeed({ message: "recovered", tone: "success" });
+      return api.effect.flatMap(api.host.state.set("crashed", true), () => process.exit(23));
+    })
+  );
+}
+`;
+
 const retryingCommandPluginSource = (
   id: string,
   label: string,
-  attemptsSymbol: string,
+  attemptsFile: string,
   failThroughAttempt = 1,
 ) => `
+import { readFileSync, writeFileSync } from "node:fs";
 export default function activate(api) {
-  const key = Symbol.for(${encodeJsonString(attemptsSymbol)});
-  const attempts = (Reflect.get(globalThis, key) ?? 0) + 1;
-  Reflect.set(globalThis, key, attempts);
+  let attempts = 0;
+  try { attempts = Number(readFileSync(${encodeJsonString(attemptsFile)}, "utf8")); } catch {}
+  attempts += 1;
+  writeFileSync(${encodeJsonString(attemptsFile)}, String(attempts));
   if (attempts <= ${String(failThroughAttempt)}) throw new Error("startup activation failed");
   api.registerCommand(
     {
@@ -112,17 +142,17 @@ export default function activate(api) {
 
 const gatedCommandPluginSource = (
   id: string,
-  gateEnabledSymbol: string,
-  startedSymbol: string,
-  releaseSymbol: string,
+  gateFile: string,
+  startedFile: string,
+  releaseFile: string,
 ) => `
+import { existsSync, writeFileSync } from "node:fs";
 export default async function activate(api) {
-  if (Reflect.get(globalThis, Symbol.for(${encodeJsonString(gateEnabledSymbol)})) === true) {
-    const markStarted = Reflect.get(globalThis, Symbol.for(${encodeJsonString(startedSymbol)}));
-    if (typeof markStarted === "function") markStarted();
-    await new Promise((resolve) => {
-      Reflect.set(globalThis, Symbol.for(${encodeJsonString(releaseSymbol)}), resolve);
-    });
+  if (existsSync(${encodeJsonString(gateFile)})) {
+    writeFileSync(${encodeJsonString(startedFile)}, "started");
+    while (!existsSync(${encodeJsonString(releaseFile)})) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
   }
   api.registerCommand(
     { id: ${encodeJsonString(id)}, label: "gated", surfaces: ["web"] },
@@ -146,7 +176,8 @@ export default function activate(api) {
 }
 `;
 
-const pluginSourceWithRetirementGate = (startedSymbol: string, releaseSymbol: string) => `
+const pluginSourceWithRetirementGate = (startedFile: string, releaseFile: string) => `
+import { existsSync, writeFileSync } from "node:fs";
 export default function activate(api) {
   api.registerCommand(
     {
@@ -156,11 +187,12 @@ export default function activate(api) {
     },
     () => ({ message: "retirement gate", tone: "success" })
   );
-  api.onDispose(() => new Promise((resolve) => {
-    const markStarted = Reflect.get(globalThis, Symbol.for(${encodeJsonString(startedSymbol)}));
-    if (typeof markStarted === "function") markStarted();
-    Reflect.set(globalThis, Symbol.for(${encodeJsonString(releaseSymbol)}), resolve);
-  }));
+  api.onDispose(async () => {
+    writeFileSync(${encodeJsonString(startedFile)}, "started");
+    while (!existsSync(${encodeJsonString(releaseFile)})) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  });
 }
 `;
 
@@ -234,6 +266,7 @@ const makeEnvironmentLayer = (baseDir: string, options?: EnvironmentLayerOptions
   return PluginPackageManager.layer.pipe(
     Layer.provideMerge(PluginCommandCatalog.layer),
     Layer.provideMerge(capabilityBrokerLayer),
+    Layer.provideMerge(PluginWorkerSupervisor.layer),
     Layer.provideMerge(settingsLayer),
     Layer.provideMerge(configLayer),
   );
@@ -296,6 +329,57 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
               tone: "success",
             },
           );
+        }),
+      );
+    }),
+  );
+
+  it.effect("reports worker restart health after an isolated plugin crash", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3code-plugin-package-worker-crash-test-",
+      });
+      const packageDirectory = `${baseDir}/userdata/plugins/${packageId}`;
+      yield* fileSystem.makeDirectory(packageDirectory, { recursive: true });
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/t3-plugin.json`,
+        encodeManifest({ ...manifest, permissions: ["state:read-write"] }),
+      );
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/index.mjs`,
+        crashOnceCommandPluginSource(commandId),
+      );
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+          yield* manager.enable(packageId);
+          const listed = yield* catalog.list;
+          expect(
+            (yield* Effect.exit(catalog.invoke({ generation: listed.generation, id: commandId })))
+              ._tag,
+          ).toBe("Failure");
+          expect(yield* manager.status).toMatchObject({
+            packages: [
+              {
+                state: "restarting",
+                runtimeState: "restarting",
+                error: expect.stringContaining("worker exited"),
+              },
+            ],
+          });
+
+          yield* TestClock.adjust("1 second");
+          expect(yield* catalog.invoke({ generation: listed.generation, id: commandId })).toEqual({
+            message: "recovered",
+            tone: "success",
+          });
+          expect(yield* manager.status).toMatchObject({
+            packages: [{ state: "active", runtimeState: "running", restartCount: 0 }],
+          });
         }),
       );
     }),
@@ -395,7 +479,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
         prefix: "t3code-plugin-package-startup-retry-test-",
       });
       const packageDirectory = `${baseDir}/userdata/plugins/${packageId}`;
-      const attemptsSymbol = nextTestSymbol("t3code-plugin-startup-retry");
+      const attemptsFile = `${baseDir}/startup-attempts.txt`;
       yield* fileSystem.makeDirectory(packageDirectory, { recursive: true });
       yield* fileSystem.writeFileString(
         `${packageDirectory}/t3-plugin.json`,
@@ -403,9 +487,9 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
       );
       yield* fileSystem.writeFileString(
         `${packageDirectory}/index.mjs`,
-        retryingCommandPluginSource(commandId, "startup retry", attemptsSymbol),
+        retryingCommandPluginSource(commandId, "startup retry", attemptsFile),
       );
-      Reflect.set(globalThis, Symbol.for(attemptsSymbol), 1);
+      yield* fileSystem.writeFileString(attemptsFile, "1");
 
       yield* useEnvironment(
         baseDir,
@@ -414,7 +498,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
           yield* manager.enable(packageId);
         }),
       );
-      Reflect.set(globalThis, Symbol.for(attemptsSymbol), 0);
+      yield* fileSystem.writeFileString(attemptsFile, "0");
 
       yield* useEnvironment(
         baseDir,
@@ -427,8 +511,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
           expect((yield* catalog.list).commands.map(({ id }) => id)).toContain(commandId);
         }),
       );
-      expect(Reflect.get(globalThis, Symbol.for(attemptsSymbol))).toBe(2);
-      Reflect.deleteProperty(globalThis, Symbol.for(attemptsSymbol));
+      expect(yield* fileSystem.readFileString(attemptsFile)).toBe("2");
     }),
   );
 
@@ -442,7 +525,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
       const workingId = "com.acme.z-working";
       const failingCommandId = "acme.failing.status";
       const workingCommandId = "acme.working.status";
-      const attemptsSymbol = nextTestSymbol("t3code-plugin-startup-failing");
+      const attemptsFile = `${baseDir}/failing-attempts.txt`;
       for (const [id, declaredCommand] of [
         [failingId, failingCommandId],
         [workingId, workingCommandId],
@@ -456,11 +539,11 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
         yield* fileSystem.writeFileString(
           `${directory}/index.mjs`,
           id === failingId
-            ? retryingCommandPluginSource(declaredCommand, id, attemptsSymbol, 2)
+            ? retryingCommandPluginSource(declaredCommand, id, attemptsFile, 2)
             : commandPluginSource(declaredCommand, id),
         );
       }
-      Reflect.set(globalThis, Symbol.for(attemptsSymbol), 2);
+      yield* fileSystem.writeFileString(attemptsFile, "2");
 
       yield* useEnvironment(
         baseDir,
@@ -470,7 +553,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
           yield* manager.enable(workingId);
         }),
       );
-      Reflect.set(globalThis, Symbol.for(attemptsSymbol), 0);
+      yield* fileSystem.writeFileString(attemptsFile, "0");
 
       yield* useEnvironment(
         baseDir,
@@ -492,8 +575,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
           expect(commandIds).toContain(workingCommandId);
         }),
       );
-      expect(Reflect.get(globalThis, Symbol.for(attemptsSymbol))).toBe(2);
-      Reflect.deleteProperty(globalThis, Symbol.for(attemptsSymbol));
+      expect(yield* fileSystem.readFileString(attemptsFile)).toBe("2");
     }),
   );
 
@@ -504,9 +586,9 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
         prefix: "t3code-plugin-package-startup-interruption-test-",
       });
       const packageDirectory = `${baseDir}/userdata/plugins/${packageId}`;
-      const gateEnabledSymbol = nextTestSymbol("t3code-plugin-startup-gate");
-      const startedSymbol = `${gateEnabledSymbol}-started`;
-      const releaseSymbol = `${gateEnabledSymbol}-release`;
+      const gateFile = `${baseDir}/startup-gate`;
+      const startedFile = `${baseDir}/startup-started`;
+      const releaseFile = `${baseDir}/startup-release`;
       yield* fileSystem.makeDirectory(packageDirectory, { recursive: true });
       yield* fileSystem.writeFileString(
         `${packageDirectory}/t3-plugin.json`,
@@ -514,9 +596,8 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
       );
       yield* fileSystem.writeFileString(
         `${packageDirectory}/index.mjs`,
-        gatedCommandPluginSource(commandId, gateEnabledSymbol, startedSymbol, releaseSymbol),
+        gatedCommandPluginSource(commandId, gateFile, startedFile, releaseFile),
       );
-      Reflect.set(globalThis, Symbol.for(gateEnabledSymbol), false);
 
       yield* useEnvironment(
         baseDir,
@@ -526,29 +607,18 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
         }),
       );
 
-      let markStarted!: () => void;
-      const started = new Promise<void>((resolve) => {
-        markStarted = resolve;
-      });
-      Reflect.set(globalThis, Symbol.for(gateEnabledSymbol), true);
-      Reflect.set(globalThis, Symbol.for(startedSymbol), markStarted);
+      yield* fileSystem.writeFileString(gateFile, "enabled");
       const startup = yield* Effect.forkChild(
         useEnvironment(baseDir, Effect.asVoid(PluginPackageManager.PluginPackageManager)),
       );
-      yield* Effect.promise(() => started);
+      yield* waitForFile(fileSystem, startedFile, true);
       const interrupting = yield* Effect.forkChild(Fiber.interrupt(startup));
       yield* Effect.yieldNow;
-      const release = Reflect.get(globalThis, Symbol.for(releaseSymbol));
-      expect(release).toBeTypeOf("function");
-      if (typeof release === "function") release();
+      yield* fileSystem.writeFileString(releaseFile, "release");
       yield* Fiber.join(interrupting);
       const exit = yield* Fiber.await(startup);
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true);
-
-      for (const symbol of [gateEnabledSymbol, startedSymbol, releaseSymbol]) {
-        Reflect.deleteProperty(globalThis, Symbol.for(symbol));
-      }
     }),
   );
 
@@ -735,6 +805,15 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
           const remainingCommandIds = (yield* catalog.list).commands.map(({ id }) => id);
           expect(remainingCommandIds).not.toContain(providerCommandId);
           expect(remainingCommandIds).not.toContain(consumerCommandId);
+
+          yield* manager.enable(providerId);
+          const restoredCatalog = yield* catalog.list;
+          expect(
+            yield* catalog.invoke({
+              generation: restoredCatalog.generation,
+              id: consumerCommandId,
+            }),
+          ).toEqual({ message: "issues consumer", tone: "success" });
         }),
       );
     }),
@@ -993,13 +1072,8 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
         prefix: "t3code-plugin-package-interruption-test-",
       });
       const packageDirectory = `${baseDir}/userdata/plugins/${packageId}`;
-      const startedSymbol = `t3.test.plugin.retirement.started.${baseDir}`;
-      const releaseSymbol = `t3.test.plugin.retirement.${baseDir}`;
-      let markRetirementStarted!: () => void;
-      const retirementStarted = new Promise<void>((resolve) => {
-        markRetirementStarted = resolve;
-      });
-      Reflect.set(globalThis, Symbol.for(startedSymbol), markRetirementStarted);
+      const startedFile = `${baseDir}/retirement-started`;
+      const releaseFile = `${baseDir}/retirement-release`;
       yield* fileSystem.makeDirectory(packageDirectory, { recursive: true });
       yield* fileSystem.writeFileString(
         `${packageDirectory}/t3-plugin.json`,
@@ -1007,7 +1081,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
       );
       yield* fileSystem.writeFileString(
         `${packageDirectory}/index.mjs`,
-        pluginSourceWithRetirementGate(startedSymbol, releaseSymbol),
+        pluginSourceWithRetirementGate(startedFile, releaseFile),
       );
 
       yield* useEnvironment(
@@ -1017,25 +1091,13 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
           const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
           yield* manager.enable(packageId);
           const disabling = yield* Effect.forkChild(manager.disable(packageId));
-          yield* Effect.promise(() => retirementStarted);
+          yield* waitForFile(fileSystem, startedFile, true);
 
           const interrupting = yield* Effect.forkChild(Fiber.interrupt(disabling));
           yield* Effect.yieldNow;
-          const release = Reflect.get(globalThis, Symbol.for(releaseSymbol));
-          expect(release).toBeTypeOf("function");
-          if (typeof release === "function") release();
+          yield* fileSystem.writeFileString(releaseFile, "release");
           yield* Fiber.join(interrupting);
-          expect(
-            yield* fileSystem.exists(`${baseDir}/userdata/plugin-cache/${packageId}/0`).pipe(
-              Effect.repeat({
-                schedule: Schedule.spaced("1 millis"),
-                until: (exists) => !exists,
-              }),
-              Effect.timeout("2 seconds"),
-            ),
-          ).toBe(false);
-          Reflect.deleteProperty(globalThis, Symbol.for(startedSymbol));
-          Reflect.deleteProperty(globalThis, Symbol.for(releaseSymbol));
+          yield* waitForFile(fileSystem, `${baseDir}/userdata/plugin-cache/${packageId}/0`, false);
 
           expect(yield* manager.status).toMatchObject({
             packages: [{ id: packageId, enabled: false, state: "disabled" }],

@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { PluginCommandId } from "./pluginCommands.ts";
 
 export const PluginPackageId = Schema.String.check(
@@ -38,8 +38,24 @@ export const PluginHostPermission = Schema.Union([
 ]);
 export type PluginHostPermission = typeof PluginHostPermission.Type;
 
-export const PluginPackageState = Schema.Literals(["disabled", "active", "blocked", "error"]);
+export const PluginPackageState = Schema.Literals([
+  "disabled",
+  "active",
+  "blocked",
+  "restarting",
+  "crashed",
+  "error",
+]);
 export type PluginPackageState = typeof PluginPackageState.Type;
+
+export const PluginPackageRuntimeState = Schema.Literals([
+  "stopped",
+  "starting",
+  "running",
+  "restarting",
+  "crashed",
+]);
+export type PluginPackageRuntimeState = typeof PluginPackageRuntimeState.Type;
 
 export const PluginPackageContributions = Schema.Struct({
   commands: Schema.Array(PluginCommandId),
@@ -52,6 +68,8 @@ export const PluginPackageStatus = Schema.Struct({
   apiVersion: Schema.Literal(1),
   enabled: Schema.Boolean,
   state: PluginPackageState,
+  runtimeState: PluginPackageRuntimeState,
+  restartCount: NonNegativeInt,
   capabilities: Schema.Array(PluginPackageCapability),
   permissions: Schema.Array(PluginHostPermission),
   grantedPermissions: Schema.Array(PluginHostPermission),

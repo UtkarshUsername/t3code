@@ -71,6 +71,7 @@ import * as Keybindings from "./keybindings.ts";
 import * as PluginCommandCatalog from "./plugins/PluginCommandCatalog.ts";
 import * as PluginHostCapabilityBroker from "./plugins/PluginHostCapabilityBroker.ts";
 import * as PluginPackageManager from "./plugins/PluginPackageManager.ts";
+import * as PluginWorkerSupervisor from "./plugins/PluginWorkerSupervisor.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import {
   projectActivityEvent,
@@ -2513,6 +2514,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
     PluginPackageManager.layer.pipe(
       Layer.provideMerge(PluginCommandCatalog.layer),
       Layer.provideMerge(PluginHostCapabilityBroker.layer),
+      Layer.provideMerge(PluginWorkerSupervisor.layer),
     ),
   ),
 );

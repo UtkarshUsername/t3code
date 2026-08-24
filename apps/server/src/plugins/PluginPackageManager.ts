@@ -1,5 +1,3 @@
-import * as NodeURL from "node:url";
-
 import {
   PluginCommandInvocationResult,
   PluginPackageNotFoundError,
@@ -27,6 +25,7 @@ import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as PluginCommandCatalog from "./PluginCommandCatalog.ts";
 import * as PluginHostCapabilityBroker from "./PluginHostCapabilityBroker.ts";
+import * as PluginWorkerSupervisor from "./PluginWorkerSupervisor.ts";
 
 const MANIFEST_FILE_NAME = "t3-plugin.json";
 const COMMAND_CAPABILITY = "t3.commands@1";
@@ -45,37 +44,15 @@ interface LoadedDefinition {
   readonly cacheDirectory: string;
   readonly definition: PluginDefinition;
   readonly retired: Promise<void>;
+  readonly worker: PluginWorkerSupervisor.SupervisedPluginWorker;
 }
-
-export interface PluginPackageApi {
-  readonly host: PluginHostCapabilityBroker.PluginHostApi;
-  readonly effect: {
-    readonly succeed: <A>(value: A) => Effect.Effect<A>;
-    readonly map: <A, B, E>(effect: Effect.Effect<A, E>, f: (value: A) => B) => Effect.Effect<B, E>;
-    readonly flatMap: <A, B, E, E2>(
-      effect: Effect.Effect<A, E>,
-      f: (value: A) => Effect.Effect<B, E2>,
-    ) => Effect.Effect<B, E | E2>;
-  };
-  readonly onDispose: (cleanup: () => void | Promise<void>) => void;
-  readonly registerCommand: (
-    command: {
-      readonly id: string;
-      readonly label: string;
-      readonly description?: string;
-      readonly surfaces: ReadonlyArray<"web" | "desktop" | "mobile">;
-    },
-    handler: () => unknown | Promise<unknown> | Effect.Effect<unknown, unknown>,
-  ) => void;
-}
-
-type PluginPackageActivator = (api: PluginPackageApi) => void | Promise<void>;
 
 const decodeManifestJson = Schema.decodeUnknownEffect(Schema.fromJsonString(PluginManifest));
 const decodeInvocationResult = Schema.decodeUnknownEffect(PluginCommandInvocationResult);
 const isPluginPackageOperationError = Schema.is(PluginPackageOperationError);
 
 const detailFromUnknown = (error: unknown): string => {
+  if (PluginWorkerSupervisor.isPluginWorkerError(error)) return error.detail;
   if (isPluginPackageOperationError(error)) {
     if (error.detail !== undefined) return error.detail;
     if (error.cause !== undefined) return detailFromUnknown(error.cause);
@@ -107,12 +84,21 @@ const operationError = (
 
 const makeDefinition = (
   discovered: DiscoveredPackage,
-  activatePackage: PluginPackageActivator,
-  host: PluginHostCapabilityBroker.PluginHostApi,
+  worker: PluginWorkerSupervisor.SupervisedPluginWorker,
   onRetired: () => void,
-  onCleanupError: (error: unknown) => void,
 ): PluginDefinition => {
   const declaredCommands = new Set(discovered.manifest.contributes?.commands ?? []);
+  if (
+    worker.commands.length > 0 &&
+    !discovered.manifest.capabilities.includes(COMMAND_CAPABILITY)
+  ) {
+    throw new Error(`Manifest does not declare capability ${COMMAND_CAPABILITY}`);
+  }
+  for (const command of worker.commands) {
+    if (!declaredCommands.has(command.id)) {
+      throw new Error(`Command ${command.id} is not declared in the manifest`);
+    }
+  }
   const providedCapabilities = Object.fromEntries(
     (discovered.manifest.provides ?? []).map((capability) => [
       capability,
@@ -128,80 +114,31 @@ const makeDefinition = (
     provides: providedCapabilities,
     activate(context: PluginActivationContext) {
       context.onDispose(onRetired);
-      const api: PluginPackageApi = {
-        host,
-        effect: {
-          succeed: Effect.succeed,
-          map: (effect, f) => Effect.map(effect, f),
-          flatMap: (effect, f) => Effect.flatMap(effect, f),
-        },
-        onDispose(cleanup) {
-          context.onDispose(async () => {
-            try {
-              await cleanup();
-            } catch (error) {
-              onCleanupError(error);
-              throw error;
-            }
-          });
-        },
-        registerCommand(command, handler) {
-          if (!discovered.manifest.capabilities.includes(COMMAND_CAPABILITY)) {
-            throw new Error(`Manifest does not declare capability ${COMMAND_CAPABILITY}`);
-          }
-          if (!declaredCommands.has(command.id)) {
-            throw new Error(`Command ${command.id} is not declared in the manifest`);
-          }
-          const invokeHandler: Effect.Effect<
-            unknown,
-            PluginCommandCatalog.PluginCommandExecutionError
-          > = Effect.try({
-            try: handler,
-            catch: (cause) =>
-              new PluginCommandCatalog.PluginCommandExecutionError({ cause, id: command.id }),
-          }).pipe(
-            Effect.flatMap((result) => {
-              if (Effect.isEffect(result)) {
-                const pluginEffect = result as Effect.Effect<unknown, unknown>;
-                return pluginEffect.pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new PluginCommandCatalog.PluginCommandExecutionError({
-                        cause,
-                        id: command.id,
-                      }),
-                  ),
-                );
-              }
-              return Effect.tryPromise({
-                try: () => Promise.resolve(result),
-                catch: (cause) =>
-                  new PluginCommandCatalog.PluginCommandExecutionError({
-                    cause,
-                    id: command.id,
-                  }),
-              });
-            }),
-          );
-          PluginCommandCatalog.registerPluginCommand(context, {
-            command,
-            handler: invokeHandler.pipe(
-              Effect.flatMap((result) =>
-                decodeInvocationResult(result).pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new PluginCommandCatalog.PluginCommandExecutionError({
-                        cause,
-                        id: command.id,
-                      }),
-                  ),
+      for (const command of worker.commands) {
+        PluginCommandCatalog.registerPluginCommand(context, {
+          command,
+          handler: worker.invoke(command.id).pipe(
+            Effect.flatMap((result) =>
+              decodeInvocationResult(result).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new PluginCommandCatalog.PluginCommandExecutionError({
+                      cause,
+                      id: command.id,
+                    }),
                 ),
               ),
             ),
-          });
-        },
-      };
-      return activatePackage(api);
+            Effect.mapError(
+              (cause) =>
+                new PluginCommandCatalog.PluginCommandExecutionError({
+                  cause,
+                  id: command.id,
+                }),
+            ),
+          ),
+        });
+      }
     },
   };
 };
@@ -238,12 +175,14 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
   const settings = yield* ServerSettings.ServerSettingsService;
   const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
   const hostCapabilities = yield* PluginHostCapabilityBroker.PluginHostCapabilityBroker;
+  const workerSupervisor = yield* PluginWorkerSupervisor.PluginWorkerSupervisor;
   const semaphore = yield* Semaphore.make(1);
   const pluginsDirectory = path.join(config.stateDir, "plugins");
   const pluginCacheDirectory = path.join(config.stateDir, "plugin-cache");
   const activeDefinitions = new Map<string, PluginDefinition>();
   const activeCacheDirectories = new Map<string, string>();
   const activeManifests = new Map<string, PluginManifestType>();
+  const activeWorkers = new Map<string, PluginWorkerSupervisor.SupervisedPluginWorker>();
   const activeRetirements = new Map<string, Promise<void>>();
   const packageErrors = new Map<string, string>();
   let loadSequence = 0;
@@ -256,6 +195,15 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
           Effect.logWarning("Failed to remove local plugin package cache", { directory, error }),
         ),
       );
+
+  const stopWorker = (id: string, worker: PluginWorkerSupervisor.SupervisedPluginWorker) =>
+    Effect.promise(worker.dispose).pipe(
+      Effect.catchCause((cause) => {
+        const detail = detailFromCause(cause);
+        packageErrors.set(id, detail);
+        return Effect.logWarning("Failed to stop local plugin worker", { id, detail });
+      }),
+    );
 
   const validatePackageTree = Effect.fn("PluginPackageManager.validatePackageTree")(function* (
     discovered: DiscoveredPackage,
@@ -388,38 +336,41 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
     }
     const entrypointPath = path.resolve(cacheDirectory, serverEntrypoint);
 
-    const loaded = yield* Effect.exit(
-      Effect.gen(function* () {
-        const moduleUrl = NodeURL.pathToFileURL(entrypointPath);
-        const module = yield* Effect.tryPromise({
-          try: () => import(/* @vite-ignore */ moduleUrl.href) as Promise<Record<string, unknown>>,
-          catch: (cause) => operationError(operation, cause, discovered.manifest.id),
-        });
-        if (typeof module.default !== "function") {
-          return yield* operationError(
-            operation,
-            "server entrypoint must export a default activation function",
-            discovered.manifest.id,
-          );
-        }
-        return module.default as PluginPackageActivator;
-      }),
+    const workerExit = yield* Effect.exit(
+      workerSupervisor
+        .start({
+          pluginId: discovered.manifest.id,
+          entrypointPath,
+          host,
+        })
+        .pipe(Effect.mapError((error) => operationError(operation, error, discovered.manifest.id))),
     );
-    if (loaded._tag === "Failure") {
+    if (workerExit._tag === "Failure") {
       yield* removeCacheDirectory(cacheDirectory);
-      return yield* Effect.failCause(loaded.cause);
+      return yield* Effect.failCause(workerExit.cause);
     }
+    const worker = workerExit.value;
 
     let markRetired: () => void = () => {};
     const retired = new Promise<void>((resolve) => {
       markRetired = resolve;
     });
+    const definitionExit = yield* Effect.exit(
+      Effect.try({
+        try: () => makeDefinition(discovered, worker, markRetired),
+        catch: (error) => operationError(operation, error, discovered.manifest.id),
+      }),
+    );
+    if (definitionExit._tag === "Failure") {
+      yield* stopWorker(discovered.manifest.id, worker);
+      yield* removeCacheDirectory(cacheDirectory);
+      return yield* Effect.failCause(definitionExit.cause);
+    }
     return {
       cacheDirectory,
-      definition: makeDefinition(discovered, loaded.value, host, markRetired, (error) => {
-        packageErrors.set(discovered.manifest.id, detailFromUnknown(error));
-      }),
+      definition: definitionExit.value,
       retired,
+      worker,
     } satisfies LoadedDefinition;
   });
 
@@ -478,27 +429,42 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
       const enabled = enabledIds.has(id);
       const active = composition.active.includes(id);
       const blocked = composition.blocked[id];
+      const workerHealth = activeWorkers.get(id)?.health() ?? {
+        state: "stopped" as const,
+        restartCount: 0,
+      };
+      const runtimeError =
+        workerHealth.state === "restarting" || workerHealth.state === "crashed"
+          ? workerHealth.detail
+          : undefined;
       const packageError = packageErrors.get(id);
       const error =
         packageError ??
+        runtimeError ??
         blocked ??
         (enabled && !active ? "enabled package is not active" : undefined);
       const state =
         packageError !== undefined
           ? "error"
-          : blocked !== undefined
-            ? "blocked"
-            : error !== undefined
-              ? "error"
-              : active
-                ? "active"
-                : "disabled";
+          : workerHealth.state === "crashed"
+            ? "crashed"
+            : workerHealth.state === "restarting"
+              ? "restarting"
+              : blocked !== undefined
+                ? "blocked"
+                : error !== undefined
+                  ? "error"
+                  : active
+                    ? "active"
+                    : "disabled";
       packages.push({
         id: packageManifest.id,
         version: packageManifest.version,
         apiVersion: packageManifest.apiVersion,
         enabled,
         state,
+        runtimeState: workerHealth.state,
+        restartCount: workerHealth.restartCount,
         capabilities: [...packageManifest.capabilities],
         permissions: requestedPermissions,
         grantedPermissions: requestedPermissions.filter((permission) =>
@@ -565,6 +531,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
           );
           const previousCacheDirectory = activeCacheDirectories.get(id);
           const previousRetirement = activeRetirements.get(id);
+          const previousWorker = activeWorkers.get(id);
           const loadedExit = yield* Effect.exit(restore(loadDefinition(pluginPackage, operation)));
           if (loadedExit._tag === "Failure") {
             packageErrors.set(id, detailFromCause(loadedExit.cause));
@@ -578,6 +545,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
             if (persisted._tag === "Failure") {
               packageErrors.set(id, detailFromCause(persisted.cause));
               yield* restorePreviousGrants;
+              yield* stopWorker(id, loaded.worker);
               yield* removeCacheDirectory(loaded.cacheDirectory);
               return yield* Effect.failCause(persisted.cause);
             }
@@ -600,6 +568,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
                 yield* restorePreviousGrants;
                 if (rolledBack._tag === "Failure") {
                   packageErrors.set(id, detailFromCause(reconciled.cause));
+                  yield* stopWorker(id, loaded.worker);
                   yield* removeCacheDirectory(loaded.cacheDirectory);
                   yield* Effect.logWarning("Failed to restore enabled package settings", {
                     id,
@@ -609,6 +578,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
                 }
               }
               packageErrors.set(id, detailFromCause(reconciled.cause));
+              yield* stopWorker(id, loaded.worker);
               yield* removeCacheDirectory(loaded.cacheDirectory);
               return yield* Effect.failCause(reconciled.cause);
             }
@@ -617,11 +587,13 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
           activeDefinitions.set(id, loaded.definition);
           activeCacheDirectories.set(id, loaded.cacheDirectory);
           activeManifests.set(id, pluginPackage.manifest);
+          activeWorkers.set(id, loaded.worker);
           activeRetirements.set(id, loaded.retired);
           if (previousCacheDirectory !== undefined) {
             if (reconciled._tag === "Failure" && previousRetirement !== undefined) {
               yield* Effect.promise(() => previousRetirement);
             }
+            if (previousWorker !== undefined) yield* stopWorker(id, previousWorker);
             yield* removeCacheDirectory(previousCacheDirectory);
           }
           if (reconciled._tag === "Failure") return yield* Effect.failCause(reconciled.cause);
@@ -671,12 +643,15 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
           }
         }
 
+        const worker = activeWorkers.get(id);
         activeDefinitions.delete(id);
         activeManifests.delete(id);
+        activeWorkers.delete(id);
         const cacheDirectory = activeCacheDirectories.get(id);
         const retirement = activeRetirements.get(id);
         activeCacheDirectories.delete(id);
         activeRetirements.delete(id);
+        if (worker !== undefined) yield* stopWorker(id, worker);
         if (cacheDirectory !== undefined) {
           if (reconciled._tag === "Failure" && retirement !== undefined) {
             yield* Effect.promise(() => retirement);
@@ -721,12 +696,14 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
           .pipe(Effect.mapError((error) => operationError("status", error, id))),
       );
       if (reconciled._tag === "Failure") {
+        yield* stopWorker(id, loaded.worker);
         yield* removeCacheDirectory(loaded.cacheDirectory);
         return yield* Effect.failCause(reconciled.cause);
       }
       activeDefinitions.set(id, loaded.definition);
       activeCacheDirectories.set(id, loaded.cacheDirectory);
       activeManifests.set(id, pluginPackage.manifest);
+      activeWorkers.set(id, loaded.worker);
       activeRetirements.set(id, loaded.retired);
     }).pipe(
       Effect.retry({ times: 1 }),
@@ -748,6 +725,11 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
             error: detailFromCause(shutdown.cause),
           });
         }
+        yield* Effect.forEach(activeWorkers, ([id, worker]) => stopWorker(id, worker), {
+          concurrency: "unbounded",
+          discard: true,
+        });
+        activeWorkers.clear();
         for (const [id, error] of packageErrors) {
           yield* Effect.logWarning("Local plugin package reported a shutdown error", { id, error });
         }

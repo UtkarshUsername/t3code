@@ -26,6 +26,8 @@ plugin data lives under the active environment's `plugin-data/<plugin-id>/` dire
 
 host operations return Effect values. command handlers may return those values directly and compose them with `api.effect.succeed`, `api.effect.map`, and `api.effect.flatMap`. synchronous and Promise handlers remain supported.
 
-these APIs define the boundary that isolated workers will use later. packages still run in the server process today, so trusted code can bypass the broker by importing Node APIs.
+plugins run in supervised subprocesses with typed host transport, bounded protocol output, invocation deadlines, a V8 heap limit, crash detection, and automatic restart. failed replacement activation keeps the previous worker and command generation live.
 
-local packages run in the server process and are fully trusted. marketplace distribution, signing, sandboxing, and renderer code are not part of this mvp.
+workers still run as the same OS user as the environment server. process isolation prevents a plugin crash or `process.exit()` from stopping t3 code, but it is not a hostile-code filesystem sandbox. only install code you trust.
+
+local packages are fully trusted. marketplace distribution, signing, OS-level sandboxing, and renderer code are not part of this mvp.

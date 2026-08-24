@@ -101,6 +101,8 @@ const snapshot: PluginPackageStatusSnapshot = {
       apiVersion: 1,
       enabled: true,
       state: "active",
+      runtimeState: "running",
+      restartCount: 0,
       capabilities: ["t3.commands@1"],
       permissions: ["state:read-write", "network:https://api.acme.test"],
       grantedPermissions: ["state:read-write"],
@@ -112,6 +114,8 @@ const snapshot: PluginPackageStatusSnapshot = {
       apiVersion: 1,
       enabled: false,
       state: "disabled",
+      runtimeState: "stopped",
+      restartCount: 0,
       capabilities: ["t3.commands@1"],
       permissions: ["filesystem:data"],
       grantedPermissions: [],
@@ -205,6 +209,36 @@ describe("PluginsSettingsPanel", () => {
       visitElements(
         blockedRow,
         (element) => element.props.variant === "warning" && element.props.children === "Blocked",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("presents crashed workers with restart diagnostics", () => {
+    query.data = {
+      errors: [],
+      packages: [
+        {
+          ...snapshot.packages[0]!,
+          state: "crashed",
+          runtimeState: "crashed",
+          restartCount: 2,
+          error: "worker exited with code 23",
+        },
+      ],
+    };
+    const row = renderPackageRow(renderPanel(), "com.acme.active");
+    expect(
+      visitElements(
+        row,
+        (element) => element.props.variant === "error" && element.props.children === "Crashed",
+      ),
+    ).not.toBeNull();
+    expect(
+      visitElements(
+        row,
+        (element) =>
+          element.props["data-plugin-worker-health"] === "crashed" &&
+          element.props["data-restart-count"] === 2,
       ),
     ).not.toBeNull();
   });

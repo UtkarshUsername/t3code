@@ -34,6 +34,8 @@ const statePresentation = {
   active: { label: "Active", variant: "success" },
   disabled: { label: "Disabled", variant: "secondary" },
   blocked: { label: "Blocked", variant: "warning" },
+  restarting: { label: "Restarting", variant: "warning" },
+  crashed: { label: "Crashed", variant: "error" },
   error: { label: "Error", variant: "error" },
 } as const;
 
@@ -65,6 +67,13 @@ function PluginPackageRow({
     <div className="flex flex-wrap items-center gap-1.5">
       <Badge variant={state.variant}>{state.label}</Badge>
       <Badge variant="outline">v{pluginPackage.version}</Badge>
+      <Badge
+        variant="outline"
+        data-plugin-worker-health={pluginPackage.runtimeState}
+        data-restart-count={pluginPackage.restartCount}
+      >
+        worker: {pluginPackage.runtimeState}, restarts: {pluginPackage.restartCount}
+      </Badge>
       {pluginPackage.capabilities.map((capability) => (
         <Badge key={capability} variant="info" className="min-w-0 max-w-full" title={capability}>
           <span className="truncate">{capability}</span>
@@ -236,9 +245,9 @@ export function PluginsSettingsPanel() {
           <ShieldAlertIcon />
           <AlertTitle>Trusted local code</AlertTitle>
           <AlertDescription>
-            Host APIs enforce declared grants and keep plugin data namespaced. Plugins still run
-            inside this environment's server process and can bypass those APIs with Node until
-            execution isolation lands. Only install code you trust.
+            Plugins run in supervised subprocesses, while host APIs enforce declared grants and keep
+            plugin data namespaced. Workers still run as your OS user and are not a hostile code
+            sandbox. Only install code you trust.
           </AlertDescription>
         </Alert>
 
