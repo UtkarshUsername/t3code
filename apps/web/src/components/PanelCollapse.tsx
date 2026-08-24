@@ -237,6 +237,10 @@ export function PanelCollapseFrame(props: {
             flight
               ? {
                   [props.dimension]: `${flight.size}px`,
+                  // Pin the cross axis too: the wrapper is a plain block at
+                  // both width call sites, so an auto-height box would let
+                  // h-full content shrink to intrinsic height mid-flight.
+                  ...(props.dimension === "width" ? { height: "100%" } : { width: "100%" }),
                   flex: "0 0 auto",
                   minWidth: 0,
                   minHeight: 0,
