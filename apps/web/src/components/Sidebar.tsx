@@ -1137,7 +1137,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       !props.isActive &&
       !isSelected &&
       "opacity-70 transition-opacity hover:opacity-100",
-    isFileDragOver && "bg-sidebar-row-hover ring-1 ring-inset ring-primary/70",
+    isFileDragOver && "ring-1 ring-inset ring-primary/70",
+    // The hover tint must not clobber an active/selected row's own surface.
+    isFileDragOver && !props.isActive && !isSelected && "bg-sidebar-row-hover",
   );
 
   const title = isRenaming ? (
@@ -2356,17 +2358,25 @@ export default function Sidebar() {
       setPendingFileDrop({ threadRef, files });
       const threadKey = scopedThreadKey(threadRef);
       if (routeThreadKeyRef.current === threadKey) return;
-      await navigateToThread(threadRef);
-      // A newer drop may have replaced ours while the navigation was in
-      // flight; only clear the stash if it still belongs to this drop.
-      const landed =
-        router.buildLocation({
-          to: "/$environmentId/$threadId",
-          params: buildThreadRouteParams(threadRef),
-        }).pathname === router.state.location.pathname;
-      const pending = useSidebarPendingFileDropStore.getState().pending;
-      if (!landed && pending !== null && scopedThreadKey(pending.threadRef) === threadKey) {
-        clearPendingFileDrop();
+      try {
+        await navigateToThread(threadRef);
+        // A newer drop may have replaced ours while the navigation was in
+        // flight; only clear the stash if it still belongs to this drop.
+        const landed =
+          router.buildLocation({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(threadRef),
+          }).pathname === router.state.location.pathname;
+        const pending = useSidebarPendingFileDropStore.getState().pending;
+        if (!landed && pending !== null && scopedThreadKey(pending.threadRef) === threadKey) {
+          clearPendingFileDrop();
+        }
+      } catch {
+        // Navigation failed outright; nothing will consume this drop.
+        const pending = useSidebarPendingFileDropStore.getState().pending;
+        if (pending !== null && scopedThreadKey(pending.threadRef) === threadKey) {
+          clearPendingFileDrop();
+        }
       }
     },
     [clearPendingFileDrop, navigateToThread, router, setPendingFileDrop],
