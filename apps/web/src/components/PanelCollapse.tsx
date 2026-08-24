@@ -111,6 +111,12 @@ export function usePanelCollapse(input: {
     return () => {
       window.cancelAnimationFrame(raf);
       node.removeEventListener("transitionend", onTransitionEnd);
+      // Retargeting a flight must retire its fallback timer too, or the old
+      // timer settles the replacement flight early.
+      if (endTimerRef.current != null) {
+        window.clearTimeout(endTimerRef.current);
+        endTimerRef.current = null;
+      }
     };
   }, [flight]);
 
@@ -135,9 +141,9 @@ export function usePanelCollapse(input: {
     firstRenderRef.current = false;
     const switchedIdentity = prevIdentityRef.current !== input.identity;
     prevIdentityRef.current = input.identity;
-    // A pending exit commits right away so the old close lands against its
-    // own identity instead of leaking into the new one.
-    if (switchedIdentity && flightRef.current?.direction === "out") {
+    // An identity switch retires any flight: an exit commits against its own
+    // identity, an entrance snaps so it cannot grow the new identity's panel.
+    if (switchedIdentity) {
       settle();
     }
     if (wasFirstRender || switchedIdentity) return;
@@ -151,6 +157,13 @@ export function usePanelCollapse(input: {
     flightRef.current = nextFlight;
     setFlight(nextFlight);
   }, [open, input.identity]);
+
+  // Disabling animations mid-flight (setting toggle, OS reduced motion)
+  // snaps the panel to its current endpoint instead of finishing animated.
+  React.useLayoutEffect(() => {
+    if (enabled) return;
+    settle();
+  }, [enabled, settle]);
 
   const requestClose = React.useCallback(() => {
     const current = latestRef.current;
@@ -180,7 +193,12 @@ export function usePanelCollapse(input: {
     [settle],
   );
 
-  return { ref, requestClose, settle, flight };
+  // Memoized so consumers can list the state object in dependency arrays
+  // without resubscribing effects on every render.
+  return React.useMemo(
+    () => ({ ref, requestClose, settle, flight }),
+    [ref, requestClose, settle, flight],
+  );
 }
 
 export type PanelCollapseState = ReturnType<typeof usePanelCollapse>;
@@ -188,7 +206,10 @@ export type PanelCollapseState = ReturnType<typeof usePanelCollapse>;
 /**
  * Wrapper around a collapsible panel. Renders identically to the bare panel
  * while idle; while a flight runs it pins the animated dimension and clips
- * overflow so content holds still instead of squashing.
+ * overflow, and holds the content box at its measured size so flexible
+ * children (a maximized `flex-1` shell) get clipped instead of reflowing on
+ * every frame. The pinned box carries `data-panel-collapse` too so
+ * PreviewPanelShell's clamp walk still reaches past both wrappers.
  */
 export function PanelCollapseFrame(props: {
   state: Pick<PanelCollapseState, "ref" | "flight">;
@@ -204,7 +225,23 @@ export function PanelCollapseFrame(props: {
       className={cn(props.className, flight && "overflow-hidden")}
       style={flight ? { flex: "0 0 auto" } : undefined}
     >
-      <React.Suspense fallback={null}>{props.children}</React.Suspense>
+      <React.Suspense fallback={null}>
+        {flight ? (
+          <div
+            data-panel-collapse=""
+            style={{
+              [props.dimension]: `${flight.size}px`,
+              flex: "0 0 auto",
+              minWidth: 0,
+              minHeight: 0,
+            }}
+          >
+            {props.children}
+          </div>
+        ) : (
+          props.children
+        )}
+      </React.Suspense>
     </div>
   );
 }
