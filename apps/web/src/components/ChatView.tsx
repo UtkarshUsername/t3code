@@ -2949,6 +2949,8 @@ function ChatViewContent(props: ChatViewProps) {
     enabled: panelAnimationsEnabled,
     dimension: "height",
     identity: routeThreadKey,
+    // Opening/closing sessions mid-collapse supersedes a pending hide.
+    supersedeKey: terminalUiState.terminalIds.join("|"),
     onClose: () => setTerminalOpen(false),
   });
   const toggleTerminalVisibility = useCallback(() => {
@@ -3489,6 +3491,10 @@ function ChatViewContent(props: ChatViewProps) {
     enabled: panelAnimationsEnabled,
     dimension: "width",
     identity: routeThreadKey,
+    // Opening or closing surfaces mid-collapse supersedes a pending close.
+    supersedeKey: `${rightPanelState.surfaces.map((surface) => surface.id).join("|")}:${
+      activeRightPanelSurface?.id ?? ""
+    }`,
     onClose: () => closePreviewPanel(),
   });
   // During a close from maximized, the wrapper is pinned to its measured px

@@ -37,6 +37,12 @@ export function usePanelCollapse(input: {
    * leak into another thread's panel layout.
    */
   identity?: string | number;
+  /**
+   * Snapshot at requestClose; if it differs at settle time, something else
+   * interacted with the panel meanwhile (a row picked, a surface opened) and
+   * the deferred close is dropped instead of wiping that newer intent.
+   */
+  supersedeKey?: string;
   onClose: () => void;
 }): {
   ref: (node: HTMLElement | null) => void;
@@ -54,8 +60,15 @@ export function usePanelCollapse(input: {
   // Captured at requestClose so a late commit targets the panel that began
   // closing, even if the surrounding component re-rendered meanwhile.
   const pendingOnCloseRef = React.useRef<(() => void) | null>(null);
+  const pendingSupersedeRef = React.useRef<string | undefined>(undefined);
 
-  const latest = { open, enabled, dimension, onClose: input.onClose };
+  const latest = {
+    open,
+    enabled,
+    dimension,
+    supersedeKey: input.supersedeKey,
+    onClose: input.onClose,
+  };
   const latestRef = React.useRef(latest);
   latestRef.current = latest;
 
@@ -79,9 +92,17 @@ export function usePanelCollapse(input: {
     clearWrapperStyles();
     setFlight(null);
     if (current.direction === "out") {
-      pendingOnCloseRef.current?.();
+      // A changed supersede key means newer panel intent landed while the
+      // collapse ran; drop the stale close instead of wiping it.
+      const superseded =
+        pendingSupersedeRef.current !== undefined &&
+        pendingSupersedeRef.current !== latestRef.current.supersedeKey;
+      if (!superseded) {
+        pendingOnCloseRef.current?.();
+      }
     }
     pendingOnCloseRef.current = null;
+    pendingSupersedeRef.current = undefined;
   }, [clearWrapperStyles]);
 
   // Runs one animation frame after a flight's styles are applied so the
@@ -146,6 +167,12 @@ export function usePanelCollapse(input: {
     if (switchedIdentity) {
       settle();
     }
+    // An exit bypassed by a direct store close (tab/session close paths that
+    // never went through requestClose) commits immediately; its onClose is
+    // idempotent against the already-closed store.
+    if (!open && flightRef.current?.direction === "out") {
+      settle();
+    }
     if (wasFirstRender || switchedIdentity) return;
     if (!open || flightRef.current || !latestRef.current.enabled) return;
     const node = nodeRef.current;
@@ -177,6 +204,7 @@ export function usePanelCollapse(input: {
       return;
     }
     pendingOnCloseRef.current = current.onClose;
+    pendingSupersedeRef.current = current.supersedeKey;
     const nextFlight: PanelCollapseFlight = { direction: "out", size };
     flightRef.current = nextFlight;
     setFlight(nextFlight);
