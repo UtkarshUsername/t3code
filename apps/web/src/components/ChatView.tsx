@@ -270,7 +270,10 @@ import {
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
-import { PluginComposerContributions } from "./plugins/PluginUi";
+import {
+  PluginComposerContributions,
+  usePluginComposerContributionState,
+} from "./plugins/PluginUi";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -6565,8 +6568,21 @@ function ChatViewContent(props: ChatViewProps) {
     setDragActive: setIsWorkspaceFileDragActive,
     addFiles: (files) => composerRef.current?.addDroppedFiles(files),
   });
+  const pluginComposerContext = useMemo(
+    () => ({
+      ...(activeThreadId === null ? {} : { threadId: String(activeThreadId) }),
+      ...(activeProject === null ? {} : { projectId: String(activeProject.id) }),
+    }),
+    [activeProject, activeThreadId],
+  );
+  const pluginComposerContributions = usePluginComposerContributionState(
+    environmentId,
+    pluginComposerContext,
+  );
   const externalComposerDrawerAttached =
-    composerBannerItems.length > 0 || Boolean(threadSyncPhase && !activeEnvironmentUnavailable);
+    composerBannerItems.length > 0 ||
+    Boolean(threadSyncPhase && !activeEnvironmentUnavailable) ||
+    pluginComposerContributions.isAttached;
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
@@ -6756,10 +6772,8 @@ function ChatViewContent(props: ChatViewProps) {
                   ) : null}
                   <PluginComposerContributions
                     environmentId={environmentId}
-                    context={{
-                      ...(activeThreadId === null ? {} : { threadId: String(activeThreadId) }),
-                      ...(activeProject === null ? {} : { projectId: String(activeProject.id) }),
-                    }}
+                    context={pluginComposerContext}
+                    contributions={pluginComposerContributions}
                   />
                   <div
                     className="relative"

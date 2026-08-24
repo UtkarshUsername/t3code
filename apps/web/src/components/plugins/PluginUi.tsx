@@ -479,15 +479,19 @@ export function PluginUiSettingsSections({ readOnly }: { readonly readOnly: bool
   });
 }
 
-export function PluginComposerContributions({
-  environmentId,
-  context,
-}: {
-  readonly environmentId: EnvironmentId | null;
-  readonly context: PluginCommandInvocationContext;
-}) {
+export interface PluginComposerContributionState {
+  readonly catalog: PluginUiCatalog;
+  readonly composer: PluginUiPackageContribution["composerActions"];
+  readonly contextual: PluginUiPackageContribution["contextualActions"];
+  readonly statuses: PluginUiPackageContribution["statusItems"];
+  readonly isAttached: boolean;
+}
+
+export function usePluginComposerContributionState(
+  environmentId: EnvironmentId | null,
+  context: PluginCommandInvocationContext,
+): PluginComposerContributionState {
   const catalog = usePluginUiCatalog(environmentId);
-  const invoke = usePluginAction(environmentId, catalog);
   const currentSurface = surface();
   const composer = catalog.packages.flatMap((pluginPackage) =>
     pluginPackage.composerActions.filter((action) => action.surfaces.includes(currentSurface)),
@@ -507,7 +511,27 @@ export function PluginComposerContributions({
   const statuses = catalog.packages.flatMap((pluginPackage) =>
     pluginPackage.statusItems.filter((item) => item.surfaces.includes(currentSurface)),
   );
-  if (composer.length === 0 && contextual.length === 0 && statuses.length === 0) return null;
+  return {
+    catalog,
+    composer,
+    contextual,
+    statuses,
+    isAttached: composer.length > 0 || contextual.length > 0 || statuses.length > 0,
+  };
+}
+
+export function PluginComposerContributions({
+  environmentId,
+  context,
+  contributions,
+}: {
+  readonly environmentId: EnvironmentId | null;
+  readonly context: PluginCommandInvocationContext;
+  readonly contributions: PluginComposerContributionState;
+}) {
+  const { catalog, composer, contextual, statuses, isAttached } = contributions;
+  const invoke = usePluginAction(environmentId, catalog);
+  if (!isAttached) return null;
 
   return (
     <div
