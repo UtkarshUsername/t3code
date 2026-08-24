@@ -179,6 +179,35 @@ function ActionButton({
   );
 }
 
+function StatusBadge({
+  label,
+  value,
+  tone,
+}: {
+  readonly label: string;
+  readonly value: string;
+  readonly tone?: "neutral" | "muted" | "info" | "success" | "warning" | "danger";
+}) {
+  const text = `${label}: ${value}`;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge
+            variant={tone === "success" ? "success" : tone === "warning" ? "warning" : "outline"}
+            className="min-w-0 max-w-full"
+          >
+            <span className="truncate">{text}</span>
+          </Badge>
+        }
+      />
+      <TooltipPopup side="top" className="max-w-80">
+        {text}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
 function RenderBlock({
   block,
   onAction,
@@ -262,18 +291,12 @@ export function PluginUiViewContent({
       {statuses.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {statuses.map((item) => (
-            <Badge
+            <StatusBadge
               key={item.id}
-              variant={
-                item.tone === "success"
-                  ? "success"
-                  : item.tone === "warning"
-                    ? "warning"
-                    : "outline"
-              }
-            >
-              {item.label}: {item.value}
-            </Badge>
+              label={item.label}
+              value={item.value}
+              {...(item.tone === undefined ? {} : { tone: item.tone })}
+            />
           ))}
         </div>
       ) : null}
@@ -432,7 +455,7 @@ export function PluginUiSettingsSections() {
       <SettingsSection key={pluginPackage.pluginId} title={`${pluginPackage.pluginId} settings`}>
         {settings.map((setting) => (
           <PluginUiSettingControl
-            key={setting.id}
+            key={`${environmentId}:${pluginPackage.pluginId}:${setting.id}:${String(setting.defaultValue)}`}
             environmentId={environmentId}
             pluginId={pluginPackage.pluginId}
             setting={setting}
@@ -474,16 +497,17 @@ export function PluginComposerContributions({
   if (composer.length === 0 && contextual.length === 0 && statuses.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-1.5 px-3 pt-2" data-plugin-composer-actions="true">
+    <div
+      className="chat-composer-top-drawer flex flex-wrap gap-1.5 px-3 pt-2"
+      data-plugin-composer-actions="true"
+    >
       {statuses.map((item) => (
-        <Badge
+        <StatusBadge
           key={item.id}
-          variant={
-            item.tone === "success" ? "success" : item.tone === "warning" ? "warning" : "outline"
-          }
-        >
-          {item.label}: {item.value}
-        </Badge>
+          label={item.label}
+          value={item.value}
+          {...(item.tone === undefined ? {} : { tone: item.tone })}
+        />
       ))}
       {[...composer, ...contextual].map((action) => (
         <Button

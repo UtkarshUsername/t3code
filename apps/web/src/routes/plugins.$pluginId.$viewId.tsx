@@ -6,6 +6,8 @@ import { PluginUiPage } from "../components/plugins/PluginUi";
 import { Button } from "../components/ui/button";
 import { SidebarInset } from "../components/ui/sidebar";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
+import { WorkspacePageContainer } from "../components/WorkspacePageContainer";
+import { ScrollArea } from "../components/ui/scroll-area";
 import { isElectron } from "../env";
 
 function PluginPageRoute() {
@@ -29,11 +31,11 @@ function PluginPageRoute() {
             <span className="truncate text-sm font-medium">{pluginId}</span>
           </div>
         </WorkspacePageHeader>
-        <main className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-4xl p-6">
+        <ScrollArea className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1">
+          <WorkspacePageContainer width="wide">
             <PluginUiPage pluginId={pluginId} viewId={viewId} />
-          </div>
-        </main>
+          </WorkspacePageContainer>
+        </ScrollArea>
       </div>
     </SidebarInset>
   );
