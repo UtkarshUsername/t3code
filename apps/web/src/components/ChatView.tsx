@@ -2949,8 +2949,9 @@ function ChatViewContent(props: ChatViewProps) {
     enabled: panelAnimationsEnabled,
     dimension: "height",
     identity: routeThreadKey,
-    // Opening/closing sessions mid-collapse supersedes a pending hide.
-    supersedeKey: terminalUiState.terminalIds.join("|"),
+    // Opening, closing, or focusing sessions mid-collapse supersedes a
+    // pending hide.
+    supersedeKey: `${terminalUiState.terminalIds.join("|")}:${terminalUiState.activeTerminalId ?? ""}`,
     onClose: () => setTerminalOpen(false),
   });
   const toggleTerminalVisibility = useCallback(() => {

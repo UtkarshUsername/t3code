@@ -1224,7 +1224,9 @@ function PullRequestsRouteView() {
     dimension: "width",
     // Picking a different row mid-collapse supersedes the pending close so
     // its deferred commit cannot clear the newer selection.
-    supersedeKey: rightPanelState.surfaces.map((surface) => surface.id).join("|"),
+    supersedeKey: `${rightPanelState.surfaces.map((surface) => surface.id).join("|")}:${
+      activePullRequestSurface?.id ?? ""
+    }`,
     onClose: () => {
       if (rightPanelRef === null) return;
       useRightPanelStore.getState().close(rightPanelRef);

@@ -94,15 +94,14 @@ describe("usePanelCollapse", () => {
     expect(panel.flight).toBeNull();
   });
 
-  it("drops a deferred close when the supersede key changed mid-flight", () => {
+  it("explicit settle commits even when the supersede key changed", () => {
     const onClose = vi.fn();
     let panel = renderCollapse({ open: true, onClose, supersedeKey: "a" });
     panel.ref(makeNode(420));
     panel.requestClose();
-    // Something else interacted with the panel while the collapse ran.
     panel = renderCollapse({ open: true, onClose, supersedeKey: "b" });
     panel.settle();
-    expect(onClose).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
     panel = renderCollapse({ open: true, onClose, supersedeKey: "b" });
     expect(panel.flight).toBeNull();
   });

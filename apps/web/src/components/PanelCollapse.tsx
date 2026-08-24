@@ -81,29 +81,38 @@ export function usePanelCollapse(input: {
     node.style.flex = "";
   }, []);
 
-  const settle = React.useCallback(() => {
-    const current = flightRef.current;
-    if (!current) return;
-    if (endTimerRef.current != null) {
-      window.clearTimeout(endTimerRef.current);
-      endTimerRef.current = null;
-    }
-    flightRef.current = null;
-    clearWrapperStyles();
-    setFlight(null);
-    if (current.direction === "out") {
-      // A changed supersede key means newer panel intent landed while the
-      // collapse ran; drop the stale close instead of wiping it.
+  /**
+   * Ends the current flight. Explicit finishes (`commit: true`) always run
+   * the captured close; natural completion (transitionend, fallback timer,
+   * detach) honors supersession so a stale close cannot wipe newer intent.
+   */
+  const endFlight = React.useCallback(
+    (options: { commit: boolean }) => {
+      const current = flightRef.current;
+      if (!current) return;
+      if (endTimerRef.current != null) {
+        window.clearTimeout(endTimerRef.current);
+        endTimerRef.current = null;
+      }
+      flightRef.current = null;
+      clearWrapperStyles();
+      setFlight(null);
       const superseded =
         pendingSupersedeRef.current !== undefined &&
         pendingSupersedeRef.current !== latestRef.current.supersedeKey;
-      if (!superseded) {
+      if (current.direction === "out" && (options.commit || !superseded)) {
         pendingOnCloseRef.current?.();
       }
-    }
-    pendingOnCloseRef.current = null;
-    pendingSupersedeRef.current = undefined;
-  }, [clearWrapperStyles]);
+      pendingOnCloseRef.current = null;
+      pendingSupersedeRef.current = undefined;
+    },
+    [clearWrapperStyles],
+  );
+
+  /** Ends the current flight now: an exit commits, an entrance cancels. */
+  const settle = React.useCallback(() => endFlight({ commit: true }), [endFlight]);
+  /** Natural completion: an exit commits unless superseded mid-flight. */
+  const retireFlight = React.useCallback(() => endFlight({ commit: false }), [endFlight]);
 
   // Runs one animation frame after a flight's styles are applied so the
   // transition actually interpolates between the pinned start and end values.
@@ -112,21 +121,21 @@ export function usePanelCollapse(input: {
     const node = nodeRef.current;
     if (!node) {
       // The wrapper never mounted or already detached (caller bailed on
-      // missing data); settle synchronously instead of sticking in flight.
-      settle();
+      // missing data); retire synchronously instead of sticking in flight.
+      retireFlight();
       return;
     }
     const raf = window.requestAnimationFrame(() => {
       node.style.transition = `${dimension} ${PANEL_COLLAPSE_DURATION_MS}ms linear`;
       node.style[dimension] = flight.direction === "in" ? `${flight.size}px` : "0px";
       endTimerRef.current = window.setTimeout(
-        () => settle(),
+        () => retireFlight(),
         PANEL_COLLAPSE_DURATION_MS + PANEL_COLLAPSE_TIMER_SLACK_MS,
       );
     });
     const onTransitionEnd = (event: TransitionEvent) => {
       if (event.target !== node || event.propertyName !== dimension) return;
-      settle();
+      retireFlight();
     };
     node.addEventListener("transitionend", onTransitionEnd);
     return () => {
@@ -139,7 +148,7 @@ export function usePanelCollapse(input: {
         endTimerRef.current = null;
       }
     };
-  }, [flight]);
+  }, [flight, retireFlight]);
 
   // Apply the pinned start value in the same pre-paint pass that mounts the
   // flight, then let the effect above flip to the end value next frame.
@@ -189,8 +198,8 @@ export function usePanelCollapse(input: {
   // snaps the panel to its current endpoint instead of finishing animated.
   React.useLayoutEffect(() => {
     if (enabled) return;
-    settle();
-  }, [enabled, settle]);
+    retireFlight();
+  }, [enabled, retireFlight]);
 
   const requestClose = React.useCallback(() => {
     const current = latestRef.current;
@@ -214,11 +223,12 @@ export function usePanelCollapse(input: {
     (node: HTMLElement | null) => {
       nodeRef.current = node;
       if (node == null && flightRef.current) {
-        // Detached mid-flight (caller bailed); commit or drop without styles.
-        settle();
+        // Detached mid-flight (caller bailed); retire with supersession
+        // semantics so a bail cannot wipe newer panel intent.
+        retireFlight();
       }
     },
-    [settle],
+    [retireFlight],
   );
 
   // Memoized so consumers can list the state object in dependency arrays
