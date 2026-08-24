@@ -14,12 +14,43 @@ const detailFrom = (error) => {
   return (detail.trim() || "unknown error").slice(0, 2_000);
 };
 
+const detachJson = (value, ancestors = new Set()) => {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("command result contains a non-finite number");
+    return value;
+  }
+  if (typeof value !== "object") throw new Error("command result is not JSON-compatible");
+  if (ancestors.has(value)) throw new Error("command result contains a cycle");
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) return value.map((item) => detachJson(item, ancestors));
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new Error("command result contains a non-plain object");
+    }
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, detachJson(item, ancestors)]),
+    );
+  } finally {
+    ancestors.delete(value);
+  }
+};
+
 const write = (message) => {
   const line = `${JSON.stringify(message)}\n`;
   if (Buffer.byteLength(line, "utf8") > MAX_PROTOCOL_LINE_BYTES) {
     throw new Error("plugin worker protocol message exceeds limit");
   }
   protocolWrite(line);
+};
+
+const writeInvocationResult = (requestId, value) => {
+  try {
+    write({ type: "invocationResult", requestId, value: detachJson(value) });
+  } catch (error) {
+    write({ type: "invocationFailed", requestId, detail: detailFrom(error) });
+  }
 };
 
 const writeDiagnostic = (...values) => {
@@ -185,7 +216,7 @@ const handleMessage = async (message) => {
         .then(() => registration.handler())
         .then((result) => runValue(result, controller.signal))
         .then(
-          (value) => write({ type: "invocationResult", requestId: message.requestId, value }),
+          (value) => writeInvocationResult(message.requestId, value),
           (error) =>
             write({
               type: "invocationFailed",

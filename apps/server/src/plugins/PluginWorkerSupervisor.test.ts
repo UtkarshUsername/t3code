@@ -163,6 +163,51 @@ it.layer(NodeServices.layer)("plugin worker supervisor", (it) => {
     ),
   );
 
+  it.effect("rejects non-JSON command results without crashing the worker", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const directory = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3code-plugin-worker-result-test-",
+        });
+        const entrypointPath = path.join(directory, "index.mjs");
+        yield* fileSystem.writeFileString(
+          entrypointPath,
+          `export default function activate(api) {
+            api.registerCommand(
+              { id: "acme.undefined", label: "Undefined", surfaces: ["web"] },
+              () => undefined
+            );
+            api.registerCommand(
+              { id: "acme.cyclic", label: "Cyclic", surfaces: ["web"] },
+              () => { const value = {}; value.self = value; return value; }
+            );
+            api.registerCommand(
+              { id: "acme.valid", label: "Valid", surfaces: ["web"] },
+              () => ({ message: "still running", tone: "success" })
+            );
+          }`,
+        );
+        const supervisor = yield* PluginWorkerSupervisor.PluginWorkerSupervisor;
+        const worker = yield* supervisor.start({
+          pluginId: "com.acme.invalid-results",
+          entrypointPath,
+          host: makeHost(),
+        });
+
+        expect((yield* Effect.exit(worker.invoke("acme.undefined")))._tag).toBe("Failure");
+        expect((yield* Effect.exit(worker.invoke("acme.cyclic")))._tag).toBe("Failure");
+        expect(worker.health().state).toBe("running");
+        expect(yield* worker.invoke("acme.valid")).toEqual({
+          message: "still running",
+          tone: "success",
+        });
+        yield* worker.dispose;
+      }).pipe(Effect.provide(PluginWorkerSupervisor.layer)),
+    ),
+  );
+
   it.effect("kills a worker that exceeds the protocol line limit", () =>
     Effect.scoped(
       Effect.gen(function* () {
