@@ -87,6 +87,14 @@ import {
   PluginPackageStatusSnapshot,
 } from "./pluginPackages.ts";
 import {
+  PluginUiCatalog,
+  PluginUiNotification,
+  PluginUiSettingError,
+  PluginUiSettingReadInput,
+  PluginUiSettingReadResult,
+  PluginUiSettingWriteInput,
+} from "./pluginUi.ts";
+import {
   PullRequestActionInput,
   PullRequestActivity,
   PullRequestCommentInput,
@@ -300,6 +308,11 @@ export const WS_METHODS = {
   pluginCommandsList: "pluginCommands.list",
   pluginCommandsInvoke: "pluginCommands.invoke",
 
+  // Plugin declarative UI methods
+  pluginUiList: "pluginUi.list",
+  pluginUiSettingGet: "pluginUi.setting.get",
+  pluginUiSettingSet: "pluginUi.setting.set",
+
   // Plugin package lifecycle methods
   pluginPackagesStatus: "pluginPackages.status",
   pluginPackagesEnable: "pluginPackages.enable",
@@ -346,6 +359,8 @@ export const WS_METHODS = {
   subscribeBackgroundPolicy: "subscribeBackgroundPolicy",
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
   subscribePluginCommands: "subscribePluginCommands",
+  subscribePluginUi: "subscribePluginUi",
+  subscribePluginUiNotifications: "subscribePluginUiNotifications",
 } as const;
 
 export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -387,6 +402,24 @@ export const WsPluginCommandsInvokeRpc = Rpc.make(WS_METHODS.pluginCommandsInvok
     PluginCommandNotFoundError,
     EnvironmentAuthorizationError,
   ]),
+});
+
+export const WsPluginUiListRpc = Rpc.make(WS_METHODS.pluginUiList, {
+  payload: Schema.Struct({}),
+  success: PluginUiCatalog,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsPluginUiSettingGetRpc = Rpc.make(WS_METHODS.pluginUiSettingGet, {
+  payload: PluginUiSettingReadInput,
+  success: PluginUiSettingReadResult,
+  error: Schema.Union([PluginUiSettingError, EnvironmentAuthorizationError]),
+});
+
+export const WsPluginUiSettingSetRpc = Rpc.make(WS_METHODS.pluginUiSettingSet, {
+  payload: PluginUiSettingWriteInput,
+  success: Schema.Void,
+  error: Schema.Union([PluginUiSettingError, EnvironmentAuthorizationError]),
 });
 
 export const WsPluginPackagesStatusRpc = Rpc.make(WS_METHODS.pluginPackagesStatus, {
@@ -1066,11 +1099,31 @@ export const WsSubscribePluginCommandsRpc = Rpc.make(WS_METHODS.subscribePluginC
   stream: true,
 });
 
+export const WsSubscribePluginUiRpc = Rpc.make(WS_METHODS.subscribePluginUi, {
+  payload: Schema.Struct({}),
+  success: PluginUiCatalog,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+export const WsSubscribePluginUiNotificationsRpc = Rpc.make(
+  WS_METHODS.subscribePluginUiNotifications,
+  {
+    payload: Schema.Struct({}),
+    success: PluginUiNotification,
+    error: EnvironmentAuthorizationError,
+    stream: true,
+  },
+);
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsPluginCommandsListRpc,
   WsPluginCommandsInvokeRpc,
+  WsPluginUiListRpc,
+  WsPluginUiSettingGetRpc,
+  WsPluginUiSettingSetRpc,
   WsPluginPackagesStatusRpc,
   WsPluginPackagesEnableRpc,
   WsPluginPackagesDisableRpc,
@@ -1166,6 +1219,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeBackgroundPolicyRpc,
   WsSubscribeResourceTelemetryRpc,
   WsSubscribePluginCommandsRpc,
+  WsSubscribePluginUiRpc,
+  WsSubscribePluginUiNotificationsRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,

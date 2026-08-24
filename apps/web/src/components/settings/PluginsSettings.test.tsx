@@ -88,6 +88,10 @@ vi.mock("../ui/toast", () => ({
   toastManager: { add: vi.fn() },
 }));
 
+vi.mock("../plugins/PluginUi", () => ({
+  PluginUiSettingsSections: () => null,
+}));
+
 import { toastManager } from "../ui/toast";
 import { TooltipPopup } from "../ui/tooltip";
 
@@ -107,7 +111,16 @@ const snapshot: PluginPackageStatusSnapshot = {
       capabilities: ["t3.commands@1"],
       permissions: ["state:read-write", "network:https://api.acme.test"],
       grantedPermissions: ["state:read-write"],
-      contributions: { commands: ["acme.active.run"] },
+      contributions: {
+        commands: ["acme.active.run"],
+        settings: [],
+        navigation: [],
+        views: [],
+        cards: [],
+        statusItems: [],
+        composerActions: [],
+        contextualActions: [],
+      },
     },
     {
       id: "com.acme.disabled",
@@ -120,7 +133,16 @@ const snapshot: PluginPackageStatusSnapshot = {
       capabilities: ["t3.commands@1"],
       permissions: ["filesystem:data"],
       grantedPermissions: [],
-      contributions: { commands: [] },
+      contributions: {
+        commands: [],
+        settings: [],
+        navigation: [],
+        views: [],
+        cards: [],
+        statusItems: [],
+        composerActions: [],
+        contextualActions: [],
+      },
     },
   ],
 };

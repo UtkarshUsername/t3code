@@ -64,6 +64,85 @@ describe("plugin command catalog", () => {
     }).pipe(Effect.provide(PluginCommandCatalog.layer)),
   );
 
+  it.effect(
+    "publishes declarative ui and host-rendered notifications with the runtime generation",
+    () =>
+      Effect.gen(function* () {
+        const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+        const definition: PluginDefinition = {
+          id: "com.acme.ui-plugin",
+          version: "1.0.0",
+          activate(context) {
+            PluginCommandCatalog.registerPluginUi(context, "com.acme.ui-plugin", {
+              settings: [],
+              navigation: [
+                {
+                  id: "com.acme.ui.navigation",
+                  label: "Acme",
+                  viewId: "com.acme.ui.view",
+                  surfaces: ["web"],
+                },
+              ],
+              views: [
+                {
+                  id: "com.acme.ui.view",
+                  label: "Acme",
+                  surfaces: ["web"],
+                  blocks: [{ kind: "text", text: "Hello from Acme" }],
+                },
+              ],
+              cards: [],
+              statusItems: [],
+              composerActions: [],
+              contextualActions: [],
+            });
+          },
+        };
+
+        const published = yield* catalog.reconcile([definition]);
+        const ui = yield* catalog.ui;
+        expect(ui.generation).toBe(published.generation);
+        expect(ui.packages[0]?.navigation[0]?.id).toBe("com.acme.ui.navigation");
+        expect(Object.isFrozen(ui)).toBe(true);
+
+        const failed = yield* Effect.exit(
+          catalog.reconcile([
+            {
+              id: "com.acme.ui-plugin",
+              version: "2.0.0",
+              activate() {
+                throw new Error("replacement failed");
+              },
+            },
+          ]),
+        );
+        expect(Exit.isFailure(failed)).toBe(true);
+        expect(yield* catalog.ui).toBe(ui);
+
+        const notificationFiber = yield* Effect.forkChild(Stream.runHead(catalog.notifications));
+        yield* Effect.yieldNow;
+        yield* catalog.notify("com.acme.ui-plugin", {
+          id: "notification-1",
+          title: "Done",
+          message: "The plugin finished.",
+          tone: "success",
+        });
+        expect(Option.getOrNull(yield* Fiber.join(notificationFiber))).toMatchObject({
+          pluginId: "com.acme.ui-plugin",
+          title: "Done",
+        });
+        const rateLimited = yield* Effect.flip(
+          catalog.notify("com.acme.ui-plugin", {
+            id: "notification-2",
+            title: "Again",
+            message: "Too soon.",
+            tone: "info",
+          }),
+        );
+        expect(rateLimited.detail).toBe("notification rate limit exceeded");
+      }).pipe(Effect.provide(PluginCommandCatalog.layer)),
+  );
+
   it.effect("keeps the committed command and handler when replacement activation fails", () =>
     Effect.gen(function* () {
       const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;

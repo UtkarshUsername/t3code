@@ -1,4 +1,9 @@
-import type { PluginCommand } from "@t3tools/contracts";
+import {
+  type PluginCommand,
+  type PluginCommandInvocationContext,
+  PluginUiContribution,
+  type PluginUiContribution as PluginUiContributionType,
+} from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -46,6 +51,7 @@ const sameCommands = (
   });
 
 const decodeWorkerMessage = Schema.decodeUnknownEffect(Schema.fromJsonString(PluginWorkerMessage));
+const encodeUi = Schema.encodeSync(Schema.fromJsonString(PluginUiContribution));
 
 export type PluginWorkerHealth = "starting" | "running" | "restarting" | "crashed" | "stopped";
 
@@ -73,7 +79,11 @@ export const isPluginWorkerError = Schema.is(PluginWorkerError);
 
 export interface SupervisedPluginWorker {
   readonly commands: ReadonlyArray<PluginCommand>;
-  readonly invoke: (commandId: string) => Effect.Effect<unknown, PluginWorkerError>;
+  readonly ui: PluginUiContributionType;
+  readonly invoke: (
+    commandId: string,
+    context?: PluginCommandInvocationContext,
+  ) => Effect.Effect<unknown, PluginWorkerError>;
   readonly dispose: Effect.Effect<void, PluginWorkerError>;
   readonly health: () => PluginWorkerHealthSnapshot;
 }
@@ -106,7 +116,11 @@ export class PluginWorkerSupervisor extends Context.Service<
 interface Session {
   readonly id: number;
   readonly commands: ReadonlyArray<PluginCommand>;
-  readonly invoke: (commandId: string) => Effect.Effect<unknown, PluginWorkerError>;
+  readonly ui: PluginUiContributionType;
+  readonly invoke: (
+    commandId: string,
+    context?: PluginCommandInvocationContext,
+  ) => Effect.Effect<unknown, PluginWorkerError>;
   readonly requestDispose: Effect.Effect<void, PluginWorkerError>;
   readonly terminate: (detail: string) => Effect.Effect<void>;
   readonly close: Effect.Effect<void>;
@@ -149,6 +163,7 @@ export const make = Effect.gen(function* () {
       let health: PluginWorkerHealthSnapshot = { state: "starting", restartCount: 0 };
       let current: Session | undefined;
       let expectedCommands: ReadonlyArray<PluginCommand> | undefined;
+      let expectedUi: PluginUiContributionType | undefined;
 
       const detailFrom = (error: unknown): string => {
         const detail = error instanceof Error ? error.message : String(error);
@@ -216,6 +231,8 @@ export const make = Effect.gen(function* () {
             return input.host.network.fetchText(call.url);
           case "process.run":
             return input.host.process.run(call.command, call.args);
+          case "ui.notify":
+            return input.host.ui.notify(call.notification);
         }
         return Effect.fail(workerError("host", "unsupported host operation"));
       };
@@ -224,7 +241,13 @@ export const make = Effect.gen(function* () {
         const sessionId = ++workerSequence;
         const sessionScope = yield* Scope.fork(workerScope, "sequential");
         const inputQueue = yield* Queue.unbounded<Uint8Array, Cause.Done>();
-        const activation = yield* Deferred.make<ReadonlyArray<PluginCommand>, PluginWorkerError>();
+        const activation = yield* Deferred.make<
+          {
+            readonly commands: ReadonlyArray<PluginCommand>;
+            readonly ui: PluginUiContributionType;
+          },
+          PluginWorkerError
+        >();
         const hostCallSemaphore = yield* Semaphore.make(HOST_CALL_CONCURRENCY);
         const encoder = new TextEncoder();
         const protocolDecoder = new TextDecoder();
@@ -303,7 +326,10 @@ export const make = Effect.gen(function* () {
           );
           switch (message.type) {
             case "activated":
-              Deferred.doneUnsafe(activation, Effect.succeed(message.commands));
+              Deferred.doneUnsafe(
+                activation,
+                Effect.succeed({ commands: message.commands, ui: message.ui }),
+              );
               return;
             case "activationFailed":
               Deferred.doneUnsafe(
@@ -456,7 +482,11 @@ export const make = Effect.gen(function* () {
 
         const request = (
           message:
-            | { readonly type: "invoke"; readonly commandId: string }
+            | {
+                readonly type: "invoke";
+                readonly commandId: string;
+                readonly context?: PluginCommandInvocationContext;
+              }
             | { readonly type: "dispose" },
         ): Effect.Effect<unknown, PluginWorkerError> =>
           Effect.callback((resume, signal) => {
@@ -490,9 +520,14 @@ export const make = Effect.gen(function* () {
 
         return {
           id: sessionId,
-          commands: activated,
-          invoke: (commandId) =>
-            request({ type: "invoke", commandId }).pipe(
+          commands: activated.commands,
+          ui: activated.ui,
+          invoke: (commandId, context) =>
+            request({
+              type: "invoke",
+              commandId,
+              ...(context === undefined ? {} : { context }),
+            }).pipe(
               Effect.mapError((error) =>
                 isPluginWorkerError(error)
                   ? error
@@ -513,6 +548,7 @@ export const make = Effect.gen(function* () {
       }
       current = firstSessionExit.value;
       expectedCommands = current.commands;
+      expectedUi = current.ui;
       health = { state: "running", restartCount: 0 };
 
       const restartLoop = Effect.forever(
@@ -536,11 +572,14 @@ export const make = Effect.gen(function* () {
                     };
                     continue;
                   }
-                  if (!sameCommands(restarted.value.commands, expectedCommands)) {
+                  if (
+                    !sameCommands(restarted.value.commands, expectedCommands) ||
+                    encodeUi(restarted.value.ui) !== encodeUi(expectedUi)
+                  ) {
                     yield* restarted.value.close;
                     health = {
                       state: "crashed",
-                      detail: "restarted worker changed its command catalog",
+                      detail: "restarted worker changed its contribution catalog",
                       restartCount,
                     };
                     return;
@@ -599,7 +638,7 @@ export const make = Effect.gen(function* () {
       );
       yield* Effect.forkIn(disposeFiber, parentScope);
 
-      const invoke = (commandId: string) =>
+      const invoke = (commandId: string, context?: PluginCommandInvocationContext) =>
         Effect.gen(function* () {
           const session = yield* transition.withPermits(1)(
             Effect.gen(function* () {
@@ -610,7 +649,7 @@ export const make = Effect.gen(function* () {
               return current;
             }),
           );
-          const result = yield* session.invoke(commandId).pipe(
+          const result = yield* session.invoke(commandId, context).pipe(
             Effect.timeout(options.invocationTimeout),
             Effect.catchTags({
               TimeoutError: (cause) =>
@@ -637,6 +676,7 @@ export const make = Effect.gen(function* () {
 
       return {
         commands: expectedCommands,
+        ui: expectedUi,
         invoke,
         dispose: Effect.sync(() => Deferred.doneUnsafe(disposeRequest, Effect.void)).pipe(
           Effect.flatMap(() => Deferred.await(disposeResult)),

@@ -722,6 +722,16 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.subscribePluginCommands,
       idleTtlMs: 0,
     }),
+    pluginUi: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:plugin-ui",
+      tag: WS_METHODS.subscribePluginUi,
+      idleTtlMs: 0,
+    }),
+    pluginUiNotifications: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:plugin-ui-notifications",
+      tag: WS_METHODS.subscribePluginUiNotifications,
+      idleTtlMs: 0,
+    }),
     pluginPackages: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:plugin-packages",
       tag: WS_METHODS.pluginPackagesStatus,
@@ -762,6 +772,19 @@ export function createServerEnvironmentAtoms<R, E>(
       concurrency: {
         mode: "serial",
         key: ({ environmentId }) => environmentId,
+      },
+    }),
+    readPluginUiSetting: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:read-plugin-ui-setting",
+      tag: WS_METHODS.pluginUiSettingGet,
+      concurrency: { mode: "parallel" },
+    }),
+    writePluginUiSetting: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:write-plugin-ui-setting",
+      tag: WS_METHODS.pluginUiSettingSet,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId, input }) => `${environmentId}:${input.pluginId}:${input.settingId}`,
       },
     }),
     enablePluginPackage: createEnvironmentRpcCommand(runtime, {

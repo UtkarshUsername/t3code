@@ -29,6 +29,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { resolvePrimaryOperateAccess } from "./ProviderSettingsPanel.logic";
 import { searchableSetting } from "./settingsSearch";
+import { PluginUiSettingsSections } from "../plugins/PluginUi";
 
 const statePresentation = {
   active: { label: "Active", variant: "success" },
@@ -61,6 +62,14 @@ function PluginPackageRow({
 }) {
   const state = statePresentation[pluginPackage.state];
   const commands = pluginPackage.contributions.commands;
+  const uiContributionCount =
+    pluginPackage.contributions.settings.length +
+    pluginPackage.contributions.navigation.length +
+    pluginPackage.contributions.views.length +
+    pluginPackage.contributions.cards.length +
+    pluginPackage.contributions.statusItems.length +
+    pluginPackage.contributions.composerActions.length +
+    pluginPackage.contributions.contextualActions.length;
   const grantedPermissions = new Set(pluginPackage.grantedPermissions);
   const busy = pendingAction !== null;
   const status = (
@@ -122,9 +131,9 @@ function PluginPackageRow({
     <SettingsRow
       title={<code className="text-[13px]">{pluginPackage.id}</code>}
       description={
-        commands.length === 0
-          ? "No command contributions"
-          : `${commands.length} command${commands.length === 1 ? "" : "s"}: ${commands.join(", ")}`
+        commands.length === 0 && uiContributionCount === 0
+          ? "No contributions"
+          : `${commands.length} command${commands.length === 1 ? "" : "s"}, ${uiContributionCount} UI contribution${uiContributionCount === 1 ? "" : "s"}`
       }
       status={status}
       className="border border-border/60 bg-card/35"
@@ -342,6 +351,7 @@ export function PluginsSettingsPanel() {
           ))}
         </div>
       </SettingsSection>
+      <PluginUiSettingsSections />
     </SettingsPageContainer>
   );
 }

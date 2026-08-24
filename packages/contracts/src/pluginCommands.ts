@@ -22,9 +22,19 @@ export const PluginCommandCatalog = Schema.Struct({
 });
 export type PluginCommandCatalog = typeof PluginCommandCatalog.Type;
 
+export const PluginCommandInvocationContext = Schema.Struct({
+  threadId: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(255))),
+  projectId: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(255))),
+  viewId: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(200))),
+  cardId: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(200))),
+  filePath: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(1_000))),
+}).annotate({ parseOptions: { onExcessProperty: "error" } });
+export type PluginCommandInvocationContext = typeof PluginCommandInvocationContext.Type;
+
 export const PluginCommandInvokeInput = Schema.Struct({
   generation: NonNegativeInt,
   id: PluginCommandId,
+  context: Schema.optional(PluginCommandInvocationContext),
 });
 export type PluginCommandInvokeInput = typeof PluginCommandInvokeInput.Type;
 

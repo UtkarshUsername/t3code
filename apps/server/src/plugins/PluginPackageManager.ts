@@ -6,6 +6,8 @@ import {
   type PluginPackageOperation,
   type PluginPackageStatus,
   type PluginPackageStatusSnapshot,
+  type PluginUiSetting,
+  PluginUiSettingError,
 } from "@t3tools/contracts";
 import type { PluginActivationContext, PluginDefinition } from "@t3tools/plugin-runtime";
 import {
@@ -29,6 +31,8 @@ import * as PluginWorkerSupervisor from "./PluginWorkerSupervisor.ts";
 
 const MANIFEST_FILE_NAME = "t3-plugin.json";
 const COMMAND_CAPABILITY = "t3.commands@1";
+const UI_CAPABILITY = "t3.ui@1";
+const NOTIFICATION_PERMISSION = "notifications:send";
 
 interface DiscoveredPackage {
   readonly directory: string;
@@ -58,11 +62,21 @@ class PluginPackageUndeclaredCommandError extends Schema.TaggedErrorClass<Plugin
   }
 }
 
+class PluginPackageUiReferenceError extends Schema.TaggedErrorClass<PluginPackageUiReferenceError>()(
+  "PluginPackageUiReferenceError",
+  { id: Schema.String, reference: Schema.String, detail: Schema.String },
+) {
+  override get message(): string {
+    return `Plugin UI reference ${this.reference} is invalid: ${this.detail}`;
+  }
+}
+
 interface LoadedDefinition {
   readonly cacheDirectory: string;
   readonly definition: PluginDefinition;
   readonly retired: Promise<void>;
   readonly worker: PluginWorkerSupervisor.SupervisedPluginWorker;
+  readonly host: PluginHostCapabilityBroker.PluginHostApi;
 }
 
 const decodeManifestJson = Schema.decodeUnknownEffect(Schema.fromJsonString(PluginManifest));
@@ -106,6 +120,103 @@ const makeDefinition = (
   onRetired: () => void,
 ): PluginDefinition => {
   const declaredCommands = new Set(discovered.manifest.contributes?.commands ?? []);
+  const ui = worker.ui;
+  const uiEntries = [
+    ...ui.settings,
+    ...ui.navigation,
+    ...ui.views,
+    ...ui.cards,
+    ...ui.statusItems,
+    ...ui.composerActions,
+    ...ui.contextualActions,
+  ];
+  if (uiEntries.length > 0 && !discovered.manifest.capabilities.includes(UI_CAPABILITY)) {
+    throw new PluginPackageMissingCapabilityError({
+      id: discovered.manifest.id,
+      capability: UI_CAPABILITY,
+    });
+  }
+  const declaredUi = {
+    settings: new Set(discovered.manifest.contributes?.settings ?? []),
+    navigation: new Set(discovered.manifest.contributes?.navigation ?? []),
+    views: new Set(discovered.manifest.contributes?.views ?? []),
+    cards: new Set([
+      ...(discovered.manifest.contributes?.cards ?? []),
+      ...(discovered.manifest.contributes?.mobileCards ?? []),
+    ]),
+    statusItems: new Set(discovered.manifest.contributes?.statusItems ?? []),
+    composerActions: new Set(discovered.manifest.contributes?.composerActions ?? []),
+    contextualActions: new Set(discovered.manifest.contributes?.contextualActions ?? []),
+  };
+  for (const [slot, entries] of [
+    ["settings", ui.settings],
+    ["navigation", ui.navigation],
+    ["views", ui.views],
+    ["cards", ui.cards],
+    ["statusItems", ui.statusItems],
+    ["composerActions", ui.composerActions],
+    ["contextualActions", ui.contextualActions],
+  ] as const) {
+    for (const entry of entries) {
+      if (!entry.id.startsWith(`${discovered.manifest.id}.`)) {
+        throw new PluginPackageUiReferenceError({
+          id: discovered.manifest.id,
+          reference: entry.id,
+          detail: "contribution is outside plugin namespace",
+        });
+      }
+      if (!declaredUi[slot].has(entry.id)) {
+        throw new PluginPackageUiReferenceError({
+          id: discovered.manifest.id,
+          reference: entry.id,
+          detail: "contribution is not declared in the manifest",
+        });
+      }
+    }
+  }
+  if (
+    ui.settings.length > 0 &&
+    !(discovered.manifest.permissions ?? []).includes("settings:read-write")
+  ) {
+    throw new PluginPackageUiReferenceError({
+      id: discovered.manifest.id,
+      reference: "settings:read-write",
+      detail: "plugin settings require the settings host permission",
+    });
+  }
+  const registeredCommandIds = new Set(worker.commands.map((command) => command.id));
+  const actionIds = new Set(
+    [...ui.composerActions, ...ui.contextualActions].map((action) => action.id),
+  );
+  const commandReferences = [
+    ...ui.composerActions.map((action) => [action.id, action.commandId] as const),
+    ...ui.contextualActions.map((action) => [action.id, action.commandId] as const),
+    ...ui.views.flatMap((view) =>
+      view.blocks.flatMap((block) =>
+        "commandId" in block && block.commandId !== undefined
+          ? ([[block.id, block.commandId]] as const)
+          : [],
+      ),
+    ),
+  ];
+  for (const [reference, commandId] of commandReferences) {
+    if (!registeredCommandIds.has(commandId)) {
+      throw new PluginPackageUiReferenceError({
+        id: discovered.manifest.id,
+        reference,
+        detail: `command ${commandId} is not registered`,
+      });
+    }
+  }
+  for (const card of ui.cards) {
+    if (card.actionId !== undefined && !actionIds.has(card.actionId)) {
+      throw new PluginPackageUiReferenceError({
+        id: discovered.manifest.id,
+        reference: card.id,
+        detail: `action ${card.actionId} is not contributed`,
+      });
+    }
+  }
   if (
     worker.commands.length > 0 &&
     !discovered.manifest.capabilities.includes(COMMAND_CAPABILITY)
@@ -138,19 +249,23 @@ const makeDefinition = (
     provides: providedCapabilities,
     activate(context: PluginActivationContext) {
       context.onDispose(onRetired);
+      if (uiEntries.length > 0) {
+        PluginCommandCatalog.registerPluginUi(context, discovered.manifest.id, ui);
+      }
       for (const command of worker.commands) {
         PluginCommandCatalog.registerPluginCommand(context, {
           command,
-          handler: worker.invoke(command.id).pipe(
-            Effect.flatMap(decodeInvocationResult),
-            Effect.mapError(
-              (cause) =>
-                new PluginCommandCatalog.PluginCommandExecutionError({
-                  cause,
-                  id: command.id,
-                }),
+          handler: (invocationContext) =>
+            worker.invoke(command.id, invocationContext).pipe(
+              Effect.flatMap(decodeInvocationResult),
+              Effect.mapError(
+                (cause) =>
+                  new PluginCommandCatalog.PluginCommandExecutionError({
+                    cause,
+                    id: command.id,
+                  }),
+              ),
             ),
-          ),
         });
       }
     },
@@ -179,6 +294,15 @@ export class PluginPackageManager extends Context.Service<
       PluginPackageStatusSnapshot,
       PluginPackageNotFoundError | PluginPackageOperationError
     >;
+    readonly settingRead: (
+      pluginId: string,
+      settingId: string,
+    ) => Effect.Effect<Schema.Json | undefined, PluginUiSettingError>;
+    readonly settingWrite: (
+      pluginId: string,
+      settingId: string,
+      value: Schema.Json,
+    ) => Effect.Effect<void, PluginUiSettingError>;
   }
 >()("t3/plugins/PluginPackageManager") {}
 
@@ -197,6 +321,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
   const activeCacheDirectories = new Map<string, string>();
   const activeManifests = new Map<string, PluginManifestType>();
   const activeWorkers = new Map<string, PluginWorkerSupervisor.SupervisedPluginWorker>();
+  const activeHosts = new Map<string, PluginHostCapabilityBroker.PluginHostApi>();
   const activeRetirements = new Map<string, Promise<void>>();
   const packageErrors = new Map<string, string>();
   let loadSequence = 0;
@@ -305,9 +430,36 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
     discovered: DiscoveredPackage,
     operation: PluginPackageOperation,
   ) {
-    const host = yield* hostCapabilities
+    const baseHost = yield* hostCapabilities
       .open(discovered.manifest.id, discovered.manifest.permissions ?? [])
       .pipe(Effect.mapError((error) => operationError(operation, error, discovered.manifest.id)));
+    const host: PluginHostCapabilityBroker.PluginHostApi = {
+      ...baseHost,
+      ui: {
+        notify: (notification) => {
+          if (!(discovered.manifest.permissions ?? []).includes(NOTIFICATION_PERMISSION)) {
+            return Effect.fail(
+              new PluginHostCapabilityBroker.PluginHostCapabilityError({
+                pluginId: discovered.manifest.id,
+                operation: "notification send",
+                detail: `permission not declared: ${NOTIFICATION_PERMISSION}`,
+              }),
+            );
+          }
+          return catalog.notify(discovered.manifest.id, notification).pipe(
+            Effect.mapError(
+              (cause) =>
+                new PluginHostCapabilityBroker.PluginHostCapabilityError({
+                  pluginId: discovered.manifest.id,
+                  operation: "notification send",
+                  detail: cause.detail,
+                  cause,
+                }),
+            ),
+          );
+        },
+      },
+    };
     const serverEntrypoint = discovered.manifest.entrypoints.server;
     if (serverEntrypoint === undefined) {
       return yield* operationError(
@@ -385,6 +537,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
       definition: definitionExit.value,
       retired,
       worker,
+      host,
     } satisfies LoadedDefinition;
   });
 
@@ -484,7 +637,19 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
         grantedPermissions: requestedPermissions.filter((permission) =>
           grantedPermissionSet.has(permission),
         ),
-        contributions: { commands: [...(packageManifest.contributes?.commands ?? [])] },
+        contributions: {
+          commands: [...(packageManifest.contributes?.commands ?? [])],
+          settings: [...(packageManifest.contributes?.settings ?? [])],
+          navigation: [...(packageManifest.contributes?.navigation ?? [])],
+          views: [...(packageManifest.contributes?.views ?? [])],
+          cards: [
+            ...(packageManifest.contributes?.cards ?? []),
+            ...(packageManifest.contributes?.mobileCards ?? []),
+          ],
+          statusItems: [...(packageManifest.contributes?.statusItems ?? [])],
+          composerActions: [...(packageManifest.contributes?.composerActions ?? [])],
+          contextualActions: [...(packageManifest.contributes?.contextualActions ?? [])],
+        },
         ...(error === undefined ? {} : { error }),
       });
     }
@@ -602,6 +767,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
           activeCacheDirectories.set(id, loaded.cacheDirectory);
           activeManifests.set(id, pluginPackage.manifest);
           activeWorkers.set(id, loaded.worker);
+          activeHosts.set(id, loaded.host);
           activeRetirements.set(id, loaded.retired);
           if (previousCacheDirectory !== undefined) {
             if (reconciled._tag === "Failure" && previousRetirement !== undefined) {
@@ -661,6 +827,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
         activeDefinitions.delete(id);
         activeManifests.delete(id);
         activeWorkers.delete(id);
+        activeHosts.delete(id);
         const cacheDirectory = activeCacheDirectories.get(id);
         const retirement = activeRetirements.get(id);
         activeCacheDirectories.delete(id);
@@ -718,6 +885,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
       activeCacheDirectories.set(id, loaded.cacheDirectory);
       activeManifests.set(id, pluginPackage.manifest);
       activeWorkers.set(id, loaded.worker);
+      activeHosts.set(id, loaded.host);
       activeRetirements.set(id, loaded.retired);
     }).pipe(
       Effect.retry({ times: 1 }),
@@ -729,6 +897,75 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
       }),
     );
   }
+
+  const settingError = (pluginId: string, settingId: string, detail: string, cause?: unknown) =>
+    new PluginUiSettingError({
+      pluginId,
+      settingId,
+      detail,
+      ...(cause === undefined ? {} : { cause }),
+    });
+
+  const resolveSetting = Effect.fn("PluginPackageManager.resolveSetting")(function* (
+    pluginId: string,
+    settingId: string,
+  ) {
+    const host = activeHosts.get(pluginId);
+    if (host === undefined) return yield* settingError(pluginId, settingId, "plugin is not active");
+    const ui = yield* catalog.ui;
+    const setting = ui.packages
+      .find((pluginPackage) => pluginPackage.pluginId === pluginId)
+      ?.settings.find((candidate) => candidate.id === settingId);
+    if (setting === undefined) {
+      return yield* settingError(pluginId, settingId, "setting is not declared");
+    }
+    return { host, setting };
+  });
+
+  const valueMatchesSetting = (setting: PluginUiSetting, value: Schema.Json): boolean => {
+    switch (setting.kind) {
+      case "boolean":
+        return typeof value === "boolean";
+      case "text":
+        return typeof value === "string" && value.length <= 2_000;
+      case "select":
+        return (
+          typeof value === "string" && setting.options.some((option) => option.value === value)
+        );
+    }
+  };
+
+  const settingRead = (pluginId: string, settingId: string) =>
+    semaphore.withPermits(1)(
+      Effect.gen(function* () {
+        const { host } = yield* resolveSetting(pluginId, settingId);
+        const value = yield* host.settings
+          .get(settingId)
+          .pipe(
+            Effect.mapError((cause) =>
+              settingError(pluginId, settingId, detailFromUnknown(cause), cause),
+            ),
+          );
+        return value as Schema.Json | undefined;
+      }),
+    );
+
+  const settingWrite = (pluginId: string, settingId: string, value: Schema.Json) =>
+    semaphore.withPermits(1)(
+      Effect.gen(function* () {
+        const { host, setting } = yield* resolveSetting(pluginId, settingId);
+        if (!valueMatchesSetting(setting, value)) {
+          return yield* settingError(pluginId, settingId, "value does not match setting schema");
+        }
+        yield* host.settings
+          .set(settingId, value)
+          .pipe(
+            Effect.mapError((cause) =>
+              settingError(pluginId, settingId, detailFromUnknown(cause), cause),
+            ),
+          );
+      }),
+    );
 
   yield* Effect.addFinalizer(() =>
     semaphore.withPermits(1)(
@@ -744,6 +981,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
           discard: true,
         });
         activeWorkers.clear();
+        activeHosts.clear();
         for (const [id, error] of packageErrors) {
           yield* Effect.logWarning("Local plugin package reported a shutdown error", { id, error });
         }
@@ -757,6 +995,8 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
     enable: (id: string) => semaphore.withPermits(1)(transition("enable", id)),
     disable: (id: string) => semaphore.withPermits(1)(disableUnlocked(id)),
     reload: (id: string) => semaphore.withPermits(1)(transition("reload", id)),
+    settingRead,
+    settingWrite,
   } as const;
 });
 
@@ -766,6 +1006,24 @@ const unavailableService = (error: PluginPackageOperationError) =>
     enable: () => Effect.fail(error),
     disable: () => Effect.fail(error),
     reload: () => Effect.fail(error),
+    settingRead: (pluginId, settingId) =>
+      Effect.fail(
+        new PluginUiSettingError({
+          pluginId,
+          settingId,
+          detail: error.message,
+          cause: error,
+        }),
+      ),
+    settingWrite: (pluginId, settingId) =>
+      Effect.fail(
+        new PluginUiSettingError({
+          pluginId,
+          settingId,
+          detail: error.message,
+          cause: error,
+        }),
+      ),
   });
 
 export const layer = Layer.effect(

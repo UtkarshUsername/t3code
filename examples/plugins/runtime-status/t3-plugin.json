@@ -1,13 +1,21 @@
 {
   "manifestVersion": 1,
   "id": "com.t3code.runtime-status-example",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "apiVersion": 1,
   "entrypoints": {
     "server": "./index.mjs"
   },
-  "capabilities": ["t3.commands@1"],
+  "capabilities": ["t3.commands@1", "t3.ui@1"],
+  "permissions": ["settings:read-write", "notifications:send"],
   "contributes": {
-    "commands": ["example.runtime-status"]
+    "commands": ["example.runtime-status"],
+    "settings": ["com.t3code.runtime-status-example.celebrations"],
+    "navigation": ["com.t3code.runtime-status-example.navigation"],
+    "views": ["com.t3code.runtime-status-example.dashboard"],
+    "cards": ["com.t3code.runtime-status-example.card"],
+    "statusItems": ["com.t3code.runtime-status-example.status"],
+    "composerActions": ["com.t3code.runtime-status-example.composer"],
+    "contextualActions": ["com.t3code.runtime-status-example.context"]
   }
 }

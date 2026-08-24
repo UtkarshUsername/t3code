@@ -1542,6 +1542,24 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.pluginCommandsInvoke, pluginCommands.invoke(input), {
             "rpc.aggregate": "pluginCommands",
           }),
+        [WS_METHODS.pluginUiList]: (_input) =>
+          observeRpcEffect(WS_METHODS.pluginUiList, pluginCommands.ui, {
+            "rpc.aggregate": "pluginUi",
+          }),
+        [WS_METHODS.pluginUiSettingGet]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.pluginUiSettingGet,
+            pluginPackages
+              .settingRead(input.pluginId, input.settingId)
+              .pipe(Effect.map((value) => (value === undefined ? {} : { value }))),
+            { "rpc.aggregate": "pluginUi" },
+          ),
+        [WS_METHODS.pluginUiSettingSet]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.pluginUiSettingSet,
+            pluginPackages.settingWrite(input.pluginId, input.settingId, input.value),
+            { "rpc.aggregate": "pluginUi" },
+          ),
         [WS_METHODS.pluginPackagesStatus]: (_input) =>
           observeRpcEffect(WS_METHODS.pluginPackagesStatus, pluginPackages.status, {
             "rpc.aggregate": "pluginPackages",
@@ -2425,6 +2443,16 @@ const makeWsRpcLayer = (
           observeRpcStream(WS_METHODS.subscribePluginCommands, pluginCommands.changes, {
             "rpc.aggregate": "pluginCommands",
           }),
+        [WS_METHODS.subscribePluginUi]: (_input) =>
+          observeRpcStream(WS_METHODS.subscribePluginUi, pluginCommands.uiChanges, {
+            "rpc.aggregate": "pluginUi",
+          }),
+        [WS_METHODS.subscribePluginUiNotifications]: (_input) =>
+          observeRpcStream(
+            WS_METHODS.subscribePluginUiNotifications,
+            pluginCommands.notifications,
+            { "rpc.aggregate": "pluginUi" },
+          ),
       });
     }),
   );

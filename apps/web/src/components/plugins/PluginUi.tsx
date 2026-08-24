@@ -1,0 +1,486 @@
+import { useAtomValue } from "@effect/atom-react";
+import type {
+  EnvironmentId,
+  PluginCommandInvocationContext,
+  PluginUiAction,
+  PluginUiBlock,
+  PluginUiCatalog,
+  PluginUiNotification,
+  PluginUiPackageContribution,
+  PluginUiSetting,
+  PluginUiView,
+} from "@t3tools/contracts";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
+import * as Option from "effect/Option";
+import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { PuzzleIcon, SparklesIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+
+import { usePrimaryEnvironmentId } from "../../state/environments";
+import { serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Switch } from "../ui/switch";
+import { toastManager } from "../ui/toast";
+import { SidebarMenuItem, SidebarMenuButton } from "../ui/sidebar";
+import { SettingsRow, SettingsSection } from "../settings/settingsLayout";
+
+const EMPTY_PLUGIN_UI_CATALOG: PluginUiCatalog = Object.freeze({
+  generation: 0,
+  packages: Object.freeze([]),
+});
+const EMPTY_PLUGIN_UI_ATOM = Atom.make(AsyncResult.success(EMPTY_PLUGIN_UI_CATALOG));
+const EMPTY_PLUGIN_NOTIFICATION: PluginUiNotification = {
+  id: "empty",
+  pluginId: "t3.empty",
+  title: "Empty",
+  message: "Empty",
+  tone: "info",
+};
+const EMPTY_PLUGIN_NOTIFICATION_ATOM = Atom.make(AsyncResult.success(EMPTY_PLUGIN_NOTIFICATION));
+
+const surface = (): "web" | "desktop" =>
+  typeof window !== "undefined" && window.desktopBridge !== undefined ? "desktop" : "web";
+
+const toneClass = {
+  neutral: "border-border bg-card text-card-foreground",
+  muted: "border-border/60 bg-muted/35 text-muted-foreground",
+  info: "border-info/30 bg-info/10 text-info",
+  success: "border-success/30 bg-success/10 text-success",
+  warning: "border-warning/30 bg-warning/10 text-warning",
+  danger: "border-destructive/30 bg-destructive/10 text-destructive",
+} as const;
+
+export function usePluginUiCatalog(environmentId: EnvironmentId | null): PluginUiCatalog {
+  const result = useAtomValue(
+    environmentId === null
+      ? EMPTY_PLUGIN_UI_ATOM
+      : serverEnvironment.pluginUi({ environmentId, input: {} }),
+  );
+  return Option.getOrElse(AsyncResult.value(result), () => EMPTY_PLUGIN_UI_CATALOG);
+}
+
+function usePluginAction(environmentId: EnvironmentId | null, catalog: PluginUiCatalog) {
+  const invoke = useAtomCommand(serverEnvironment.invokePluginCommand, { reportFailure: false });
+  return useCallback(
+    async (commandId: string, context?: PluginCommandInvocationContext) => {
+      if (environmentId === null) return;
+      const result = await invoke({
+        environmentId,
+        input: {
+          generation: catalog.generation,
+          id: commandId,
+          ...(context === undefined ? {} : { context }),
+        },
+      });
+      if (result._tag === "Success") {
+        toastManager.add({
+          type: result.value.tone,
+          title: result.value.message,
+        });
+        return;
+      }
+      if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Plugin action failed",
+          description: failure instanceof Error ? failure.message : String(failure),
+        });
+      }
+    },
+    [catalog.generation, environmentId, invoke],
+  );
+}
+
+export function PluginUiNotificationHost() {
+  const environmentId = usePrimaryEnvironmentId();
+  const result = useAtomValue(
+    environmentId === null
+      ? EMPTY_PLUGIN_NOTIFICATION_ATOM
+      : serverEnvironment.pluginUiNotifications({ environmentId, input: {} }),
+  );
+  const notification = environmentId === null ? null : Option.getOrNull(AsyncResult.value(result));
+  const shown = useRef<PluginUiNotification | null>(null);
+
+  useEffect(() => {
+    if (notification === null) return;
+    if (shown.current === notification) return;
+    shown.current = notification;
+    toastManager.add({
+      type: notification.tone,
+      title: notification.title,
+      description: notification.message,
+    });
+  }, [notification]);
+
+  return null;
+}
+
+export function PluginUiNavigationItems({ closeMobile }: { readonly closeMobile: () => void }) {
+  const environmentId = usePrimaryEnvironmentId();
+  const catalog = usePluginUiCatalog(environmentId);
+  const navigate = useNavigate();
+  const currentSurface = surface();
+  const items = catalog.packages.flatMap((pluginPackage) =>
+    pluginPackage.navigation
+      .filter((item) => item.surfaces.includes(currentSurface))
+      .map((item) => ({ item, pluginId: pluginPackage.pluginId })),
+  );
+
+  return items.map(({ item, pluginId }) => (
+    <SidebarMenuItem key={`${pluginId}:${item.id}`} className="min-w-0 flex-1">
+      <SidebarMenuButton
+        aria-label={item.label}
+        onClick={() => {
+          closeMobile();
+          void navigate({
+            to: "/plugins/$pluginId/$viewId",
+            params: { pluginId, viewId: item.viewId },
+          });
+        }}
+      >
+        <PuzzleIcon />
+        <span className="truncate">{item.label}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  ));
+}
+
+function ActionButton({
+  action,
+  onAction,
+}: {
+  readonly action: Pick<PluginUiAction, "commandId" | "label">;
+  readonly onAction: (commandId: string) => void;
+}) {
+  return (
+    <Button size="sm" variant="outline" onClick={() => onAction(action.commandId)}>
+      <SparklesIcon className="size-3.5" />
+      {action.label}
+    </Button>
+  );
+}
+
+function RenderBlock({
+  block,
+  onAction,
+}: {
+  readonly block: PluginUiBlock;
+  readonly onAction: (commandId: string) => void;
+}) {
+  switch (block.kind) {
+    case "text":
+      return (
+        <p className={block.tone === "muted" ? "text-sm text-muted-foreground" : "text-sm"}>
+          {block.text}
+        </p>
+      );
+    case "action":
+      return <ActionButton action={block} onAction={onAction} />;
+    case "card":
+      return (
+        <div className={`rounded-lg border p-4 ${toneClass[block.tone ?? "neutral"]}`}>
+          <div className="text-sm font-medium">{block.title}</div>
+          {block.value ? <div className="mt-1 text-2xl font-semibold">{block.value}</div> : null}
+          {block.description ? (
+            <p className="mt-1 text-sm opacity-80">{block.description}</p>
+          ) : null}
+          {block.commandId ? (
+            <div className="mt-3">
+              <ActionButton
+                action={{ commandId: block.commandId, label: block.title }}
+                onAction={onAction}
+              />
+            </div>
+          ) : null}
+        </div>
+      );
+    case "status":
+      return (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2">
+          <span className="text-sm text-muted-foreground">{block.label}</span>
+          <Badge
+            variant={
+              block.tone === "success"
+                ? "success"
+                : block.tone === "warning"
+                  ? "warning"
+                  : "outline"
+            }
+          >
+            {block.value}
+          </Badge>
+        </div>
+      );
+  }
+}
+
+export function PluginUiViewContent({
+  pluginPackage,
+  view,
+  onAction,
+}: {
+  readonly pluginPackage: PluginUiPackageContribution;
+  readonly view: PluginUiView;
+  readonly onAction: (commandId: string) => void;
+}) {
+  const currentSurface = surface();
+  const cards = pluginPackage.cards.filter((card) => card.surfaces.includes(currentSurface));
+  const statuses = pluginPackage.statusItems.filter((item) =>
+    item.surfaces.includes(currentSurface),
+  );
+  const actions = new Map(
+    [...pluginPackage.composerActions, ...pluginPackage.contextualActions].map((action) => [
+      action.id,
+      action,
+    ]),
+  );
+
+  return (
+    <div className="space-y-6" data-plugin-ui-view={view.id}>
+      {view.description ? (
+        <p className="text-sm text-muted-foreground">{view.description}</p>
+      ) : null}
+      {statuses.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {statuses.map((item) => (
+            <Badge
+              key={item.id}
+              variant={
+                item.tone === "success"
+                  ? "success"
+                  : item.tone === "warning"
+                    ? "warning"
+                    : "outline"
+              }
+            >
+              {item.label}: {item.value}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+      {cards.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {cards.map((card) => (
+            <div
+              key={card.id}
+              className={`rounded-lg border p-4 ${toneClass[card.tone ?? "neutral"]}`}
+            >
+              <div className="text-sm font-medium">{card.title}</div>
+              {card.value ? <div className="mt-1 text-2xl font-semibold">{card.value}</div> : null}
+              {card.description ? (
+                <p className="mt-1 text-sm opacity-80">{card.description}</p>
+              ) : null}
+              {card.actionId && actions.get(card.actionId) ? (
+                <div className="mt-3">
+                  <ActionButton action={actions.get(card.actionId)!} onAction={onAction} />
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="space-y-3">
+        {view.blocks.map((block, index) => (
+          <RenderBlock
+            key={`${block.kind}:${"id" in block ? block.id : index}`}
+            block={block}
+            onAction={onAction}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PluginUiSettingControl({
+  environmentId,
+  pluginId,
+  setting,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly pluginId: string;
+  readonly setting: PluginUiSetting;
+}) {
+  const read = useAtomCommand(serverEnvironment.readPluginUiSetting, { reportFailure: false });
+  const write = useAtomCommand(serverEnvironment.writePluginUiSetting, { reportFailure: false });
+  const [value, setValue] = useState<boolean | string>(setting.defaultValue);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void read({ environmentId, input: { pluginId, settingId: setting.id } }).then((result) => {
+      if (cancelled || result._tag !== "Success" || result.value.value === undefined) return;
+      if (typeof result.value.value === "boolean" || typeof result.value.value === "string") {
+        setValue(result.value.value);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [environmentId, pluginId, read, setting.id]);
+
+  const update = async (next: boolean | string) => {
+    setValue(next);
+    setBusy(true);
+    const result = await write({
+      environmentId,
+      input: { pluginId, settingId: setting.id, value: next },
+    });
+    setBusy(false);
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const failure = squashAtomCommandFailure(result);
+      toastManager.add({
+        type: "error",
+        title: "Plugin setting failed",
+        description: failure instanceof Error ? failure.message : String(failure),
+      });
+    }
+  };
+
+  const control =
+    setting.kind === "boolean" ? (
+      <Switch
+        checked={value === true}
+        disabled={busy}
+        onCheckedChange={(checked) => void update(checked)}
+      />
+    ) : setting.kind === "select" ? (
+      <select
+        className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+        value={String(value)}
+        disabled={busy}
+        onChange={(event) => void update(event.target.value)}
+      >
+        {setting.options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    ) : (
+      <input
+        className="h-8 w-56 rounded-md border border-input bg-background px-2 text-sm"
+        value={String(value)}
+        placeholder={setting.placeholder}
+        disabled={busy}
+        onChange={(event) => setValue(event.target.value)}
+        onBlur={() => void update(String(value))}
+      />
+    );
+
+  return <SettingsRow title={setting.label} description={setting.description} control={control} />;
+}
+
+export function PluginUiSettingsSections() {
+  const environmentId = usePrimaryEnvironmentId();
+  const catalog = usePluginUiCatalog(environmentId);
+  const currentSurface = surface();
+  if (environmentId === null) return null;
+
+  return catalog.packages.map((pluginPackage) => {
+    const settings = pluginPackage.settings.filter((setting) =>
+      setting.surfaces.includes(currentSurface),
+    );
+    if (settings.length === 0) return null;
+    return (
+      <SettingsSection key={pluginPackage.pluginId} title={`${pluginPackage.pluginId} settings`}>
+        {settings.map((setting) => (
+          <PluginUiSettingControl
+            key={setting.id}
+            environmentId={environmentId}
+            pluginId={pluginPackage.pluginId}
+            setting={setting}
+          />
+        ))}
+      </SettingsSection>
+    );
+  });
+}
+
+export function PluginComposerContributions({
+  environmentId,
+  context,
+}: {
+  readonly environmentId: EnvironmentId | null;
+  readonly context: PluginCommandInvocationContext;
+}) {
+  const catalog = usePluginUiCatalog(environmentId);
+  const invoke = usePluginAction(environmentId, catalog);
+  const currentSurface = surface();
+  const composer = catalog.packages.flatMap((pluginPackage) =>
+    pluginPackage.composerActions.filter((action) => action.surfaces.includes(currentSurface)),
+  );
+  const contextual = catalog.packages.flatMap((pluginPackage) =>
+    pluginPackage.contextualActions.filter(
+      (action) => action.surfaces.includes(currentSurface) && action.contexts.includes("thread"),
+    ),
+  );
+  const statuses = catalog.packages.flatMap((pluginPackage) =>
+    pluginPackage.statusItems.filter((item) => item.surfaces.includes(currentSurface)),
+  );
+  if (composer.length === 0 && contextual.length === 0 && statuses.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1.5 px-3 pt-2" data-plugin-composer-actions="true">
+      {statuses.map((item) => (
+        <Badge
+          key={item.id}
+          variant={
+            item.tone === "success" ? "success" : item.tone === "warning" ? "warning" : "outline"
+          }
+        >
+          {item.label}: {item.value}
+        </Badge>
+      ))}
+      {[...composer, ...contextual].map((action) => (
+        <Button
+          key={action.id}
+          size="xs"
+          variant="ghost-muted"
+          onClick={() => void invoke(action.commandId, context)}
+        >
+          <SparklesIcon className="size-3" />
+          {action.label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+export function PluginUiPage({
+  pluginId,
+  viewId,
+}: {
+  readonly pluginId: string;
+  readonly viewId: string;
+}) {
+  const environmentId = usePrimaryEnvironmentId();
+  const catalog = usePluginUiCatalog(environmentId);
+  const invoke = usePluginAction(environmentId, catalog);
+  const pluginPackage = useMemo(
+    () => catalog.packages.find((candidate) => candidate.pluginId === pluginId),
+    [catalog.packages, pluginId],
+  );
+  const currentSurface = surface();
+  const view = pluginPackage?.views.find(
+    (candidate) => candidate.id === viewId && candidate.surfaces.includes(currentSurface),
+  );
+
+  if (pluginPackage === undefined || view === undefined) {
+    return <div className="p-6 text-sm text-muted-foreground">Plugin page is unavailable.</div>;
+  }
+  return (
+    <PluginUiViewContent
+      pluginPackage={pluginPackage}
+      view={view}
+      onAction={(commandId) => void invoke(commandId, { viewId })}
+    />
+  );
+}

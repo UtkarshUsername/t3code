@@ -1,6 +1,6 @@
-import { pathToFileURL } from "node:url";
-import { createInterface } from "node:readline";
-import { inspect } from "node:util";
+import * as NodeReadline from "node:readline";
+import * as NodeURL from "node:url";
+import * as NodeUtil from "node:util";
 
 const MAX_PROTOCOL_LINE_BYTES = 1_000_000;
 const entrypointPath = process.argv[2];
@@ -55,7 +55,7 @@ const writeInvocationResult = (requestId, value) => {
 
 const writeDiagnostic = (...values) => {
   const detail = values
-    .map((value) => (typeof value === "string" ? value : inspect(value)))
+    .map((value) => (typeof value === "string" ? value : NodeUtil.inspect(value)))
     .join(" ");
   process.stderr.write(`${detail.slice(0, 4_000)}\n`);
 };
@@ -63,24 +63,34 @@ for (const method of ["log", "info", "warn", "error", "debug"]) {
   console[method] = writeDiagnostic;
 }
 
-class RemoteEffect {
-  constructor(run) {
-    this.run = run;
-  }
-}
+const REMOTE_EFFECT = Symbol("plugin-remote-effect");
+const remoteEffect = (run) => ({ [REMOTE_EFFECT]: true, run });
+const isRemoteEffect = (value) =>
+  typeof value === "object" && value !== null && value[REMOTE_EFFECT] === true;
 
 const pendingHostCalls = new Map();
 const invocations = new Map();
 const commands = new Map();
 const finalizers = [];
+const emptyUi = () => ({
+  settings: [],
+  navigation: [],
+  views: [],
+  cards: [],
+  statusItems: [],
+  composerActions: [],
+  contextualActions: [],
+});
+let uiContribution = emptyUi();
+let uiRegistered = false;
 
 const runValue = async (value, signal) => {
-  if (value instanceof RemoteEffect) return await value.run(signal);
+  if (isRemoteEffect(value)) return await value.run(signal);
   return await value;
 };
 
 const hostCall = (operation, fields) =>
-  new RemoteEffect(
+  remoteEffect(
     (signal) =>
       new Promise((resolve, reject) => {
         const callId = `call-${++sequence}`;
@@ -132,12 +142,15 @@ const api = {
     process: {
       run: (command, args = []) => hostCall("process.run", { command, args }),
     },
+    ui: {
+      notify: (notification) => hostCall("ui.notify", { notification }),
+    },
   },
   effect: {
-    succeed: (value) => new RemoteEffect(async () => value),
-    map: (effect, f) => new RemoteEffect(async (signal) => f(await runValue(effect, signal))),
+    succeed: (value) => remoteEffect(async () => value),
+    map: (effect, f) => remoteEffect(async (signal) => f(await runValue(effect, signal))),
     flatMap: (effect, f) =>
-      new RemoteEffect(async (signal) => runValue(f(await runValue(effect, signal)), signal)),
+      remoteEffect(async (signal) => runValue(f(await runValue(effect, signal)), signal)),
   },
   onDispose: (cleanup) => {
     if (typeof cleanup !== "function") throw new Error("dispose callback must be a function");
@@ -150,6 +163,11 @@ const api = {
     if (commands.has(command.id)) throw new Error(`duplicate command ${command.id}`);
     commands.set(command.id, { command, handler });
   },
+  registerUi: (contribution) => {
+    if (uiRegistered) throw new Error("plugin ui contribution already registered");
+    uiContribution = detachJson(contribution);
+    uiRegistered = true;
+  },
 };
 
 const dispose = async (requestId = "dispose-signal") => {
@@ -158,7 +176,7 @@ const dispose = async (requestId = "dispose-signal") => {
   for (const controller of invocations.values()) controller.abort();
   invocations.clear();
   const failures = [];
-  for (const cleanup of [...finalizers].reverse()) {
+  for (const cleanup of finalizers.toReversed()) {
     try {
       await runValue(cleanup(), new AbortController().signal);
     } catch (error) {
@@ -213,7 +231,7 @@ const handleMessage = async (message) => {
       const controller = new AbortController();
       invocations.set(message.requestId, controller);
       void Promise.resolve()
-        .then(() => registration.handler())
+        .then(() => registration.handler(message.context))
         .then((result) => runValue(result, controller.signal))
         .then(
           (value) => writeInvocationResult(message.requestId, value),
@@ -240,7 +258,7 @@ const handleMessage = async (message) => {
   }
 };
 
-const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
+const input = NodeReadline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 input.on("line", (line) => {
   if (Buffer.byteLength(line, "utf8") > MAX_PROTOCOL_LINE_BYTES) {
     writeDiagnostic("parent protocol line exceeds limit");
@@ -269,7 +287,7 @@ try {
   if (typeof entrypointPath !== "string" || typeof pluginId !== "string") {
     throw new Error("plugin worker requires an entrypoint and plugin id");
   }
-  const module = await import(pathToFileURL(entrypointPath).href);
+  const module = await import(NodeURL.pathToFileURL(entrypointPath).href);
   if (typeof module.default !== "function") {
     throw new Error("server entrypoint must export a default activation function");
   }
@@ -277,6 +295,7 @@ try {
   write({
     type: "activated",
     commands: [...commands.values()].map(({ command }) => command),
+    ui: uiContribution,
   });
 } catch (error) {
   write({ type: "activationFailed", detail: detailFrom(error) });

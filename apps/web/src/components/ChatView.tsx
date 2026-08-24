@@ -270,6 +270,7 @@ import {
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import { PluginComposerContributions } from "./plugins/PluginUi";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -6770,6 +6771,17 @@ function ChatViewContent(props: ChatViewProps) {
                     >
                       <div className="chat-composer-glass-host relative z-10 w-full rounded-[22px]">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
+                          <PluginComposerContributions
+                            environmentId={environmentId}
+                            context={{
+                              ...(activeThreadId === null
+                                ? {}
+                                : { threadId: String(activeThreadId) }),
+                              ...(activeProject === null
+                                ? {}
+                                : { projectId: String(activeProject.id) }),
+                            }}
+                          />
                           <ChatComposer
                             composerRef={composerRef}
                             composerDraftTarget={composerDraftTarget}

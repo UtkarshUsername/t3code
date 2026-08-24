@@ -4683,7 +4683,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("lists, subscribes to, and invokes plugin commands over websocket rpc", () =>
+  it.effect("publishes plugin commands and declarative ui over websocket rpc", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
 
@@ -4696,16 +4696,24 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               Stream.runHead,
               Effect.map(Option.getOrThrow),
             );
+            const ui = yield* client[WS_METHODS.pluginUiList]({});
+            const streamedUi = yield* client[WS_METHODS.subscribePluginUi]({}).pipe(
+              Stream.runHead,
+              Effect.map(Option.getOrThrow),
+            );
             const invoked = yield* client[WS_METHODS.pluginCommandsInvoke]({
               generation: listed.generation,
               id: "t3.plugin-runtime.status",
             });
-            return { invoked, listed, streamed };
+            return { invoked, listed, streamed, streamedUi, ui };
           }),
         ),
       );
 
       assert.deepEqual(result.streamed, result.listed);
+      assert.deepEqual(result.streamedUi, result.ui);
+      assert.deepEqual(result.ui.packages, []);
+      assert.equal(result.ui.generation, result.listed.generation);
       assert.deepEqual(result.invoked, {
         message: "Plugin runtime is active.",
         tone: "success",

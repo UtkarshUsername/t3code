@@ -1,4 +1,9 @@
-import { PluginCommand } from "@t3tools/contracts";
+import {
+  PluginCommand,
+  type PluginCommandInvocationContext,
+  PluginUiContribution,
+  PluginUiNotificationInput,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
 const strict = <S extends Schema.Top>(schema: S) =>
@@ -20,6 +25,7 @@ const Activated = strict(
   Schema.Struct({
     type: Schema.Literal("activated"),
     commands: Schema.Array(PluginCommand),
+    ui: PluginUiContribution,
   }),
 );
 const ActivationFailed = strict(
@@ -133,6 +139,14 @@ const ProcessRun = strict(
     ),
   }),
 );
+const UiNotify = strict(
+  Schema.Struct({
+    type: Schema.Literal("hostCall"),
+    callId: PluginWorkerRequestId,
+    operation: Schema.Literal("ui.notify"),
+    notification: PluginUiNotificationInput,
+  }),
+);
 
 export const PluginWorkerHostCall = Schema.Union([
   keyedHostCall("settings.get"),
@@ -155,6 +169,7 @@ export const PluginWorkerHostCall = Schema.Union([
   FileAccess("files.remove"),
   NetworkFetch,
   ProcessRun,
+  UiNotify,
 ]);
 export type PluginWorkerHostCall = typeof PluginWorkerHostCall.Type;
 
@@ -170,7 +185,12 @@ export const PluginWorkerMessage = Schema.Union([
 export type PluginWorkerMessage = typeof PluginWorkerMessage.Type;
 
 export type PluginWorkerParentMessage =
-  | { readonly type: "invoke"; readonly requestId: string; readonly commandId: string }
+  | {
+      readonly type: "invoke";
+      readonly requestId: string;
+      readonly commandId: string;
+      readonly context?: PluginCommandInvocationContext;
+    }
   | { readonly type: "cancel"; readonly requestId: string }
   | { readonly type: "dispose"; readonly requestId: string }
   | { readonly type: "hostResult"; readonly callId: string; readonly value?: Schema.Json }

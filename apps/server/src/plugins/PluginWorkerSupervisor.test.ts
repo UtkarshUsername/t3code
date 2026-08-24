@@ -9,6 +9,7 @@ import * as Fiber from "effect/Fiber";
 import * as Path from "effect/Path";
 import * as TestClock from "effect/testing/TestClock";
 import { NodeServices } from "@effect/platform-node";
+import type { PluginUiNotificationInput } from "@t3tools/contracts";
 
 import type { PluginHostApi, PluginHostKeyValueStore } from "./PluginHostCapabilityBroker.ts";
 import * as PluginWorkerSupervisor from "./PluginWorkerSupervisor.ts";
@@ -23,7 +24,7 @@ const makeStore = (): PluginHostKeyValueStore => {
   };
 };
 
-const makeHost = (): PluginHostApi => ({
+const makeHost = (notifications: Array<PluginUiNotificationInput> = []): PluginHostApi => ({
   settings: makeStore(),
   state: makeStore(),
   cache: makeStore(),
@@ -42,6 +43,12 @@ const makeHost = (): PluginHostApi => ({
   },
   process: {
     run: () => Effect.fail(new Error("unused") as never),
+  },
+  ui: {
+    notify: (notification) =>
+      Effect.sync(() => {
+        notifications.push(structuredClone(notification));
+      }),
   },
 });
 
@@ -66,19 +73,47 @@ it.layer(NodeServices.layer)("plugin worker supervisor", (it) => {
           prefix: "t3code-plugin-worker-invoke-test-",
         });
         const entrypointPath = path.join(directory, "index.mjs");
+        const notifications: Array<PluginUiNotificationInput> = [];
         yield* fileSystem.writeFileString(
           entrypointPath,
           `export default function activate(api) {
             if (!process.execArgv.includes("--max-old-space-size=128") || !process.execArgv.includes("--no-addons")) {
               throw new Error("worker resource flags missing");
             }
+            api.registerUi({
+              settings: [],
+              navigation: [{
+                id: "com.acme.counter.navigation",
+                label: "Counter",
+                viewId: "com.acme.counter.view",
+                surfaces: ["web"]
+              }],
+              views: [{
+                id: "com.acme.counter.view",
+                label: "Counter",
+                surfaces: ["web"],
+                blocks: [{ kind: "text", text: "Counter dashboard" }]
+              }],
+              cards: [],
+              statusItems: [],
+              composerActions: [],
+              contextualActions: []
+            });
             api.registerCommand(
               { id: "acme.counter", label: "Counter", surfaces: ["web"] },
               () => api.effect.flatMap(api.host.state.get("count"), (stored) => {
                 const next = typeof stored === "number" ? stored + 1 : 1;
                 return api.effect.flatMap(
                   api.host.state.set("count", next),
-                  () => api.effect.succeed({ message: String(next), tone: "success" })
+                  () => api.effect.flatMap(
+                    api.host.ui.notify({
+                      id: "counter-updated",
+                      title: "Counter updated",
+                      message: String(next),
+                      tone: "success"
+                    }),
+                    () => api.effect.succeed({ message: String(next), tone: "success" })
+                  )
                 );
               })
             );
@@ -88,12 +123,14 @@ it.layer(NodeServices.layer)("plugin worker supervisor", (it) => {
         const worker = yield* supervisor.start({
           pluginId: "com.acme.counter",
           entrypointPath,
-          host: makeHost(),
+          host: makeHost(notifications),
         });
 
         expect(worker.commands.map(({ id }) => id)).toEqual(["acme.counter"]);
+        expect(worker.ui.navigation.map(({ id }) => id)).toEqual(["com.acme.counter.navigation"]);
         expect(yield* worker.invoke("acme.counter")).toEqual({ message: "1", tone: "success" });
         expect(yield* worker.invoke("acme.counter")).toEqual({ message: "2", tone: "success" });
+        expect(notifications).toHaveLength(2);
         expect(worker.health().state).toBe("running");
         yield* worker.dispose;
       }).pipe(Effect.provide(PluginWorkerSupervisor.layer)),

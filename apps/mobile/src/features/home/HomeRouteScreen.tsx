@@ -20,6 +20,7 @@ import { buildHomeProjectScopes } from "./homeThreadList";
 import { usePendingTaskListActions } from "./usePendingTaskListActions";
 import { useThreadListActions } from "./useThreadListActions";
 import { getConnectionAwareBrandHeaderOptions } from "./WorkspaceConnectionTitle";
+import { PluginUiMobileCards } from "../plugins/PluginUiMobileCards";
 
 /* ─── Route screen ───────────────────────────────────────────────────── */
 
@@ -169,6 +170,8 @@ export function HomeRouteScreen() {
           onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
           onThreadSortOrderChange={setThreadSortOrder}
         />
+
+        <PluginUiMobileCards environmentId={selectedEnvironmentId} />
 
         <HomeScreen
           catalogState={catalogState}

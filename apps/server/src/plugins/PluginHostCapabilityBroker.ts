@@ -1,5 +1,5 @@
 import { NodeHttpClient } from "@effect/platform-node";
-import { PluginHostPermission } from "@t3tools/contracts";
+import { PluginHostPermission, type PluginUiNotificationInput } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -97,6 +97,11 @@ export interface PluginHostApi {
       { readonly exitCode: number; readonly stdout: string; readonly stderr: string },
       PluginHostCapabilityError
     >;
+  };
+  readonly ui: {
+    readonly notify: (
+      notification: PluginUiNotificationInput,
+    ) => Effect.Effect<void, PluginHostCapabilityError>;
   };
 }
 
@@ -731,6 +736,14 @@ export const make = Effect.gen(function* () {
               );
               return result;
             }),
+        },
+        ui: {
+          notify: (_notification) =>
+            requirePermission(pluginId, requested, "notifications:send", "notification send").pipe(
+              Effect.flatMap(() =>
+                Effect.fail(fail(pluginId, "notification send", "notification sink unavailable")),
+              ),
+            ),
         },
       } satisfies PluginHostApi;
     });

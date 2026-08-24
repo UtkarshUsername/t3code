@@ -9,6 +9,12 @@ export const PluginPackageId = Schema.String.check(
 );
 export type PluginPackageId = typeof PluginPackageId.Type;
 
+export const PluginUiId = Schema.String.check(
+  Schema.isPattern(/^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+$/),
+  Schema.isMaxLength(200),
+);
+export type PluginUiId = typeof PluginUiId.Type;
+
 export const PluginPackageCapability = Schema.String.check(
   Schema.isPattern(/^[a-z0-9][a-z0-9.-]*@[1-9]\d*$/),
 );
@@ -20,6 +26,7 @@ export const PluginHostPermission = Schema.Union([
     "state:read-write",
     "cache:read-write",
     "filesystem:data",
+    "notifications:send",
   ]),
   Schema.String.check(
     Schema.isPattern(/^secrets:[a-z0-9][a-z0-9._-]{0,127}$/),
@@ -59,6 +66,13 @@ export type PluginPackageRuntimeState = typeof PluginPackageRuntimeState.Type;
 
 export const PluginPackageContributions = Schema.Struct({
   commands: Schema.Array(PluginCommandId),
+  settings: Schema.Array(PluginUiId),
+  navigation: Schema.Array(PluginUiId),
+  views: Schema.Array(PluginUiId),
+  cards: Schema.Array(PluginUiId),
+  statusItems: Schema.Array(PluginUiId),
+  composerActions: Schema.Array(PluginUiId),
+  contextualActions: Schema.Array(PluginUiId),
 });
 export type PluginPackageContributions = typeof PluginPackageContributions.Type;
 

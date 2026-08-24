@@ -17,11 +17,16 @@ const validManifest = {
   capabilities: ["t3.commands@1"],
   requires: ["t3.commands@1", "t3.secrets@1"],
   provides: ["com.acme.linear@1"],
-  permissions: ["network:https://api.linear.app", "secrets:linear-token"],
+  permissions: ["network:https://api.linear.app", "secrets:linear-token", "notifications:send"],
   contributes: {
     commands: ["linear.create-issue"],
     settings: ["linear.settings"],
-    views: ["thread.right-panel"],
+    navigation: ["linear.navigation"],
+    views: ["linear.right-panel"],
+    cards: ["linear.summary"],
+    statusItems: ["linear.status"],
+    composerActions: ["linear.create-from-composer"],
+    contextualActions: ["linear.create-from-thread"],
   },
 };
 

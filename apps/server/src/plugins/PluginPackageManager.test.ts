@@ -8,8 +8,10 @@ import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { PluginManifest } from "@t3tools/plugin-runtime/manifest";
 
@@ -619,6 +621,134 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
       const exit = yield* Fiber.await(startup);
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true);
+    }),
+  );
+
+  it.effect("publishes declared ui, stores plugin settings, and brokers notifications", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3code-plugin-package-ui-test-",
+      });
+      const uiPackageId = "com.acme.fun";
+      const uiCommandId = "com.acme.fun.celebrate";
+      const packageDirectory = `${baseDir}/userdata/plugins/${uiPackageId}`;
+      const uiManifest = {
+        ...manifest,
+        id: uiPackageId,
+        capabilities: ["t3.commands@1", "t3.ui@1"],
+        permissions: ["settings:read-write", "notifications:send"],
+        contributes: {
+          commands: [uiCommandId],
+          settings: ["com.acme.fun.enabled"],
+          navigation: ["com.acme.fun.navigation"],
+          views: ["com.acme.fun.view"],
+          cards: ["com.acme.fun.card"],
+          statusItems: ["com.acme.fun.status"],
+          composerActions: ["com.acme.fun.composer"],
+          contextualActions: ["com.acme.fun.context"],
+        },
+      } as const;
+      yield* fileSystem.makeDirectory(packageDirectory, { recursive: true });
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/t3-plugin.json`,
+        encodeManifest(uiManifest),
+      );
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/index.mjs`,
+        `export default function activate(api) {
+          api.registerUi({
+            settings: [{
+              id: "com.acme.fun.enabled",
+              kind: "boolean",
+              label: "Enable fun",
+              defaultValue: true,
+              surfaces: ["web", "desktop", "mobile"]
+            }],
+            navigation: [{
+              id: "com.acme.fun.navigation",
+              label: "Fun",
+              viewId: "com.acme.fun.view",
+              surfaces: ["web", "desktop"]
+            }],
+            views: [{
+              id: "com.acme.fun.view",
+              label: "Fun",
+              surfaces: ["web", "desktop"],
+              blocks: [{ kind: "text", text: "Fun dashboard" }]
+            }],
+            cards: [{
+              id: "com.acme.fun.card",
+              title: "Fun score",
+              value: "10",
+              surfaces: ["web", "desktop", "mobile"]
+            }],
+            statusItems: [{
+              id: "com.acme.fun.status",
+              label: "Fun",
+              value: "Ready",
+              surfaces: ["web", "desktop", "mobile"]
+            }],
+            composerActions: [{
+              id: "com.acme.fun.composer",
+              label: "Celebrate",
+              commandId: "${uiCommandId}",
+              surfaces: ["web", "desktop", "mobile"]
+            }],
+            contextualActions: [{
+              id: "com.acme.fun.context",
+              label: "Celebrate thread",
+              commandId: "${uiCommandId}",
+              contexts: ["thread"],
+              surfaces: ["web", "desktop", "mobile"]
+            }]
+          });
+          api.registerCommand(
+            { id: "${uiCommandId}", label: "Celebrate", surfaces: ["web", "desktop", "mobile"] },
+            (context) => api.effect.flatMap(
+              api.host.ui.notify({
+                id: "celebrated",
+                title: "Celebrated",
+                message: context?.threadId ?? "No thread",
+                tone: "success"
+              }),
+              () => api.effect.succeed({ message: context?.threadId ?? "none", tone: "success" })
+            )
+          );
+        }`,
+      );
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+          yield* manager.enable(uiPackageId);
+
+          const ui = yield* catalog.ui;
+          expect(ui.packages[0]).toMatchObject({
+            pluginId: uiPackageId,
+            navigation: [{ id: "com.acme.fun.navigation" }],
+            cards: [{ id: "com.acme.fun.card" }],
+          });
+          expect(yield* manager.settingRead(uiPackageId, "com.acme.fun.enabled")).toBeUndefined();
+          yield* manager.settingWrite(uiPackageId, "com.acme.fun.enabled", false);
+          expect(yield* manager.settingRead(uiPackageId, "com.acme.fun.enabled")).toBe(false);
+
+          const notification = yield* Effect.forkChild(Stream.runHead(catalog.notifications));
+          yield* Effect.yieldNow;
+          const result = yield* catalog.invoke({
+            generation: ui.generation,
+            id: uiCommandId,
+            context: { threadId: "thread-1" },
+          });
+          expect(result.message).toBe("thread-1");
+          expect(Option.getOrNull(yield* Fiber.join(notification))).toMatchObject({
+            pluginId: uiPackageId,
+            message: "thread-1",
+          });
+        }),
+      );
     }),
   );
 

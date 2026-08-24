@@ -27,6 +27,7 @@ const Permission = Schema.Union([
     "state:read-write",
     "cache:read-write",
     "filesystem:data",
+    "notifications:send",
   ]),
   Schema.String.check(
     Schema.isPattern(/^secrets:[a-z0-9][a-z0-9._-]{0,127}$/),
@@ -47,7 +48,12 @@ const Permission = Schema.Union([
 const ContributionCatalog = Schema.Struct({
   commands: Schema.optional(Schema.Array(CommandId)),
   settings: Schema.optional(Schema.Array(NamespacedId)),
+  navigation: Schema.optional(Schema.Array(NamespacedId)),
   views: Schema.optional(Schema.Array(NamespacedId)),
+  cards: Schema.optional(Schema.Array(NamespacedId)),
+  statusItems: Schema.optional(Schema.Array(NamespacedId)),
+  composerActions: Schema.optional(Schema.Array(NamespacedId)),
+  contextualActions: Schema.optional(Schema.Array(NamespacedId)),
   mobileCards: Schema.optional(Schema.Array(NamespacedId)),
 });
 
