@@ -28,8 +28,6 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 const COMMAND_SLOT = "commands";
 const decodePluginCommand = Schema.decodeUnknownSync(PluginCommandSchema);
 const decodePluginCommandEffect = Schema.decodeUnknownEffect(PluginCommandSchema);
-const isContributionGenerationError = Schema.is(PluginRuntime.PluginContributionGenerationError);
-const isContributionNotFoundError = Schema.is(PluginRuntime.PluginContributionNotFoundError);
 
 const commandInputFromContribution = (entry: Contribution) => {
   const data = typeof entry.data === "object" && entry.data !== null ? entry.data : {};
@@ -196,20 +194,37 @@ export const make = Effect.gen(function* () {
           never
         >(COMMAND_SLOT, input.id, input.generation, (handler) => handler)
         .pipe(
-          Effect.mapError((error) => {
-            if (isContributionGenerationError(error)) {
-              return new PluginCommandCatalogChangedError({
-                actualGeneration: error.actual,
-                expectedGeneration: error.expected,
-              });
-            }
-            if (isContributionNotFoundError(error)) {
-              return new PluginCommandNotFoundError({ id: input.id });
-            }
-            return new PluginCommandInvocationError({
-              cause: error,
-              id: input.id,
-            });
+          Effect.catchTags({
+            PluginContributionGenerationError: (error) =>
+              Effect.fail(
+                new PluginCommandCatalogChangedError({
+                  actualGeneration: error.actual,
+                  expectedGeneration: error.expected,
+                }),
+              ),
+            PluginContributionNotFoundError: () =>
+              Effect.fail(new PluginCommandNotFoundError({ id: input.id })),
+            PluginCommandExecutionError: (error) =>
+              Effect.fail(
+                new PluginCommandInvocationError({
+                  cause: error,
+                  id: input.id,
+                }),
+              ),
+            PluginRuntimeDisposedError: (error) =>
+              Effect.fail(
+                new PluginCommandInvocationError({
+                  cause: error,
+                  id: input.id,
+                }),
+              ),
+            PluginRuntimeReentrancyError: (error) =>
+              Effect.fail(
+                new PluginCommandInvocationError({
+                  cause: error,
+                  id: input.id,
+                }),
+              ),
           }),
         ),
     );

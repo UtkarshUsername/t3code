@@ -40,6 +40,22 @@ interface DiscoveryResult {
   readonly packages: ReadonlyMap<string, DiscoveredPackage>;
 }
 
+class PluginPackageContributionMismatchError extends Schema.TaggedErrorClass<PluginPackageContributionMismatchError>()(
+  "PluginPackageContributionMismatchError",
+  {
+    id: Schema.String,
+    reason: Schema.Literals(["missing-capability", "undeclared-command"]),
+    capability: Schema.optional(Schema.String),
+    commandId: Schema.optional(Schema.String),
+  },
+) {
+  override get message(): string {
+    return this.reason === "missing-capability"
+      ? `Manifest does not declare capability ${this.capability ?? "unknown"}`
+      : `Command ${this.commandId ?? "unknown"} is not declared in the manifest`;
+  }
+}
+
 interface LoadedDefinition {
   readonly cacheDirectory: string;
   readonly definition: PluginDefinition;
@@ -92,11 +108,19 @@ const makeDefinition = (
     worker.commands.length > 0 &&
     !discovered.manifest.capabilities.includes(COMMAND_CAPABILITY)
   ) {
-    throw new Error(`Manifest does not declare capability ${COMMAND_CAPABILITY}`);
+    throw new PluginPackageContributionMismatchError({
+      id: discovered.manifest.id,
+      reason: "missing-capability",
+      capability: COMMAND_CAPABILITY,
+    });
   }
   for (const command of worker.commands) {
     if (!declaredCommands.has(command.id)) {
-      throw new Error(`Command ${command.id} is not declared in the manifest`);
+      throw new PluginPackageContributionMismatchError({
+        id: discovered.manifest.id,
+        reason: "undeclared-command",
+        commandId: command.id,
+      });
     }
   }
   const providedCapabilities = Object.fromEntries(
@@ -118,17 +142,7 @@ const makeDefinition = (
         PluginCommandCatalog.registerPluginCommand(context, {
           command,
           handler: worker.invoke(command.id).pipe(
-            Effect.flatMap((result) =>
-              decodeInvocationResult(result).pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new PluginCommandCatalog.PluginCommandExecutionError({
-                      cause,
-                      id: command.id,
-                    }),
-                ),
-              ),
-            ),
+            Effect.flatMap(decodeInvocationResult),
             Effect.mapError(
               (cause) =>
                 new PluginCommandCatalog.PluginCommandExecutionError({
