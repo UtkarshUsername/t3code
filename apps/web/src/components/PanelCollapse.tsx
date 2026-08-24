@@ -221,14 +221,16 @@ export function usePanelCollapse(input: {
 
   const ref = React.useCallback(
     (node: HTMLElement | null) => {
-      nodeRef.current = node;
       if (node == null && flightRef.current) {
-        // Detached mid-flight (caller bailed); retire with supersession
-        // semantics so a bail cannot wipe newer panel intent.
-        retireFlight();
+        // Retire before dropping the reference so clearWrapperStyles can
+        // reset the inline animation styles on the detaching element, and
+        // commit so an active-drawer ref swap cannot pre-empt the
+        // identity-switch close below.
+        settle();
       }
+      nodeRef.current = node;
     },
-    [retireFlight],
+    [settle],
   );
 
   // Memoized so consumers can list the state object in dependency arrays
