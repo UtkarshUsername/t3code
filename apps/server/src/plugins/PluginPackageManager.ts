@@ -40,19 +40,21 @@ interface DiscoveryResult {
   readonly packages: ReadonlyMap<string, DiscoveredPackage>;
 }
 
-class PluginPackageContributionMismatchError extends Schema.TaggedErrorClass<PluginPackageContributionMismatchError>()(
-  "PluginPackageContributionMismatchError",
-  {
-    id: Schema.String,
-    reason: Schema.Literals(["missing-capability", "undeclared-command"]),
-    capability: Schema.optional(Schema.String),
-    commandId: Schema.optional(Schema.String),
-  },
+class PluginPackageMissingCapabilityError extends Schema.TaggedErrorClass<PluginPackageMissingCapabilityError>()(
+  "PluginPackageMissingCapabilityError",
+  { capability: Schema.String, id: Schema.String },
 ) {
   override get message(): string {
-    return this.reason === "missing-capability"
-      ? `Manifest does not declare capability ${this.capability ?? "unknown"}`
-      : `Command ${this.commandId ?? "unknown"} is not declared in the manifest`;
+    return `Manifest does not declare capability ${this.capability}`;
+  }
+}
+
+class PluginPackageUndeclaredCommandError extends Schema.TaggedErrorClass<PluginPackageUndeclaredCommandError>()(
+  "PluginPackageUndeclaredCommandError",
+  { commandId: Schema.String, id: Schema.String },
+) {
+  override get message(): string {
+    return `Command ${this.commandId} is not declared in the manifest`;
   }
 }
 
@@ -108,17 +110,15 @@ const makeDefinition = (
     worker.commands.length > 0 &&
     !discovered.manifest.capabilities.includes(COMMAND_CAPABILITY)
   ) {
-    throw new PluginPackageContributionMismatchError({
+    throw new PluginPackageMissingCapabilityError({
       id: discovered.manifest.id,
-      reason: "missing-capability",
       capability: COMMAND_CAPABILITY,
     });
   }
   for (const command of worker.commands) {
     if (!declaredCommands.has(command.id)) {
-      throw new PluginPackageContributionMismatchError({
+      throw new PluginPackageUndeclaredCommandError({
         id: discovered.manifest.id,
-        reason: "undeclared-command",
         commandId: command.id,
       });
     }
