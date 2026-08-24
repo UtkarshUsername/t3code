@@ -201,7 +201,9 @@ import {
   useClientSettings,
   useClientSettingsHydrated,
   useEnvironmentSettings,
+  usePanelAnimations,
 } from "../hooks/useSettings";
+import { type PanelCollapseFlight, PanelCollapseFrame, usePanelCollapse } from "./PanelCollapse";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
@@ -691,6 +693,9 @@ interface PersistentThreadTerminalDrawerProps {
   visible: boolean;
   launchContext: PersistentTerminalLaunchContext | null;
   focusRequestId: number;
+  /** Collapse flight for the active drawer only; background drawers pass no-ops. */
+  collapseRef: (node: HTMLElement | null) => void;
+  collapseFlight: PanelCollapseFlight | null;
   splitShortcutLabel: string | undefined;
   splitVerticalShortcutLabel: string | undefined;
   newShortcutLabel: string | undefined;
@@ -699,12 +704,16 @@ interface PersistentThreadTerminalDrawerProps {
   onAddTerminalContext: (selection: TerminalContextSelection) => void;
 }
 
+const noopRef = () => {};
+
 const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDrawer({
   threadRef,
   threadId,
   visible,
   launchContext,
   focusRequestId,
+  collapseRef,
+  collapseFlight,
   splitShortcutLabel,
   splitVerticalShortcutLabel,
   newShortcutLabel,
@@ -1015,7 +1024,11 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
   }
 
   return (
-    <div className={visible ? undefined : "hidden"}>
+    <PanelCollapseFrame
+      state={{ ref: collapseRef, flight: collapseFlight }}
+      dimension="height"
+      className={visible ? undefined : "hidden"}
+    >
       <ThreadTerminalDrawer
         threadRef={threadRef}
         threadId={threadId}
@@ -1045,7 +1058,7 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
         terminalLabelsById={terminalLabelsById}
         terminalLaunchLocationsById={terminalLaunchLocationsById}
       />
-    </div>
+    </PanelCollapseFrame>
   );
 });
 
@@ -2928,6 +2941,16 @@ function ChatViewContent(props: ChatViewProps) {
     },
     [activeThreadRef, storeSetTerminalOpen],
   );
+  // The active drawer's close is deferred until its height collapse lands,
+  // so during the animation every reader of terminalOpen still sees open.
+  const panelAnimationsEnabled = usePanelAnimations();
+  const drawerCollapse = usePanelCollapse({
+    open: Boolean(activeThreadKey && terminalUiState.terminalOpen),
+    enabled: panelAnimationsEnabled,
+    dimension: "height",
+    identity: routeThreadKey,
+    onClose: () => setTerminalOpen(false),
+  });
   const toggleTerminalVisibility = useCallback(() => {
     if (!activeThreadRef) return;
     const nextOpen = !terminalUiState.terminalOpen;
@@ -2956,13 +2979,24 @@ function ChatViewContent(props: ChatViewProps) {
       });
       return;
     }
-    setTerminalOpen(nextOpen);
+    if (nextOpen) {
+      setTerminalOpen(true);
+      return;
+    }
+    // A second toggle mid-collapse finishes the close instead of queueing a
+    // reopen; otherwise the close animates and the store flips when it lands.
+    if (drawerCollapse.flight?.direction === "out") {
+      drawerCollapse.settle();
+      return;
+    }
+    drawerCollapse.requestClose();
   }, [
     activeProject,
     activeThreadId,
     activeThreadRef,
     activeThreadWorktreePath,
     allocatableActiveTerminalIds,
+    drawerCollapse,
     environmentId,
     gitCwd,
     openTerminal,
@@ -3448,6 +3482,20 @@ function ChatViewContent(props: ChatViewProps) {
       useRightPanelStore.getState().close(activeThreadRef);
     }
   }, [activeThreadRef]);
+  // Same deferred-close contract as the drawer: the store stays open for the
+  // width collapse, so titlebar and layout reads need no animation awareness.
+  const rightPanelCollapse = usePanelCollapse({
+    open: rightPanelOpen,
+    enabled: panelAnimationsEnabled,
+    dimension: "width",
+    identity: routeThreadKey,
+    onClose: () => closePreviewPanel(),
+  });
+  // During a close from maximized, the wrapper is pinned to its measured px
+  // width and the chat column takes the row back while the panel collapses;
+  // the panel's own content stays maximized-styled and just gets clipped.
+  const rightPanelMaximizedLayout =
+    rightPanelMaximized && rightPanelCollapse.flight?.direction !== "out";
   const addTerminalSurface = useCallback(() => {
     if (!activeThreadRef || !activeThreadId || !activeProject) return;
     const cwd = gitCwd ?? activeProject.workspaceRoot;
@@ -3582,12 +3630,16 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const toggleRightPanel = useCallback(() => {
     if (!activeThreadRef) return;
+    if (rightPanelCollapse.flight?.direction === "out") {
+      rightPanelCollapse.settle();
+      return;
+    }
     if (rightPanelOpen) {
-      closePreviewPanel();
+      rightPanelCollapse.requestClose();
       return;
     }
     useRightPanelStore.getState().toggleVisibility(activeThreadRef);
-  }, [activeThreadRef, closePreviewPanel, rightPanelOpen]);
+  }, [activeThreadRef, rightPanelCollapse, rightPanelOpen]);
   const toggleRightPanelMaximized = useCallback(() => {
     if (!canMaximizeRightPanel) return;
     setMaximizedRightPanelThreadKey((threadKey) =>
@@ -6607,9 +6659,9 @@ function ChatViewContent(props: ChatViewProps) {
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-          rightPanelMaximized ? "w-0 flex-none" : "flex-1",
+          rightPanelMaximizedLayout ? "w-0 flex-none" : "flex-1",
         )}
-        data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
+        data-chat-column-maximized-away={rightPanelMaximizedLayout ? "true" : "false"}
       >
         {/* Top bar */}
         <WorkspacePageHeader
@@ -6997,60 +7049,71 @@ function ChatViewContent(props: ChatViewProps) {
         </div>
         {/* end horizontal flex container */}
 
-        {mountedTerminalThreadRefs.map(({ key: mountedThreadKey, threadRef: mountedThreadRef }) => (
-          <PersistentThreadTerminalDrawer
-            key={mountedThreadKey}
-            threadRef={mountedThreadRef}
-            threadId={mountedThreadRef.threadId}
-            visible={mountedThreadKey === activeThreadKey && terminalUiState.terminalOpen}
-            launchContext={
-              mountedThreadKey === activeThreadKey ? (activeTerminalLaunchContext ?? null) : null
-            }
-            focusRequestId={mountedThreadKey === activeThreadKey ? terminalFocusRequestId : 0}
-            splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
-            splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
-            newShortcutLabel={newTerminalShortcutLabel ?? undefined}
-            closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
-            keybindings={keybindings}
-            onAddTerminalContext={addTerminalContextToDraft}
-          />
-        ))}
+        {mountedTerminalThreadRefs.map(({ key: mountedThreadKey, threadRef: mountedThreadRef }) => {
+          const isActiveDrawer = mountedThreadKey === activeThreadKey;
+          return (
+            <PersistentThreadTerminalDrawer
+              key={mountedThreadKey}
+              threadRef={mountedThreadRef}
+              threadId={mountedThreadRef.threadId}
+              visible={isActiveDrawer && terminalUiState.terminalOpen}
+              launchContext={isActiveDrawer ? (activeTerminalLaunchContext ?? null) : null}
+              focusRequestId={isActiveDrawer ? terminalFocusRequestId : 0}
+              collapseRef={isActiveDrawer ? drawerCollapse.ref : noopRef}
+              collapseFlight={isActiveDrawer ? drawerCollapse.flight : null}
+              splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
+              splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
+              newShortcutLabel={newTerminalShortcutLabel ?? undefined}
+              closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
+              keybindings={keybindings}
+              onAddTerminalContext={addTerminalContextToDraft}
+            />
+          );
+        })}
       </div>
 
-      {!shouldUseRightPanelSheet && rightPanelOpen && activeThreadRef ? (
-        <RightPanelTabs
-          mode="inline"
-          maximized={rightPanelMaximized}
-          surfaces={rightPanelState.surfaces}
-          activeSurfaceId={activeRightPanelSurface?.id ?? null}
-          pendingSurfaceIds={pendingFileSurfaceIds}
-          previewSessions={activePreviewState.sessions}
-          desktopByTabId={activePreviewState.desktopByTabId}
-          previewRuntimeTabId={resolvePreviewRuntimeTabId}
-          terminalLabelsById={activeTerminalLabelsById}
-          onActivate={activateRightPanelSurface}
-          onCloseSurface={closeRightPanelSurface}
-          onCloseOtherSurfaces={closeOtherRightPanelSurfaces}
-          onCloseSurfacesToRight={closeRightPanelSurfacesToRight}
-          onCloseAllSurfaces={closeAllRightPanelSurfaces}
-          onCopyFilePath={copyRightPanelFilePath}
-          onAddBrowser={createBrowserSurface}
-          onAddTerminal={addTerminalSurface}
-          onAddDiff={addDiffSurface}
-          onAddFiles={addFilesSurface}
-          onAddPullRequest={addPullRequestSurface}
-          onAddAgents={addAgentsSurface}
-          browserAvailable={isPreviewSupportedInRuntime()}
-          terminalAvailable={activeProject !== null}
-          diffAvailable={isServerThread && isGitRepo}
-          filesAvailable={activeProject !== null}
-          pullRequestAvailable={pullRequestSurfaceAvailable}
-          agentsAvailable
-          pullRequestStatuses={pullRequestTabStatuses}
-          liveAgentCount={agentPanelModel.liveCount}
+      {!shouldUseRightPanelSheet &&
+      (rightPanelOpen || rightPanelCollapse.flight) &&
+      activeThreadRef ? (
+        <PanelCollapseFrame
+          state={rightPanelCollapse}
+          dimension="width"
+          className={rightPanelMaximized ? "flex min-h-0 min-w-0 flex-1" : "flex-none"}
         >
-          {rightPanelContent}
-        </RightPanelTabs>
+          <RightPanelTabs
+            mode="inline"
+            maximized={rightPanelMaximized}
+            surfaces={rightPanelState.surfaces}
+            activeSurfaceId={activeRightPanelSurface?.id ?? null}
+            pendingSurfaceIds={pendingFileSurfaceIds}
+            previewSessions={activePreviewState.sessions}
+            desktopByTabId={activePreviewState.desktopByTabId}
+            previewRuntimeTabId={resolvePreviewRuntimeTabId}
+            terminalLabelsById={activeTerminalLabelsById}
+            onActivate={activateRightPanelSurface}
+            onCloseSurface={closeRightPanelSurface}
+            onCloseOtherSurfaces={closeOtherRightPanelSurfaces}
+            onCloseSurfacesToRight={closeRightPanelSurfacesToRight}
+            onCloseAllSurfaces={closeAllRightPanelSurfaces}
+            onCopyFilePath={copyRightPanelFilePath}
+            onAddBrowser={createBrowserSurface}
+            onAddTerminal={addTerminalSurface}
+            onAddDiff={addDiffSurface}
+            onAddFiles={addFilesSurface}
+            onAddPullRequest={addPullRequestSurface}
+            onAddAgents={addAgentsSurface}
+            browserAvailable={isPreviewSupportedInRuntime()}
+            terminalAvailable={activeProject !== null}
+            diffAvailable={isServerThread && isGitRepo}
+            filesAvailable={activeProject !== null}
+            pullRequestAvailable={pullRequestSurfaceAvailable}
+            agentsAvailable
+            pullRequestStatuses={pullRequestTabStatuses}
+            liveAgentCount={agentPanelModel.liveCount}
+          >
+            {rightPanelContent}
+          </RightPanelTabs>
+        </PanelCollapseFrame>
       ) : null}
       {shouldUseRightPanelSheet && rightPanelOpen && activeThreadRef ? (
         <RightPanelSheet open onClose={closePreviewPanel}>

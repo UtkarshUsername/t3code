@@ -130,7 +130,13 @@ function useClampedMaxWidth(hostRef: RefObject<HTMLDivElement | null>, enabled: 
   }, []);
   useLayoutEffect(() => {
     if (!enabled) return;
-    const parent = hostRef.current?.parentElement;
+    // PanelCollapseFrame wraps the panel while it animates open/closed;
+    // measure through that wrapper so the clamp tracks the flex row the
+    // panel actually shares with its sibling column.
+    let parent = hostRef.current?.parentElement;
+    while (parent?.hasAttribute("data-panel-collapse")) {
+      parent = parent.parentElement;
+    }
     if (!parent) return;
     // Measure before first paint: the persisted width must be clamped
     // against the row on the initial render, not one observer tick later

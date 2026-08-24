@@ -38,6 +38,7 @@ import { primaryServerSettingsAtom, serverEnvironment } from "~/state/server";
 import { usePrimaryEnvironment } from "~/state/environments";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { useTheme } from "./useTheme";
+import { useMediaQuery } from "./useMediaQuery";
 
 const CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE = "[CLIENT_SETTINGS]";
 
@@ -287,6 +288,19 @@ export function useLegacySidebarEnabled(): boolean {
   const settingsHydrated = useClientSettingsHydrated();
   const legacySidebarEnabled = useClientSettingsValue().legacySidebarEnabled;
   return settingsHydrated && legacySidebarEnabled;
+}
+
+/**
+ * Whether collapsing/expanding the left sidebar, right panel, and terminal
+ * drawer animates. Opt-in via Settings → Appearance; panels snap until then.
+ * The OS reduce-motion preference wins over the setting. Resolves false
+ * until client settings hydrate so the first paint is stable.
+ */
+export function usePanelAnimations(): boolean {
+  const settingsHydrated = useClientSettingsHydrated();
+  const panelAnimations = useClientSettingsValue().panelAnimations;
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+  return settingsHydrated && panelAnimations && !prefersReducedMotion;
 }
 
 /** Read current settings for one environment, merged with client-local preferences. */

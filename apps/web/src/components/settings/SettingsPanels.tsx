@@ -481,6 +481,9 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Contrast"]
         : []),
       ...(settings.glassOpacity !== DEFAULT_UNIFIED_SETTINGS.glassOpacity ? ["Glass opacity"] : []),
+      ...(settings.panelAnimations !== DEFAULT_UNIFIED_SETTINGS.panelAnimations
+        ? ["Panel animations"]
+        : []),
       ...(settings.environmentIdentificationMode !==
       DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode
         ? ["Environment identification"]
@@ -570,6 +573,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.fontSizePrompt,
       settings.fontSizeTerminal,
       settings.glassOpacity,
+      settings.panelAnimations,
       settings.enableLegacyTokenStreaming,
       settings.enableProviderUpdateChecks,
       settings.sidebarAutoSettleAfterDays,
@@ -655,6 +659,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
+      panelAnimations: DEFAULT_UNIFIED_SETTINGS.panelAnimations,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
@@ -1119,6 +1124,8 @@ export function AppearanceSettingsPanel() {
           }
         />
 
+        <PanelAnimationsRow />
+
         {showEnvironmentIdentification ? (
           <SettingsRow
             {...searchableSetting("environment-identification")}
@@ -1325,6 +1332,34 @@ function TerminalFontRow() {
             terminal: settings.fontFamilyTerminal,
           })}
           size={settings.fontSizeTerminal}
+        />
+      }
+    />
+  );
+}
+
+function PanelAnimationsRow() {
+  const settings = usePrimarySettings();
+  const updateSettings = useUpdatePrimarySettings();
+  return (
+    <SettingsRow
+      {...searchableSetting("panel-animations")}
+      description="Animate collapsing and expanding the sidebar, right panel, and terminal drawer."
+      resetAction={
+        settings.panelAnimations !== DEFAULT_UNIFIED_SETTINGS.panelAnimations ? (
+          <SettingResetButton
+            label="panel animations"
+            onClick={() =>
+              updateSettings({ panelAnimations: DEFAULT_UNIFIED_SETTINGS.panelAnimations })
+            }
+          />
+        ) : null
+      }
+      control={
+        <Switch
+          checked={settings.panelAnimations}
+          onCheckedChange={(checked) => updateSettings({ panelAnimations: Boolean(checked) })}
+          aria-label="Panel animations"
         />
       }
     />
