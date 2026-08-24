@@ -136,14 +136,37 @@ export class PluginUiDefinitionError extends Schema.TaggedErrorClass<PluginUiDef
   }
 }
 
-export class PluginUiNotificationError extends Schema.TaggedErrorClass<PluginUiNotificationError>()(
-  "PluginUiNotificationError",
-  { cause: Schema.optional(Schema.Defect()), pluginId: Schema.String, detail: Schema.String },
+export class PluginUiNotificationInactiveError extends Schema.TaggedErrorClass<PluginUiNotificationInactiveError>()(
+  "PluginUiNotificationInactiveError",
+  { pluginId: Schema.String },
 ) {
   override get message(): string {
-    return `Plugin notification failed for ${this.pluginId}: ${this.detail}`;
+    return `Plugin ${this.pluginId} is not active.`;
   }
 }
+
+export class PluginUiNotificationRateLimitError extends Schema.TaggedErrorClass<PluginUiNotificationRateLimitError>()(
+  "PluginUiNotificationRateLimitError",
+  { pluginId: Schema.String, windowMillis: Schema.Int },
+) {
+  override get message(): string {
+    return `Plugin ${this.pluginId} exceeded the ${this.windowMillis}ms notification window.`;
+  }
+}
+
+export class PluginUiNotificationDecodeError extends Schema.TaggedErrorClass<PluginUiNotificationDecodeError>()(
+  "PluginUiNotificationDecodeError",
+  { cause: Schema.Defect(), pluginId: Schema.String, notificationId: Schema.String },
+) {
+  override get message(): string {
+    return `Plugin ${this.pluginId} sent invalid notification ${this.notificationId}.`;
+  }
+}
+
+type PluginUiNotificationError =
+  | PluginUiNotificationInactiveError
+  | PluginUiNotificationRateLimitError
+  | PluginUiNotificationDecodeError;
 
 const builtInPlugin: PluginDefinition = {
   id: "t3.plugin-runtime.commands",
@@ -284,23 +307,24 @@ export const make = Effect.gen(function* () {
   ) {
     const snapshot = yield* runtime.snapshot;
     if (!snapshot.active.includes(pluginId)) {
-      return yield* new PluginUiNotificationError({
-        pluginId,
-        detail: "plugin is not active",
-      });
+      return yield* new PluginUiNotificationInactiveError({ pluginId });
     }
     const now = yield* Clock.currentTimeMillis;
     const previous = lastNotificationAt.get(pluginId);
     if (previous !== undefined && now - previous < 250) {
-      return yield* new PluginUiNotificationError({
+      return yield* new PluginUiNotificationRateLimitError({
         pluginId,
-        detail: "notification rate limit exceeded",
+        windowMillis: 250,
       });
     }
     const decoded = yield* decodePluginUiNotification({ ...notification, pluginId }).pipe(
       Effect.mapError(
         (cause) =>
-          new PluginUiNotificationError({ pluginId, detail: "invalid notification", cause }),
+          new PluginUiNotificationDecodeError({
+            pluginId,
+            notificationId: notification.id,
+            cause,
+          }),
       ),
     );
     lastNotificationAt.set(pluginId, now);

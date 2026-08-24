@@ -139,7 +139,10 @@ describe("plugin command catalog", () => {
             tone: "info",
           }),
         );
-        expect(rateLimited.detail).toBe("notification rate limit exceeded");
+        expect(rateLimited._tag).toBe("PluginUiNotificationRateLimitError");
+        if (rateLimited._tag === "PluginUiNotificationRateLimitError") {
+          expect(rateLimited.windowMillis).toBe(250);
+        }
       }).pipe(Effect.provide(PluginCommandCatalog.layer)),
   );
 

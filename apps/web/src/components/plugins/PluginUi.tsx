@@ -18,16 +18,19 @@ import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { PuzzleIcon, SparklesIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { toastManager } from "../ui/toast";
 import { SidebarMenuItem, SidebarMenuButton } from "../ui/sidebar";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SettingsRow, SettingsSection } from "../settings/settingsLayout";
 
 const EMPTY_PLUGIN_UI_CATALOG: PluginUiCatalog = Object.freeze({
@@ -50,10 +53,10 @@ const surface = (): "web" | "desktop" =>
 const toneClass = {
   neutral: "border-border bg-card text-card-foreground",
   muted: "border-border/60 bg-muted/35 text-muted-foreground",
-  info: "border-info/30 bg-info/10 text-info",
-  success: "border-success/30 bg-success/10 text-success",
-  warning: "border-warning/30 bg-warning/10 text-warning",
-  danger: "border-destructive/30 bg-destructive/10 text-destructive",
+  info: "border-info/30 bg-info/10 text-info-foreground",
+  success: "border-success/30 bg-success/10 text-success-foreground",
+  warning: "border-warning/30 bg-warning/10 text-warning-foreground",
+  danger: "border-destructive/30 bg-destructive/10 text-destructive-foreground",
 } as const;
 
 export function usePluginUiCatalog(environmentId: EnvironmentId | null): PluginUiCatalog {
@@ -126,6 +129,7 @@ export function PluginUiNavigationItems({ closeMobile }: { readonly closeMobile:
   const environmentId = usePrimaryEnvironmentId();
   const catalog = usePluginUiCatalog(environmentId);
   const navigate = useNavigate();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const currentSurface = surface();
   const items = catalog.packages.flatMap((pluginPackage) =>
     pluginPackage.navigation
@@ -134,20 +138,28 @@ export function PluginUiNavigationItems({ closeMobile }: { readonly closeMobile:
   );
 
   return items.map(({ item, pluginId }) => (
-    <SidebarMenuItem key={`${pluginId}:${item.id}`} className="min-w-0 flex-1">
-      <SidebarMenuButton
-        aria-label={item.label}
-        onClick={() => {
-          closeMobile();
-          void navigate({
-            to: "/plugins/$pluginId/$viewId",
-            params: { pluginId, viewId: item.viewId },
-          });
-        }}
-      >
-        <PuzzleIcon />
-        <span className="truncate">{item.label}</span>
-      </SidebarMenuButton>
+    <SidebarMenuItem key={`${pluginId}:${item.id}`} className="shrink-0">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <SidebarMenuButton
+              size="icon"
+              aria-label={item.label}
+              data-active={pathname === `/plugins/${pluginId}/${item.viewId}` || undefined}
+              onClick={() => {
+                closeMobile();
+                void navigate({
+                  to: "/plugins/$pluginId/$viewId",
+                  params: { pluginId, viewId: item.viewId },
+                });
+              }}
+            >
+              <PuzzleIcon />
+            </SidebarMenuButton>
+          }
+        />
+        <TooltipPopup side="top">{item.label}</TooltipPopup>
+      </Tooltip>
     </SidebarMenuItem>
   ));
 }
@@ -311,6 +323,7 @@ function PluginUiSettingControl({
   const read = useAtomCommand(serverEnvironment.readPluginUiSetting, { reportFailure: false });
   const write = useAtomCommand(serverEnvironment.writePluginUiSetting, { reportFailure: false });
   const [value, setValue] = useState<boolean | string>(setting.defaultValue);
+  const [committedValue, setCommittedValue] = useState<boolean | string>(setting.defaultValue);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -319,6 +332,7 @@ function PluginUiSettingControl({
       if (cancelled || result._tag !== "Success" || result.value.value === undefined) return;
       if (typeof result.value.value === "boolean" || typeof result.value.value === "string") {
         setValue(result.value.value);
+        setCommittedValue(result.value.value);
       }
     });
     return () => {
@@ -327,6 +341,7 @@ function PluginUiSettingControl({
   }, [environmentId, pluginId, read, setting.id]);
 
   const update = async (next: boolean | string) => {
+    const previous = committedValue;
     setValue(next);
     setBusy(true);
     const result = await write({
@@ -334,7 +349,12 @@ function PluginUiSettingControl({
       input: { pluginId, settingId: setting.id, value: next },
     });
     setBusy(false);
-    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+    if (result._tag === "Success") {
+      setCommittedValue(next);
+      return;
+    }
+    setValue(previous);
+    if (!isAtomCommandInterrupted(result)) {
       const failure = squashAtomCommandFailure(result);
       toastManager.add({
         type: "error",
@@ -352,21 +372,28 @@ function PluginUiSettingControl({
         onCheckedChange={(checked) => void update(checked)}
       />
     ) : setting.kind === "select" ? (
-      <select
-        className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+      <Select
         value={String(value)}
         disabled={busy}
-        onChange={(event) => void update(event.target.value)}
+        onValueChange={(next) => {
+          if (next !== null) void update(next);
+        }}
       >
-        {setting.options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger size="compact" className="w-56">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {setting.options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     ) : (
-      <input
-        className="h-8 w-56 rounded-md border border-input bg-background px-2 text-sm"
+      <Input
+        size="sm"
+        className="w-56"
         value={String(value)}
         placeholder={setting.placeholder}
         disabled={busy}
@@ -419,7 +446,10 @@ export function PluginComposerContributions({
   );
   const contextual = catalog.packages.flatMap((pluginPackage) =>
     pluginPackage.contextualActions.filter(
-      (action) => action.surfaces.includes(currentSurface) && action.contexts.includes("thread"),
+      (action) =>
+        context.threadId !== undefined &&
+        action.surfaces.includes(currentSurface) &&
+        action.contexts.includes("thread"),
     ),
   );
   const statuses = catalog.packages.flatMap((pluginPackage) =>

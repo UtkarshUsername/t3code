@@ -452,7 +452,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
                 new PluginHostCapabilityBroker.PluginHostCapabilityError({
                   pluginId: discovered.manifest.id,
                   operation: "notification send",
-                  detail: cause.detail,
+                  detail: "notification was rejected by the host",
                   cause,
                 }),
             ),
@@ -898,26 +898,28 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
     );
   }
 
-  const settingError = (pluginId: string, settingId: string, detail: string, cause?: unknown) =>
-    new PluginUiSettingError({
-      pluginId,
-      settingId,
-      detail,
-      ...(cause === undefined ? {} : { cause }),
-    });
-
   const resolveSetting = Effect.fn("PluginPackageManager.resolveSetting")(function* (
     pluginId: string,
     settingId: string,
   ) {
     const host = activeHosts.get(pluginId);
-    if (host === undefined) return yield* settingError(pluginId, settingId, "plugin is not active");
+    if (host === undefined) {
+      return yield* new PluginUiSettingError({
+        pluginId,
+        settingId,
+        detail: "plugin is not active",
+      });
+    }
     const ui = yield* catalog.ui;
     const setting = ui.packages
       .find((pluginPackage) => pluginPackage.pluginId === pluginId)
       ?.settings.find((candidate) => candidate.id === settingId);
     if (setting === undefined) {
-      return yield* settingError(pluginId, settingId, "setting is not declared");
+      return yield* new PluginUiSettingError({
+        pluginId,
+        settingId,
+        detail: "setting is not declared",
+      });
     }
     return { host, setting };
   });
@@ -939,13 +941,17 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
     semaphore.withPermits(1)(
       Effect.gen(function* () {
         const { host } = yield* resolveSetting(pluginId, settingId);
-        const value = yield* host.settings
-          .get(settingId)
-          .pipe(
-            Effect.mapError((cause) =>
-              settingError(pluginId, settingId, detailFromUnknown(cause), cause),
-            ),
-          );
+        const value = yield* host.settings.get(settingId).pipe(
+          Effect.mapError(
+            (cause) =>
+              new PluginUiSettingError({
+                pluginId,
+                settingId,
+                detail: "settings store read failed",
+                cause,
+              }),
+          ),
+        );
         return value as Schema.Json | undefined;
       }),
     );
@@ -955,15 +961,23 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
       Effect.gen(function* () {
         const { host, setting } = yield* resolveSetting(pluginId, settingId);
         if (!valueMatchesSetting(setting, value)) {
-          return yield* settingError(pluginId, settingId, "value does not match setting schema");
+          return yield* new PluginUiSettingError({
+            pluginId,
+            settingId,
+            detail: "value does not match setting schema",
+          });
         }
-        yield* host.settings
-          .set(settingId, value)
-          .pipe(
-            Effect.mapError((cause) =>
-              settingError(pluginId, settingId, detailFromUnknown(cause), cause),
-            ),
-          );
+        yield* host.settings.set(settingId, value).pipe(
+          Effect.mapError(
+            (cause) =>
+              new PluginUiSettingError({
+                pluginId,
+                settingId,
+                detail: "settings store write failed",
+                cause,
+              }),
+          ),
+        );
       }),
     );
 
@@ -1011,7 +1025,7 @@ const unavailableService = (error: PluginPackageOperationError) =>
         new PluginUiSettingError({
           pluginId,
           settingId,
-          detail: error.message,
+          detail: "plugin package manager is unavailable",
           cause: error,
         }),
       ),
@@ -1020,7 +1034,7 @@ const unavailableService = (error: PluginPackageOperationError) =>
         new PluginUiSettingError({
           pluginId,
           settingId,
-          detail: error.message,
+          detail: "plugin package manager is unavailable",
           cause: error,
         }),
       ),
