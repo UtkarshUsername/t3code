@@ -580,10 +580,9 @@ export const make = Effect.gen(function* () {
                 yield* Scope.close(workerScope, Exit.void);
                 if (disposeExit?._tag === "Failure") {
                   const failure = Cause.squash(disposeExit.cause);
-                  return yield* workerError(
-                    "dispose",
-                    isPluginWorkerError(failure) ? failure.detail : detailFrom(failure),
-                  );
+                  return yield* isPluginWorkerError(failure)
+                    ? failure
+                    : workerError("dispose", "worker dispose failed", failure);
                 }
               }),
             ),
