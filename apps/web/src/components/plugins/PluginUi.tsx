@@ -29,9 +29,9 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
-import { toastManager } from "../ui/toast";
-import { SidebarMenuItem, SidebarMenuButton } from "../ui/sidebar";
+import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SidebarUtilityItem } from "../sidebar/SidebarUtilityItem";
 import { SettingsRow, SettingsSection } from "../settings/settingsLayout";
 
 const EMPTY_PLUGIN_UI_CATALOG: PluginUiCatalog = Object.freeze({
@@ -71,7 +71,7 @@ export function usePluginUiCatalog(environmentId: EnvironmentId | null): PluginU
 function usePluginAction(environmentId: EnvironmentId | null, catalog: PluginUiCatalog) {
   const invoke = useAtomCommand(serverEnvironment.invokePluginCommand, { reportFailure: false });
   return useCallback(
-    async (commandId: string, context?: PluginCommandInvocationContext) => {
+    async (commandId: string, label: string, context?: PluginCommandInvocationContext) => {
       if (environmentId === null) return;
       const result = await invoke({
         environmentId,
@@ -82,10 +82,13 @@ function usePluginAction(environmentId: EnvironmentId | null, catalog: PluginUiC
         },
       });
       if (result._tag === "Success") {
-        toastManager.add({
-          type: result.value.tone,
-          title: result.value.message,
-        });
+        toastManager.add(
+          stackedThreadToast({
+            type: result.value.tone,
+            title: label,
+            description: result.value.message,
+          }),
+        );
         return;
       }
       if (!isAtomCommandInterrupted(result)) {
@@ -138,29 +141,19 @@ export function PluginUiNavigationItems({ closeMobile }: { readonly closeMobile:
   );
 
   return items.map(({ item, pluginId }) => (
-    <SidebarMenuItem key={`${pluginId}:${item.id}`} className="shrink-0">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <SidebarMenuButton
-              size="icon"
-              aria-label={item.label}
-              isActive={pathname === `/plugins/${pluginId}/${item.viewId}`}
-              onClick={() => {
-                closeMobile();
-                void navigate({
-                  to: "/plugins/$pluginId/$viewId",
-                  params: { pluginId, viewId: item.viewId },
-                });
-              }}
-            >
-              <PuzzleIcon />
-            </SidebarMenuButton>
-          }
-        />
-        <TooltipPopup side="top">{item.label}</TooltipPopup>
-      </Tooltip>
-    </SidebarMenuItem>
+    <SidebarUtilityItem
+      key={`${pluginId}:${item.id}`}
+      icon={<PuzzleIcon />}
+      label={item.label}
+      isActive={pathname === `/plugins/${pluginId}/${item.viewId}`}
+      onClick={() => {
+        closeMobile();
+        void navigate({
+          to: "/plugins/$pluginId/$viewId",
+          params: { pluginId, viewId: item.viewId },
+        });
+      }}
+    />
   ));
 }
 
@@ -169,13 +162,42 @@ function ActionButton({
   onAction,
 }: {
   readonly action: Pick<PluginUiAction, "commandId" | "label">;
-  readonly onAction: (commandId: string) => void;
+  readonly onAction: (commandId: string, label: string) => void;
 }) {
   return (
-    <Button size="sm" variant="outline" onClick={() => onAction(action.commandId)}>
+    <Button size="sm" variant="outline" onClick={() => onAction(action.commandId, action.label)}>
       <SparklesIcon className="size-3.5" />
       {action.label}
     </Button>
+  );
+}
+
+function PluginCard({
+  title,
+  value,
+  description,
+  tone,
+  action,
+  onAction,
+}: {
+  readonly title: string;
+  readonly value?: string;
+  readonly description?: string;
+  readonly tone?: "neutral" | "muted" | "info" | "success" | "warning" | "danger";
+  readonly action?: Pick<PluginUiAction, "commandId" | "label">;
+  readonly onAction: (commandId: string, label: string) => void;
+}) {
+  return (
+    <div className={`rounded-lg border p-4 ${toneClass[tone ?? "neutral"]}`}>
+      <div className="text-sm font-medium">{title}</div>
+      {value ? <div className="mt-1 text-2xl font-semibold">{value}</div> : null}
+      {description ? <p className="mt-1 text-sm opacity-80">{description}</p> : null}
+      {action ? (
+        <div className="mt-3">
+          <ActionButton action={action} onAction={onAction} />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -183,12 +205,15 @@ function StatusBadge({
   label,
   value,
   tone,
+  valueOnly = false,
 }: {
   readonly label: string;
   readonly value: string;
   readonly tone?: "neutral" | "muted" | "info" | "success" | "warning" | "danger";
+  readonly valueOnly?: boolean;
 }) {
   const text = `${label}: ${value}`;
+  const visibleText = valueOnly ? value : text;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -197,7 +222,7 @@ function StatusBadge({
             variant={tone === "success" ? "success" : tone === "warning" ? "warning" : "outline"}
             className="min-w-0 max-w-full"
           >
-            <span className="truncate">{text}</span>
+            <span className="truncate">{visibleText}</span>
           </Badge>
         }
       />
@@ -213,7 +238,7 @@ function RenderBlock({
   onAction,
 }: {
   readonly block: PluginUiBlock;
-  readonly onAction: (commandId: string) => void;
+  readonly onAction: (commandId: string, label: string) => void;
 }) {
   switch (block.kind) {
     case "text":
@@ -226,37 +251,27 @@ function RenderBlock({
       return <ActionButton action={block} onAction={onAction} />;
     case "card":
       return (
-        <div className={`rounded-lg border p-4 ${toneClass[block.tone ?? "neutral"]}`}>
-          <div className="text-sm font-medium">{block.title}</div>
-          {block.value ? <div className="mt-1 text-2xl font-semibold">{block.value}</div> : null}
-          {block.description ? (
-            <p className="mt-1 text-sm opacity-80">{block.description}</p>
-          ) : null}
-          {block.commandId ? (
-            <div className="mt-3">
-              <ActionButton
-                action={{ commandId: block.commandId, label: block.title }}
-                onAction={onAction}
-              />
-            </div>
-          ) : null}
-        </div>
+        <PluginCard
+          title={block.title}
+          onAction={onAction}
+          {...(block.value === undefined ? {} : { value: block.value })}
+          {...(block.description === undefined ? {} : { description: block.description })}
+          {...(block.tone === undefined ? {} : { tone: block.tone })}
+          {...(block.commandId === undefined
+            ? {}
+            : { action: { commandId: block.commandId, label: block.title } })}
+        />
       );
     case "status":
       return (
         <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2">
-          <span className="text-sm text-muted-foreground">{block.label}</span>
-          <Badge
-            variant={
-              block.tone === "success"
-                ? "success"
-                : block.tone === "warning"
-                  ? "warning"
-                  : "outline"
-            }
-          >
-            {block.value}
-          </Badge>
+          <span className="min-w-0 truncate text-sm text-muted-foreground">{block.label}</span>
+          <StatusBadge
+            label={block.label}
+            value={block.value}
+            valueOnly
+            {...(block.tone === undefined ? {} : { tone: block.tone })}
+          />
         </div>
       );
   }
@@ -269,7 +284,7 @@ export function PluginUiViewContent({
 }: {
   readonly pluginPackage: PluginUiPackageContribution;
   readonly view: PluginUiView;
-  readonly onAction: (commandId: string) => void;
+  readonly onAction: (commandId: string, label: string) => void;
 }) {
   const currentSurface = surface();
   const cards = pluginPackage.cards.filter((card) => card.surfaces.includes(currentSurface));
@@ -303,21 +318,17 @@ export function PluginUiViewContent({
       {cards.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {cards.map((card) => (
-            <div
+            <PluginCard
               key={card.id}
-              className={`rounded-lg border p-4 ${toneClass[card.tone ?? "neutral"]}`}
-            >
-              <div className="text-sm font-medium">{card.title}</div>
-              {card.value ? <div className="mt-1 text-2xl font-semibold">{card.value}</div> : null}
-              {card.description ? (
-                <p className="mt-1 text-sm opacity-80">{card.description}</p>
-              ) : null}
-              {card.actionId && actions.get(card.actionId) ? (
-                <div className="mt-3">
-                  <ActionButton action={actions.get(card.actionId)!} onAction={onAction} />
-                </div>
-              ) : null}
-            </div>
+              title={card.title}
+              onAction={onAction}
+              {...(card.value === undefined ? {} : { value: card.value })}
+              {...(card.description === undefined ? {} : { description: card.description })}
+              {...(card.tone === undefined ? {} : { tone: card.tone })}
+              {...(card.actionId === undefined || actions.get(card.actionId) === undefined
+                ? {}
+                : { action: actions.get(card.actionId)! })}
+            />
           ))}
         </div>
       ) : null}
@@ -500,7 +511,7 @@ export function PluginComposerContributions({
 
   return (
     <div
-      className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap gap-1.5 px-3"
+      className="chat-composer-drawer-surface chat-composer-drawer-attached chat-composer-drawer-slot flex flex-wrap gap-1.5 px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)]"
       data-plugin-composer-actions="true"
     >
       {statuses.map((item) => (
@@ -516,7 +527,7 @@ export function PluginComposerContributions({
           key={action.id}
           size="xs"
           variant="ghost-muted"
-          onClick={() => void invoke(action.commandId, context)}
+          onClick={() => void invoke(action.commandId, action.label, context)}
         >
           <SparklesIcon className="size-3" />
           {action.label}
@@ -552,7 +563,7 @@ export function PluginUiPage({
     <PluginUiViewContent
       pluginPackage={pluginPackage}
       view={view}
-      onAction={(commandId) => void invoke(commandId, { viewId })}
+      onAction={(commandId, label) => void invoke(commandId, label, { viewId })}
     />
   );
 }

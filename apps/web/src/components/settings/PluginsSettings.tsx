@@ -283,7 +283,8 @@ export function PluginsSettingsPanel() {
             <ShieldAlertIcon />
             <AlertTitle>Limited permissions</AlertTitle>
             <AlertDescription>
-              This session can inspect plugins, but it cannot enable, disable, or reload them.
+              This session can inspect plugins, but it cannot enable, disable, reload, or change
+              their settings.
             </AlertDescription>
           </Alert>
         ) : null}
