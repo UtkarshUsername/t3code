@@ -351,7 +351,7 @@ export function PluginsSettingsPanel() {
           ))}
         </div>
       </SettingsSection>
-      <PluginUiSettingsSections />
+      <PluginUiSettingsSections readOnly={readOnly || pending !== null} />
     </SettingsPageContainer>
   );
 }

@@ -18,8 +18,9 @@ import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { PuzzleIcon, SparklesIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useNavigate, useLocation } from "@tanstack/react-router";
 
+import { isElectron } from "../../env";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -47,8 +48,7 @@ const EMPTY_PLUGIN_NOTIFICATION: PluginUiNotification = {
 };
 const EMPTY_PLUGIN_NOTIFICATION_ATOM = Atom.make(AsyncResult.success(EMPTY_PLUGIN_NOTIFICATION));
 
-const surface = (): "web" | "desktop" =>
-  typeof window !== "undefined" && window.desktopBridge !== undefined ? "desktop" : "web";
+const surface = (): "web" | "desktop" => (isElectron ? "desktop" : "web");
 
 const toneClass = {
   neutral: "border-border bg-card text-card-foreground",
@@ -145,7 +145,7 @@ export function PluginUiNavigationItems({ closeMobile }: { readonly closeMobile:
             <SidebarMenuButton
               size="icon"
               aria-label={item.label}
-              data-active={pathname === `/plugins/${pluginId}/${item.viewId}` || undefined}
+              isActive={pathname === `/plugins/${pluginId}/${item.viewId}`}
               onClick={() => {
                 closeMobile();
                 void navigate({
@@ -338,10 +338,12 @@ function PluginUiSettingControl({
   environmentId,
   pluginId,
   setting,
+  readOnly,
 }: {
   readonly environmentId: EnvironmentId;
   readonly pluginId: string;
   readonly setting: PluginUiSetting;
+  readonly readOnly: boolean;
 }) {
   const read = useAtomCommand(serverEnvironment.readPluginUiSetting, { reportFailure: false });
   const write = useAtomCommand(serverEnvironment.writePluginUiSetting, { reportFailure: false });
@@ -372,8 +374,7 @@ function PluginUiSettingControl({
   }, [environmentId, pluginId, read, setting.defaultValue, setting.id]);
 
   const update = async (next: boolean | string) => {
-    if (loading || busy) return;
-    readVersion.current += 1;
+    if (readOnly || loading || busy) return;
     const previous = committedValue;
     setValue(next);
     setBusy(true);
@@ -401,13 +402,13 @@ function PluginUiSettingControl({
     setting.kind === "boolean" ? (
       <Switch
         checked={value === true}
-        disabled={busy || loading}
+        disabled={readOnly || busy || loading}
         onCheckedChange={(checked) => void update(checked)}
       />
     ) : setting.kind === "select" ? (
       <Select
         value={String(value)}
-        disabled={busy || loading}
+        disabled={readOnly || busy || loading}
         onValueChange={(next) => {
           if (next !== null) void update(next);
         }}
@@ -429,10 +430,10 @@ function PluginUiSettingControl({
         className="w-56"
         value={String(value)}
         placeholder={setting.placeholder}
-        disabled={busy || loading}
+        disabled={readOnly || busy || loading}
         onChange={(event) => setValue(event.target.value)}
         onBlur={() => {
-          if (!loading && !busy) void update(String(value));
+          if (!readOnly && !loading && !busy) void update(String(value));
         }}
       />
     );
@@ -440,7 +441,7 @@ function PluginUiSettingControl({
   return <SettingsRow title={setting.label} description={setting.description} control={control} />;
 }
 
-export function PluginUiSettingsSections() {
+export function PluginUiSettingsSections({ readOnly }: { readonly readOnly: boolean }) {
   const environmentId = usePrimaryEnvironmentId();
   const catalog = usePluginUiCatalog(environmentId);
   const currentSurface = surface();
@@ -459,6 +460,7 @@ export function PluginUiSettingsSections() {
             environmentId={environmentId}
             pluginId={pluginPackage.pluginId}
             setting={setting}
+            readOnly={readOnly}
           />
         ))}
       </SettingsSection>
@@ -498,7 +500,7 @@ export function PluginComposerContributions({
 
   return (
     <div
-      className="chat-composer-top-drawer flex flex-wrap gap-1.5 px-3 pt-2"
+      className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap gap-1.5 px-3"
       data-plugin-composer-actions="true"
     >
       {statuses.map((item) => (

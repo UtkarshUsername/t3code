@@ -6754,6 +6754,13 @@ function ChatViewContent(props: ChatViewProps) {
                   {threadSyncPhase && !activeEnvironmentUnavailable ? (
                     <ThreadSyncStatusPill phase={threadSyncPhase} />
                   ) : null}
+                  <PluginComposerContributions
+                    environmentId={environmentId}
+                    context={{
+                      ...(activeThreadId === null ? {} : { threadId: String(activeThreadId) }),
+                      ...(activeProject === null ? {} : { projectId: String(activeProject.id) }),
+                    }}
+                  />
                   <div
                     className="relative"
                     style={
@@ -6771,17 +6778,6 @@ function ChatViewContent(props: ChatViewProps) {
                     >
                       <div className="chat-composer-glass-host relative z-10 w-full rounded-[22px]">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
-                          <PluginComposerContributions
-                            environmentId={environmentId}
-                            context={{
-                              ...(activeThreadId === null
-                                ? {}
-                                : { threadId: String(activeThreadId) }),
-                              ...(activeProject === null
-                                ? {}
-                                : { projectId: String(activeProject.id) }),
-                            }}
-                          />
                           <ChatComposer
                             composerRef={composerRef}
                             composerDraftTarget={composerDraftTarget}

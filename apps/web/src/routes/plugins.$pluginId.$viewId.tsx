@@ -31,7 +31,7 @@ function PluginPageRoute() {
             <span className="truncate text-sm font-medium">{pluginId}</span>
           </div>
         </WorkspacePageHeader>
-        <ScrollArea className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1">
+        <ScrollArea className="min-h-0 flex-1" scrollFade scrollbarGutter>
           <WorkspacePageContainer width="wide">
             <PluginUiPage pluginId={pluginId} viewId={viewId} />
           </WorkspacePageContainer>

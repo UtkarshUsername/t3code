@@ -65,6 +65,7 @@ import {
 } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { isElectron } from "../env";
 
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -1685,8 +1686,7 @@ function OpenCommandPaletteDialog(props: {
       ...buildPluginCommandActionItems({
         commands: pluginCommandCatalog.commands,
         icon: <PuzzleIcon className={ITEM_ICON_CLASS} />,
-        surface:
-          typeof window !== "undefined" && window.desktopBridge !== undefined ? "desktop" : "web",
+        surface: isElectron ? "desktop" : "web",
         run: async (command: PluginCommand) => {
           const result = await invokePluginCommand({
             environmentId: commandEnvironmentId,
