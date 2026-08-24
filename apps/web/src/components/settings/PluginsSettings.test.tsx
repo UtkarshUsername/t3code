@@ -89,6 +89,7 @@ vi.mock("../ui/toast", () => ({
 }));
 
 import { toastManager } from "../ui/toast";
+import { TooltipPopup } from "../ui/tooltip";
 
 import { PluginsSettingsPanel } from "./PluginsSettings";
 
@@ -250,11 +251,12 @@ describe("PluginsSettingsPanel", () => {
     expect(
       visitElements(
         activeRow,
-        (element) =>
-          element.props.title === "t3.commands@1" &&
-          element.props.className === "min-w-0 max-w-full",
+        (element) => element.type === TooltipPopup && element.props.children === "t3.commands@1",
       ),
     ).not.toBeNull();
+    expect(
+      visitElements(activeRow, (element) => typeof element.props.title === "string"),
+    ).toBeNull();
     expect(
       visitElements(
         activeRow,
@@ -269,8 +271,15 @@ describe("PluginsSettingsPanel", () => {
         (element) =>
           element.props["data-plugin-permission"] === "network:https://api.acme.test" &&
           element.props["data-granted"] === false &&
-          element.props.className === "min-w-0 max-w-full" &&
-          element.props.title === "network:https://api.acme.test approval required",
+          element.props.className === "min-w-0 max-w-full",
+      ),
+    ).not.toBeNull();
+    expect(
+      visitElements(
+        activeRow,
+        (element) =>
+          element.type === TooltipPopup &&
+          element.props.children === "network:https://api.acme.test approval required",
       ),
     ).not.toBeNull();
   });

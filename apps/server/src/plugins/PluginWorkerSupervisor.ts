@@ -74,7 +74,7 @@ export const isPluginWorkerError = Schema.is(PluginWorkerError);
 export interface SupervisedPluginWorker {
   readonly commands: ReadonlyArray<PluginCommand>;
   readonly invoke: (commandId: string) => Effect.Effect<unknown, PluginWorkerError>;
-  readonly dispose: () => Promise<void>;
+  readonly dispose: Effect.Effect<void, PluginWorkerError>;
   readonly health: () => PluginWorkerHealthSnapshot;
 }
 
@@ -142,18 +142,13 @@ export const make = Effect.gen(function* () {
       const transition = yield* Semaphore.make(1);
       const crashes = yield* Queue.unbounded<CrashEvent>();
       const disposeRequest = yield* Deferred.make<void>();
+      const disposeResult = yield* Deferred.make<void, PluginWorkerError>();
 
       let disposed = false;
       let restartCount = 0;
       let health: PluginWorkerHealthSnapshot = { state: "starting", restartCount: 0 };
       let current: Session | undefined;
       let expectedCommands: ReadonlyArray<PluginCommand> | undefined;
-      let resolveDisposed!: () => void;
-      let rejectDisposed!: (error: unknown) => void;
-      const disposedPromise = new Promise<void>((resolve, reject) => {
-        resolveDisposed = resolve;
-        rejectDisposed = reject;
-      });
 
       const detailFrom = (error: unknown): string => {
         const detail = error instanceof Error ? error.message : String(error);
@@ -596,24 +591,27 @@ export const make = Effect.gen(function* () {
         ),
         Effect.tap((exit) =>
           Effect.sync(() => {
-            if (exit._tag === "Failure") rejectDisposed(Cause.squash(exit.cause));
-            else resolveDisposed();
+            Deferred.doneUnsafe(disposeResult, exit);
           }),
         ),
       );
       yield* Effect.forkIn(disposeFiber, parentScope);
 
       const invoke = (commandId: string) =>
-        transition.withPermits(1)(
-          Effect.gen(function* () {
-            if (disposed) return yield* workerError("invocation", "worker is stopped");
-            if (health.state === "crashed" || current === undefined) {
-              return yield* workerError("invocation", health.detail ?? "worker is unavailable");
-            }
-            const session = current;
-            const result = yield* session.invoke(commandId).pipe(
-              Effect.timeout(options.invocationTimeout),
-              Effect.catchTag("TimeoutError", (cause) =>
+        Effect.gen(function* () {
+          const session = yield* transition.withPermits(1)(
+            Effect.gen(function* () {
+              if (disposed) return yield* workerError("invocation", "worker is stopped");
+              if (health.state !== "running" || current === undefined) {
+                return yield* workerError("invocation", health.detail ?? "worker is unavailable");
+              }
+              return current;
+            }),
+          );
+          const result = yield* session.invoke(commandId).pipe(
+            Effect.timeout(options.invocationTimeout),
+            Effect.catchTags({
+              TimeoutError: (cause) =>
                 session
                   .terminate("worker invocation timed out")
                   .pipe(
@@ -621,22 +619,26 @@ export const make = Effect.gen(function* () {
                       Effect.fail(workerError("invocation", "worker invocation timed out", cause)),
                     ),
                   ),
-              ),
-              Effect.onInterrupt(() => session.terminate("worker invocation interrupted")),
-            );
-            restartCount = 0;
-            health = { state: "running", restartCount: 0 };
-            return result;
-          }),
-        );
+            }),
+            Effect.onInterrupt(() => session.terminate("worker invocation interrupted")),
+          );
+          yield* transition.withPermits(1)(
+            Effect.sync(() => {
+              if (!disposed && current?.id === session.id && health.state === "running") {
+                restartCount = 0;
+                health = { state: "running", restartCount: 0 };
+              }
+            }),
+          );
+          return result;
+        });
 
       return {
         commands: expectedCommands,
         invoke,
-        dispose: () => {
-          Deferred.doneUnsafe(disposeRequest, Effect.void);
-          return disposedPromise;
-        },
+        dispose: Effect.sync(() => Deferred.doneUnsafe(disposeRequest, Effect.void)).pipe(
+          Effect.flatMap(() => Deferred.await(disposeResult)),
+        ),
         health: () => health,
       } satisfies SupervisedPluginWorker;
     }).pipe(

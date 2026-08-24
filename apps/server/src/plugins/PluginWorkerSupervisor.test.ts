@@ -1,6 +1,7 @@
 import { it } from "@effect/vitest";
 import { expect, vi } from "vite-plus/test";
 import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
@@ -94,7 +95,70 @@ it.layer(NodeServices.layer)("plugin worker supervisor", (it) => {
         expect(yield* worker.invoke("acme.counter")).toEqual({ message: "1", tone: "success" });
         expect(yield* worker.invoke("acme.counter")).toEqual({ message: "2", tone: "success" });
         expect(worker.health().state).toBe("running");
-        yield* Effect.promise(worker.dispose);
+        yield* worker.dispose;
+      }).pipe(Effect.provide(PluginWorkerSupervisor.layer)),
+    ),
+  );
+
+  it.effect("allows independent invocations to run concurrently", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const directory = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3code-plugin-worker-concurrency-test-",
+        });
+        const entrypointPath = path.join(directory, "index.mjs");
+        yield* fileSystem.writeFileString(
+          entrypointPath,
+          `export default function activate(api) {
+            api.registerCommand(
+              { id: "acme.slow", label: "Slow", surfaces: ["web"] },
+              () => api.effect.flatMap(
+                api.host.state.set("slow-started", true),
+                () => new Promise((resolve) => setTimeout(() => resolve({ message: "slow", tone: "success" }), 200))
+              )
+            );
+            api.registerCommand(
+              { id: "acme.fast", label: "Fast", surfaces: ["web"] },
+              () => ({ message: "fast", tone: "success" })
+            );
+          }`,
+        );
+        const started = yield* Deferred.make<void>();
+        const baseHost = makeHost();
+        const host: PluginHostApi = {
+          ...baseHost,
+          state: {
+            ...baseHost.state,
+            set: (key, value) =>
+              baseHost.state
+                .set(key, value)
+                .pipe(
+                  Effect.tap(() =>
+                    key === "slow-started" ? Deferred.succeed(started, undefined) : Effect.void,
+                  ),
+                ),
+          },
+        };
+        const supervisor = yield* PluginWorkerSupervisor.PluginWorkerSupervisor;
+        const worker = yield* supervisor.start({
+          pluginId: "com.acme.concurrent",
+          entrypointPath,
+          host,
+        });
+
+        const slow = yield* Effect.forkChild(worker.invoke("acme.slow"));
+        yield* Deferred.await(started);
+        const fast = yield* Effect.forkChild(worker.invoke("acme.fast"));
+        const winner = yield* Effect.race(
+          Fiber.join(fast).pipe(Effect.as("fast" as const)),
+          Fiber.join(slow).pipe(Effect.as("slow" as const)),
+        );
+        expect(winner).toBe("fast");
+        expect(yield* Fiber.join(fast)).toEqual({ message: "fast", tone: "success" });
+        expect(yield* Fiber.join(slow)).toEqual({ message: "slow", tone: "success" });
+        yield* worker.dispose;
       }).pipe(Effect.provide(PluginWorkerSupervisor.layer)),
     ),
   );
@@ -174,7 +238,7 @@ it.layer(NodeServices.layer)("plugin worker supervisor", (it) => {
           message: "recovered",
           tone: "success",
         });
-        yield* Effect.promise(worker.dispose);
+        yield* worker.dispose;
       }).pipe(Effect.provide(PluginWorkerSupervisor.layer)),
     ),
   );
@@ -214,7 +278,7 @@ it.layer(NodeServices.layer)("plugin worker supervisor", (it) => {
         expect((yield* Effect.exit(worker.invoke("acme.always-crash")))._tag).toBe("Failure");
         yield* waitForHealth(worker, "crashed");
         expect(worker.health().restartCount).toBe(1);
-        yield* Effect.promise(worker.dispose);
+        yield* worker.dispose;
       }).pipe(Effect.provide(PluginWorkerSupervisor.layer)),
     ),
   );
@@ -259,7 +323,7 @@ it.layer(NodeServices.layer)("plugin worker supervisor", (it) => {
         yield* waitForHealth(worker, "restarting");
         yield* TestClock.adjust("1 second");
         yield* waitForHealth(worker, "running");
-        yield* Effect.promise(worker.dispose);
+        yield* worker.dispose;
       }).pipe(Effect.provide(PluginWorkerSupervisor.layer)),
     ),
   );
@@ -295,7 +359,7 @@ it.layer(NodeServices.layer)("plugin worker supervisor", (it) => {
         yield* waitForHealth(worker, "restarting");
         yield* TestClock.adjust("1 second");
         yield* waitForHealth(worker, "running");
-        yield* Effect.promise(worker.dispose);
+        yield* worker.dispose;
       }).pipe(Effect.provide(PluginWorkerSupervisor.layer)),
     ),
   );
@@ -330,7 +394,7 @@ it.layer(NodeServices.layer)("plugin worker supervisor", (it) => {
           host: makeHost(),
         });
 
-        yield* Effect.promise(worker.dispose);
+        yield* worker.dispose;
         expect(yield* fileSystem.readFileString(markerPath)).toBe("disposed");
       }).pipe(Effect.provide(PluginWorkerSupervisor.layer)),
     ),

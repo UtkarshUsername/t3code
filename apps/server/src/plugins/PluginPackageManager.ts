@@ -197,7 +197,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
       );
 
   const stopWorker = (id: string, worker: PluginWorkerSupervisor.SupervisedPluginWorker) =>
-    Effect.promise(worker.dispose).pipe(
+    worker.dispose.pipe(
       Effect.catchCause((cause) => {
         const detail = detailFromCause(cause);
         packageErrors.set(id, detail);

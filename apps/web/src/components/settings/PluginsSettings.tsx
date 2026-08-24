@@ -10,7 +10,7 @@ import {
   RotateCwIcon,
   ShieldAlertIcon,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 
 import { isElectron } from "../../env";
 import { usePrimarySessionState } from "../../environments/primary";
@@ -75,26 +75,44 @@ function PluginPackageRow({
         worker: {pluginPackage.runtimeState}, restarts: {pluginPackage.restartCount}
       </Badge>
       {pluginPackage.capabilities.map((capability) => (
-        <Badge key={capability} variant="info" className="min-w-0 max-w-full" title={capability}>
-          <span className="truncate">{capability}</span>
-        </Badge>
+        <Fragment key={capability}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Badge variant="info" className="min-w-0 max-w-full">
+                  <span className="truncate">{capability}</span>
+                </Badge>
+              }
+            />
+            <TooltipPopup side="top" className="max-w-80">
+              {capability}
+            </TooltipPopup>
+          </Tooltip>
+        </Fragment>
       ))}
       {pluginPackage.permissions.map((permission) => {
         const granted = grantedPermissions.has(permission);
+        const label = `${permission}${granted ? " granted" : " approval required"}`;
         return (
-          <Badge
-            key={permission}
-            variant={granted ? "success" : "warning"}
-            className="min-w-0 max-w-full"
-            title={`${permission}${granted ? " granted" : " approval required"}`}
-            data-plugin-permission={permission}
-            data-granted={granted}
-          >
-            <span className="truncate">
-              {permission}
-              {granted ? " granted" : " approval required"}
-            </span>
-          </Badge>
+          <Fragment key={permission}>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Badge
+                    variant={granted ? "success" : "warning"}
+                    className="min-w-0 max-w-full"
+                    data-plugin-permission={permission}
+                    data-granted={granted}
+                  >
+                    <span className="truncate">{label}</span>
+                  </Badge>
+                }
+              />
+              <TooltipPopup side="top" className="max-w-80">
+                {label}
+              </TooltipPopup>
+            </Tooltip>
+          </Fragment>
         );
       })}
     </div>
