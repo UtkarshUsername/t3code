@@ -11,7 +11,7 @@ export type PluginPackageId = typeof PluginPackageId.Type;
 
 export const PluginUiId = Schema.String.check(
   Schema.isPattern(/^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+$/),
-  Schema.isMaxLength(200),
+  Schema.isMaxLength(255),
 );
 export type PluginUiId = typeof PluginUiId.Type;
 

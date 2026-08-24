@@ -110,7 +110,13 @@ const hostCall = (operation, fields) =>
             reject(error);
           },
         });
-        write({ type: "hostCall", callId, operation, ...fields });
+        try {
+          write({ type: "hostCall", callId, operation, ...fields });
+        } catch (error) {
+          pendingHostCalls.delete(callId);
+          signal.removeEventListener("abort", onAbort);
+          reject(error);
+        }
       }),
   );
 

@@ -325,11 +325,19 @@ function PluginUiSettingControl({
   const [value, setValue] = useState<boolean | string>(setting.defaultValue);
   const [committedValue, setCommittedValue] = useState<boolean | string>(setting.defaultValue);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const readVersion = useRef(0);
 
   useEffect(() => {
+    const version = ++readVersion.current;
     let cancelled = false;
+    setValue(setting.defaultValue);
+    setCommittedValue(setting.defaultValue);
+    setLoading(true);
     void read({ environmentId, input: { pluginId, settingId: setting.id } }).then((result) => {
-      if (cancelled || result._tag !== "Success" || result.value.value === undefined) return;
+      if (cancelled || version !== readVersion.current) return;
+      setLoading(false);
+      if (result._tag !== "Success" || result.value.value === undefined) return;
       if (typeof result.value.value === "boolean" || typeof result.value.value === "string") {
         setValue(result.value.value);
         setCommittedValue(result.value.value);
@@ -338,9 +346,11 @@ function PluginUiSettingControl({
     return () => {
       cancelled = true;
     };
-  }, [environmentId, pluginId, read, setting.id]);
+  }, [environmentId, pluginId, read, setting.defaultValue, setting.id]);
 
   const update = async (next: boolean | string) => {
+    if (loading || busy) return;
+    readVersion.current += 1;
     const previous = committedValue;
     setValue(next);
     setBusy(true);
@@ -368,13 +378,13 @@ function PluginUiSettingControl({
     setting.kind === "boolean" ? (
       <Switch
         checked={value === true}
-        disabled={busy}
+        disabled={busy || loading}
         onCheckedChange={(checked) => void update(checked)}
       />
     ) : setting.kind === "select" ? (
       <Select
         value={String(value)}
-        disabled={busy}
+        disabled={busy || loading}
         onValueChange={(next) => {
           if (next !== null) void update(next);
         }}
@@ -396,9 +406,11 @@ function PluginUiSettingControl({
         className="w-56"
         value={String(value)}
         placeholder={setting.placeholder}
-        disabled={busy}
+        disabled={busy || loading}
         onChange={(event) => setValue(event.target.value)}
-        onBlur={() => void update(String(value))}
+        onBlur={() => {
+          if (!loading && !busy) void update(String(value));
+        }}
       />
     );
 
@@ -447,9 +459,13 @@ export function PluginComposerContributions({
   const contextual = catalog.packages.flatMap((pluginPackage) =>
     pluginPackage.contextualActions.filter(
       (action) =>
-        context.threadId !== undefined &&
         action.surfaces.includes(currentSurface) &&
-        action.contexts.includes("thread"),
+        action.contexts.some(
+          (kind) =>
+            (kind === "thread" && context.threadId !== undefined) ||
+            (kind === "project" && context.projectId !== undefined) ||
+            ((kind === "file" || kind === "diff") && context.filePath !== undefined),
+        ),
     ),
   );
   const statuses = catalog.packages.flatMap((pluginPackage) =>

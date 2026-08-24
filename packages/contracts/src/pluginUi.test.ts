@@ -8,6 +8,7 @@ import {
   PluginUiSettingWriteInput,
 } from "./pluginUi.ts";
 import { WS_METHODS, WsRpcGroup } from "./rpc.ts";
+import { PluginUiId } from "./pluginPackages.ts";
 
 const decodeContribution = Schema.decodeUnknownSync(PluginUiContribution);
 const decodeCatalog = Schema.decodeUnknownSync(PluginUiCatalog);
@@ -168,6 +169,12 @@ describe("PluginUi", () => {
         tone: "info",
       }),
     ).toThrow();
+  });
+
+  it("matches the manifest contribution id boundary", () => {
+    const decode = Schema.decodeUnknownSync(PluginUiId);
+    expect(decode(`com.${"a".repeat(251)}`)).toHaveLength(255);
+    expect(() => decode(`com.${"a".repeat(252)}`)).toThrow();
   });
 
   it("registers fixed ui, setting, notification, and subscription rpc methods", () => {
