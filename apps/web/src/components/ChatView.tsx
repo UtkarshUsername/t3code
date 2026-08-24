@@ -6411,6 +6411,18 @@ function ChatViewContent(props: ChatViewProps) {
     void onRevertToTurnCountRef.current(targetTurnCount);
   }, []);
 
+  const pluginComposerContext = useMemo(
+    () => ({
+      ...(activeThreadId === null ? {} : { threadId: String(activeThreadId) }),
+      ...(activeProject === null ? {} : { projectId: String(activeProject.id) }),
+    }),
+    [activeProject, activeThreadId],
+  );
+  const pluginComposerContributions = usePluginComposerContributionState(
+    activeThread?.environmentId ?? null,
+    pluginComposerContext,
+  );
+
   // Empty state: no active thread
   if (!activeThread) {
     return <NoActiveThreadState />;
@@ -6568,17 +6580,6 @@ function ChatViewContent(props: ChatViewProps) {
     setDragActive: setIsWorkspaceFileDragActive,
     addFiles: (files) => composerRef.current?.addDroppedFiles(files),
   });
-  const pluginComposerContext = useMemo(
-    () => ({
-      ...(activeThreadId === null ? {} : { threadId: String(activeThreadId) }),
-      ...(activeProject === null ? {} : { projectId: String(activeProject.id) }),
-    }),
-    [activeProject, activeThreadId],
-  );
-  const pluginComposerContributions = usePluginComposerContributionState(
-    environmentId,
-    pluginComposerContext,
-  );
   const externalComposerDrawerAttached =
     composerBannerItems.length > 0 ||
     Boolean(threadSyncPhase && !activeEnvironmentUnavailable) ||
@@ -6771,7 +6772,7 @@ function ChatViewContent(props: ChatViewProps) {
                     <ThreadSyncStatusPill phase={threadSyncPhase} />
                   ) : null}
                   <PluginComposerContributions
-                    environmentId={environmentId}
+                    environmentId={activeThread.environmentId}
                     context={pluginComposerContext}
                     contributions={pluginComposerContributions}
                   />

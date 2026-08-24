@@ -59,6 +59,15 @@ const toneClass = {
   danger: "border-destructive/30 bg-destructive/10 text-destructive-foreground",
 } as const;
 
+const badgeVariant = {
+  neutral: "outline",
+  muted: "secondary",
+  info: "info",
+  success: "success",
+  warning: "warning",
+  danger: "error",
+} as const;
+
 export function usePluginUiCatalog(environmentId: EnvironmentId | null): PluginUiCatalog {
   const result = useAtomValue(
     environmentId === null
@@ -218,10 +227,7 @@ function StatusBadge({
     <Tooltip>
       <TooltipTrigger
         render={
-          <Badge
-            variant={tone === "success" ? "success" : tone === "warning" ? "warning" : "outline"}
-            className="min-w-0 max-w-full"
-          >
+          <Badge variant={badgeVariant[tone ?? "neutral"]} className="min-w-0 max-w-full">
             <span className="truncate">{visibleText}</span>
           </Badge>
         }
@@ -535,7 +541,7 @@ export function PluginComposerContributions({
 
   return (
     <div
-      className="chat-composer-drawer-surface chat-composer-drawer-attached chat-composer-drawer-slot flex flex-wrap gap-1.5 px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)]"
+      className="chat-composer-drawer-surface chat-composer-drawer-attached chat-composer-drawer-slot flex flex-wrap gap-1.5 px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] sm:px-4"
       data-plugin-composer-actions="true"
     >
       {statuses.map((item) => (
