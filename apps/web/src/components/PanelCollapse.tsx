@@ -201,6 +201,20 @@ export function usePanelCollapse(input: {
     retireFlight();
   }, [enabled, retireFlight]);
 
+  // A newer interaction supersedes an active close; cancel it immediately
+  // instead of letting the collapse run out over the newer intent and snap
+  // back at completion.
+  React.useLayoutEffect(() => {
+    if (flightRef.current?.direction !== "out") return;
+    if (
+      pendingSupersedeRef.current === undefined ||
+      pendingSupersedeRef.current === latestRef.current.supersedeKey
+    ) {
+      return;
+    }
+    endFlight({ commit: false });
+  }, [input.supersedeKey, endFlight]);
+
   const requestClose = React.useCallback(() => {
     const current = latestRef.current;
     if (!current.open || flightRef.current?.direction === "out") return;
