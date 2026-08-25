@@ -1,4 +1,6 @@
-import { act, createElement } from "react";
+import { act } from "react";
+import { jsx } from "react/jsx-runtime";
+import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 const mocks = vi.hoisted(() => ({
@@ -75,24 +77,22 @@ import { InlineRightPanelPresence } from "./InlineRightPanelPresence";
  */
 async function mountPresence(initialOpen: boolean) {
   const document = installTestDom();
-  const { createRoot: createHostRoot } = await import("react-dom/client");
-  const root = createHostRoot(document.createElement("div") as unknown as Element);
+  const root = createRoot(document.createElement("div") as unknown as Element);
   const enterLog: boolean[] = [];
   const exits: string[] = [];
   const renderWith = (open: boolean) => {
     root.render(
-      createElement(
-        InlineRightPanelPresence<string>,
-        {
-          open,
-          snapshot: `snapshot-${open ? "open" : "closed"}`,
-          onExitComplete: (snapshot: string) => exits.push(snapshot),
+      jsx(InlineRightPanelPresence<string>, {
+        open,
+        snapshot: `snapshot-${open ? "open" : "closed"}`,
+        onExitComplete: (snapshot: string) => {
+          exits.push(snapshot);
         },
-        (_snapshot: string, _completeExit: () => void, animateEnter: boolean) => {
+        children: (_snapshot: string, _completeExit: () => void, animateEnter: boolean) => {
           enterLog.push(animateEnter);
-          return createElement("div", null, _snapshot);
+          return jsx("div", { children: _snapshot });
         },
-      ),
+      }),
     );
   };
   await act(async () => {
