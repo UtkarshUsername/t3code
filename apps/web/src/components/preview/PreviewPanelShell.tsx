@@ -67,6 +67,12 @@ export function PreviewPanelShell(props: {
   defaultWidth?: number;
   open?: boolean;
   onExitComplete?: () => void;
+  /**
+   * False suppresses the inline open animation for mounts that are not a
+   * genuine open (the shell mounted while already visible). Defaults to
+   * animating.
+   */
+  animateEnter?: boolean;
   children: ReactNode;
 }) {
   const useDragRegion = isElectron && props.mode !== "sheet" && props.mode !== "embedded";
@@ -76,7 +82,10 @@ export function PreviewPanelShell(props: {
   const hostRef = useRef<HTMLDivElement | null>(null);
   // Only inline non-maximized mode applies `width`/`maxWidth`; skip the
   // container measurement (and its re-renders) everywhere else.
-  const { maxWidth, isViewportResizing } = useClampedMaxWidth(hostRef, isInline && !maximized);
+  const { maxWidth, isViewportResizing, isContainerResizing } = useClampedMaxWidth(
+    hostRef,
+    isInline && !maximized,
+  );
   const { width, isResizing, handlers } = useResizableWidth({
     storageKey: props.widthStorageKey ?? PREVIEW_PANEL_WIDTH_STORAGE_KEY,
     defaultWidth: props.defaultWidth ?? PREVIEW_PANEL_DEFAULT_WIDTH,
@@ -113,8 +122,13 @@ export function PreviewPanelShell(props: {
         data-preview-panel-mode={props.mode}
         data-preview-panel-maximized={maximized ? "true" : "false"}
         data-right-panel-open={open ? "true" : "false"}
+        data-right-panel-animate-enter={
+          open && props.animateEnter !== false && !maximized ? "true" : undefined
+        }
         data-right-panel-resizing={
-          !maximized && (isResizing || isViewportResizing) ? "true" : undefined
+          !maximized && (isResizing || isViewportResizing || isContainerResizing)
+            ? "true"
+            : undefined
         }
         aria-hidden={open ? undefined : true}
         inert={open ? undefined : true}
@@ -167,22 +181,26 @@ export function PreviewPanelShell(props: {
  * Track viewport and flex-row widths to derive an upper bound for the panel.
  * Resize-aware so dragging the OS window narrower (or expanding the app
  * sidebar) re-clamps the stored width on the next render (the hook's clamp
- * picks this up automatically); while the window resize is still settling,
- * `isViewportResizing` lets callers suppress width transitions. The row is
- * observed rather than the panel itself because the panel competes with its
- * sibling column for row space. Row measurement only runs when `enabled`;
+ * picks this up automatically); while either resize is still settling,
+ * `isViewportResizing`/`isContainerResizing` let callers suppress width
+ * transitions so the gap and its fixed-width surface move together. The row
+ * is observed rather than the panel itself because the panel competes with
+ * its sibling column for row space. Row measurement only runs when `enabled`;
  * modes without a resize handle never apply the resulting width, so they
  * skip the observer entirely.
  */
 function useClampedMaxWidth(
   hostRef: RefObject<HTMLDivElement | null>,
   enabled: boolean,
-): { maxWidth: number; isViewportResizing: boolean } {
+): { maxWidth: number; isViewportResizing: boolean; isContainerResizing: boolean } {
   const [viewport, setViewport] = useState(() => ({
     width: typeof window === "undefined" ? 1280 : window.innerWidth,
     isResizing: false,
   }));
-  const [containerWidth, setContainerWidth] = useState<number | undefined>(undefined);
+  const [container, setContainer] = useState<{ width: number | undefined; isResizing: boolean }>({
+    width: undefined,
+    isResizing: false,
+  });
   useEffect(() => {
     if (typeof window === "undefined") return;
     let resizeFrame = 0;
@@ -223,9 +241,10 @@ function useClampedMaxWidth(
     // the enter animation starts from 0, so the unclamped first target
     // cannot flash over-wide.
     let measured = false;
+    let settleFrame = 0;
     const startFrame = window.requestAnimationFrame(() => {
       measured = true;
-      setContainerWidth(parent.clientWidth);
+      setContainer({ width: parent.clientWidth, isResizing: false });
     });
     if (typeof ResizeObserver === "undefined") {
       return () => {
@@ -235,16 +254,34 @@ function useClampedMaxWidth(
     const observer = new ResizeObserver(() => {
       // The observer's initial callback fires in the insertion frame too;
       // skip it so the first measurement comes from the deferred rAF.
-      if (measured) setContainerWidth(parent.clientWidth);
+      if (!measured) return;
+      settleContainerWidth(parent.clientWidth);
     });
+    // A container change re-clamps the stored width; flag it so the shell can
+    // snap gap and surface together instead of animating only the gap.
+    const settleContainerWidth = (next: number) => {
+      setContainer((current) => {
+        if (current.width === next) return current;
+        return { width: next, isResizing: true };
+      });
+      if (settleFrame !== 0) window.cancelAnimationFrame(settleFrame);
+      settleFrame = window.requestAnimationFrame(() => {
+        settleFrame = 0;
+        setContainer((current) =>
+          current.isResizing ? { ...current, isResizing: false } : current,
+        );
+      });
+    };
     observer.observe(parent);
     return () => {
       window.cancelAnimationFrame(startFrame);
+      if (settleFrame !== 0) window.cancelAnimationFrame(settleFrame);
       observer.disconnect();
     };
   }, [hostRef, enabled]);
   return {
-    maxWidth: getPreviewPanelMaxWidth(viewport.width, containerWidth),
+    maxWidth: getPreviewPanelMaxWidth(viewport.width, container.width),
     isViewportResizing: viewport.isResizing,
+    isContainerResizing: container.isResizing,
   };
 }

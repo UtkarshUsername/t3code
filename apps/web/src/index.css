@@ -816,11 +816,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 
   @starting-style {
-    .right-panel-inline-gap[data-right-panel-open="true"] {
+    .right-panel-inline-gap[data-right-panel-open="true"][data-right-panel-animate-enter="true"] {
       width: 0;
     }
 
-    .right-panel-inline-gap[data-right-panel-open="true"] .right-panel-inline-surface {
+    .right-panel-inline-gap[data-right-panel-open="true"][data-right-panel-animate-enter="true"]
+      .right-panel-inline-surface {
       translate: 100%;
     }
   }
@@ -2614,7 +2615,8 @@ code {
 /* Layout motion is opt-in (Settings > Appearance > Animations), so without
    the flag every animated surface snaps: right panels and the terminal
    drawer's gap/surface transitions above, plus the app sidebar's width
-   utilities. Unlayered so it outranks Tailwind's utility layer too. */
+   utilities and its off-canvas sheet variant. Unlayered so it outranks
+   Tailwind's utility layer too. */
 html:not([data-interface-animations="true"])
   :is(
     .right-panel-inline-gap,
@@ -2622,7 +2624,21 @@ html:not([data-interface-animations="true"])
     .terminal-drawer-inline-gap,
     .terminal-drawer-inline-surface,
     [data-slot="sidebar-gap"],
-    [data-slot="sidebar-container"]
+    [data-slot="sidebar-container"],
+    [data-mobile="true"][data-sidebar="sidebar"]
   ) {
   transition: none;
+}
+
+/* The OS reduced-motion preference wins even with animations opted into.
+   Only the sidebar slots and sheet need this here: the panel and drawer
+   classes carry their own reduced-motion rules up in the base layer. */
+@media (prefers-reduced-motion: reduce) {
+  :is(
+    [data-slot="sidebar-gap"],
+    [data-slot="sidebar-container"],
+    [data-mobile="true"][data-sidebar="sidebar"]
+  ) {
+    transition: none;
+  }
 }

@@ -1596,11 +1596,12 @@ function PullRequestsRouteView() {
             content: detailPanel,
           }}
         >
-          {(snapshot, onExitComplete) => (
+          {(snapshot, onExitComplete, animateEnter) => (
             <RightPanelTabs
               mode="inline"
               open={rightPanelOpen}
               onExitComplete={onExitComplete}
+              animateEnter={animateEnter}
               widthStorageKey="t3code:pull-request-panel-width"
               // Default to roughly half the viewport: the PR list needs more
               // room than a chat, so the 540px chat-preview default squashes

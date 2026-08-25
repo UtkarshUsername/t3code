@@ -13,7 +13,7 @@ export function InlineRightPanelPresence<Snapshot>(props: {
   open: boolean;
   snapshot: Snapshot;
   onExitComplete?: (snapshot: Snapshot) => void;
-  children: (snapshot: Snapshot, onExitComplete: () => void) => ReactNode;
+  children: (snapshot: Snapshot, onExitComplete: () => void, animateEnter: boolean) => ReactNode;
 }) {
   const [present, setPresent] = useState(props.open);
   const lastOpenSnapshotRef = useRef(props.snapshot);
@@ -66,5 +66,20 @@ export function InlineRightPanelPresence<Snapshot>(props: {
   }, [animationsEnabled, completeExit, present, props.open]);
 
   const snapshot = props.open ? props.snapshot : lastOpenSnapshotRef.current;
-  return present ? props.children(snapshot, completeExit) : null;
+  return present ? (
+    <PanelEnterGate open={props.open}>
+      {(animateEnter) => props.children(snapshot, completeExit, animateEnter)}
+    </PanelEnterGate>
+  ) : null;
+}
+
+/**
+ * Children mount exactly once per presence cycle. Recording whether they
+ * mounted while already open separates a genuine open (animate the enter)
+ * from a remount against a panel that never left (thread switch or
+ * sheet-to-inline flip while open), which must not replay @starting-style.
+ */
+function PanelEnterGate(props: { open: boolean; children: (animateEnter: boolean) => ReactNode }) {
+  const mountedOpenRef = useRef(props.open);
+  return props.children(!mountedOpenRef.current);
 }

@@ -7031,7 +7031,7 @@ function ChatViewContent(props: ChatViewProps) {
     composerBannerItems.length > 0 || Boolean(threadSyncPhase && !activeEnvironmentUnavailable);
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
+    <div className="relative flex min-h-0 min-w-0 flex-1 overflow-clip bg-background">
       {rightPanelOpen && !shouldUseRightPanelSheet ? panelLayoutControls : null}
       <div
         className={cn(
@@ -7462,12 +7462,13 @@ function ChatViewContent(props: ChatViewProps) {
             maximized: rightPanelMaximized,
           }}
         >
-          {(snapshot, onExitComplete) => (
+          {(snapshot, onExitComplete, animateEnter) => (
             <RightPanelTabs
               mode="inline"
               maximized={snapshot.maximized}
               open={rightPanelOpen}
               onExitComplete={onExitComplete}
+              animateEnter={animateEnter}
               surfaces={snapshot.surfaces}
               activeSurfaceId={snapshot.activeSurfaceId}
               pendingSurfaceIds={pendingFileSurfaceIds}

@@ -51,6 +51,12 @@ interface RightPanelTabsProps {
   defaultWidth?: number;
   open?: boolean;
   onExitComplete?: () => void;
+  /**
+   * False suppresses the inline open animation (@starting-style) for mounts
+   * that are not a genuine open, e.g. a thread switch while the panel is
+   * already visible. Defaults to animating.
+   */
+  animateEnter?: boolean;
   layoutControls?: ReactNode;
   surfaces: readonly RightPanelSurface[];
   activeSurfaceId: string | null;
@@ -789,6 +795,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       {...(props.defaultWidth !== undefined ? { defaultWidth: props.defaultWidth } : {})}
       {...(props.open !== undefined ? { open: props.open } : {})}
       {...(props.onExitComplete !== undefined ? { onExitComplete: props.onExitComplete } : {})}
+      {...(props.animateEnter !== undefined ? { animateEnter: props.animateEnter } : {})}
     >
       <div
         className={cn(

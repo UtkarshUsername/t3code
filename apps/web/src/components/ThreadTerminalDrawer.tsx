@@ -1117,6 +1117,22 @@ export default function ThreadTerminalDrawer({
     startHeight: number;
   } | null>(null);
   const didResizeDuringDragRef = useRef(false);
+  const onResizeStateChangeRef = useRef(onResizeStateChange);
+  useEffect(() => {
+    onResizeStateChangeRef.current = onResizeStateChange;
+  }, [onResizeStateChange]);
+  useEffect(
+    () => () => {
+      // Removing the handle mid-drag drops its implicit pointer capture, so
+      // pointerup never fires and the parent's resizing flag would stick,
+      // permanently suppressing drawer transitions. Clear it here only;
+      // a deps-inclusive cleanup would fire on every callback identity change.
+      if (resizeStateRef.current === null) return;
+      resizeStateRef.current = null;
+      onResizeStateChangeRef.current?.(false);
+    },
+    [],
+  );
 
   const normalizedTerminalIds = useMemo(() => {
     const normalizedIds: string[] = [];
