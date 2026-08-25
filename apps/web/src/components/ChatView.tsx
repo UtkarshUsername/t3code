@@ -367,6 +367,7 @@ import {
   reconcileMountedTerminalThreadIds,
   resolveBackgroundDraftWorkspaceOptions,
   resolveDraftHeroState,
+  orphanedTerminalIdsAfterReopen,
   rightPanelSurfacesRemovedAfterExit,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
@@ -1877,13 +1878,23 @@ function ChatViewContent(props: ChatViewProps) {
         useRightPanelStore.getState().byThreadKey,
         pending.threadRef,
       ).surfaces;
-      cleanupRightPanelSurfaces(
-        pending.threadRef,
-        rightPanelSurfacesRemovedAfterExit(pending.surfaces, currentSurfaces),
-        pending.previewSessions,
+      const removedSurfaces = rightPanelSurfacesRemovedAfterExit(pending.surfaces, currentSurfaces);
+      cleanupRightPanelSurfaces(pending.threadRef, removedSurfaces, pending.previewSessions);
+      // A deferred terminal surface can be reopened during the exit with
+      // fewer splits; its surface id survives the reopen, so the removal
+      // filter passes it over while the dropped splits still need teardown.
+      const reopenedSurfaces = pending.surfaces.filter(
+        (surface) => !removedSurfaces.includes(surface),
       );
+      for (const terminalId of orphanedTerminalIdsAfterReopen(reopenedSurfaces, currentSurfaces)) {
+        storeCloseTerminal(pending.threadRef, terminalId);
+        void closeTerminalMutation({
+          environmentId: pending.threadRef.environmentId,
+          input: { threadId: pending.threadRef.threadId, terminalId, deleteHistory: true },
+        });
+      }
     },
-    [cleanupRightPanelSurfaces],
+    [cleanupRightPanelSurfaces, closeTerminalMutation, storeCloseTerminal],
   );
   const deferRightPanelCleanup = useCallback(
     (

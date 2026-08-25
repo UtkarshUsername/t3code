@@ -30,6 +30,7 @@ import {
   resolveBackgroundDraftWorkspaceOptions,
   resolveDraftPromotionNavigationTarget,
   rightPanelSurfacesRemovedAfterExit,
+  orphanedTerminalIdsAfterReopen,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   resolveDraftHeroState,
@@ -664,6 +665,50 @@ describe("rightPanelSurfacesRemovedAfterExit", () => {
     const surfaces = [{ id: "browser:one", kind: "preview" }];
 
     expect(rightPanelSurfacesRemovedAfterExit(surfaces, surfaces)).toEqual([]);
+  });
+});
+
+describe("orphanedTerminalIdsAfterReopen", () => {
+  const terminalSurface = (
+    id: `terminal:${string}`,
+    terminalIds: string[],
+    activeTerminalId = terminalIds[0] ?? "",
+  ) => ({
+    id,
+    kind: "terminal" as const,
+    resourceId: `resource-${id}`,
+    terminalIds,
+    activeTerminalId,
+  });
+
+  it("finds split sessions dropped when a deferred surface reopens shrunken", () => {
+    expect(
+      orphanedTerminalIdsAfterReopen(
+        [terminalSurface("terminal:one", ["term-1", "term-2"])],
+        [terminalSurface("terminal:one", ["term-1"])],
+      ),
+    ).toEqual(["term-2"]);
+  });
+
+  it("returns nothing for surfaces that stayed identical or vanished", () => {
+    expect(
+      orphanedTerminalIdsAfterReopen(
+        [
+          terminalSurface("terminal:kept", ["term-1", "term-2"]),
+          terminalSurface("terminal:gone", ["term-3"]),
+        ],
+        [terminalSurface("terminal:kept", ["term-1", "term-2"])],
+      ),
+    ).toEqual([]);
+  });
+
+  it("ignores non-terminal deferred surfaces", () => {
+    expect(
+      orphanedTerminalIdsAfterReopen(
+        [{ id: "agents:one", kind: "agents" } as never],
+        [{ id: "agents:one", kind: "agents" } as never],
+      ),
+    ).toEqual([]);
   });
 });
 

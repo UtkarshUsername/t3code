@@ -245,6 +245,30 @@ export function rightPanelSurfacesRemovedAfterExit<T extends { id: string }>(
   return exitingSurfaces.filter((surface) => !currentSurfaceIds.has(surface.id));
 }
 
+/**
+ * Split sessions orphaned when a deferred terminal surface is reopened
+ * during the exit with fewer terminals than it held at defer time. The
+ * surface id survives the reopen, so the removal filter passes it over;
+ * these dropped splits must still be torn down or they linger as ghost
+ * sessions the drawer can later adopt.
+ */
+export function orphanedTerminalIdsAfterReopen(
+  deferredSurfaces: readonly RightPanelSurface[],
+  currentSurfaces: readonly RightPanelSurface[],
+): string[] {
+  const orphans: string[] = [];
+  for (const deferredSurface of deferredSurfaces) {
+    if (deferredSurface.kind !== "terminal") continue;
+    const currentSurface = currentSurfaces.find((surface) => surface.id === deferredSurface.id);
+    if (!currentSurface || currentSurface.kind !== "terminal") continue;
+    const survivingTerminalIds = new Set(currentSurface.terminalIds);
+    for (const terminalId of deferredSurface.terminalIds) {
+      if (!survivingTerminalIds.has(terminalId)) orphans.push(terminalId);
+    }
+  }
+  return orphans;
+}
+
 export function previewTabIdsForRightPanelReconcile(
   sessionTabIds: ReadonlyArray<string>,
   deferredSurfaces: ReadonlyArray<{
