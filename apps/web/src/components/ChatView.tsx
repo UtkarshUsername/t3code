@@ -360,6 +360,7 @@ import {
   readFileAsDataUrl,
   previewTabIdsForRightPanelReconcile,
   deferredRightPanelTerminalIdsForThread,
+  NO_DEFERRED_TERMINAL_IDS,
   reconcileMountedTerminalThreadIds,
   resolveBackgroundDraftWorkspaceOptions,
   resolveDraftHeroState,
@@ -1936,10 +1937,20 @@ function ChatViewContent(props: ChatViewProps) {
       ),
     [],
   );
-  const allocatableActiveTerminalIds = useMemo(
-    () => [...new Set([...activeKnownTerminalIds, ...panelTerminalIds])],
-    [activeKnownTerminalIds, panelTerminalIds],
-  );
+  const allocatableActiveTerminalIds = useMemo(() => {
+    // Deferred panel teardowns still hold a pending destructive mutation on
+    // their ids; the allocation pool must skip them even if the dying
+    // session has already dropped out of the server list, or a fresh
+    // terminal could reuse the id right before the cleanup deletes it.
+    const deferred =
+      activeThreadKey === null
+        ? NO_DEFERRED_TERMINAL_IDS
+        : deferredRightPanelTerminalIdsForThread(
+            deferredRightPanelCleanupRef.current,
+            activeThreadKey,
+          );
+    return [...new Set([...activeKnownTerminalIds, ...panelTerminalIds, ...deferred])];
+  }, [activeKnownTerminalIds, activeThreadKey, panelTerminalIds]);
   const previewPanelOpen = activeRightPanelKind === "preview" && isPreviewSupportedInRuntime();
   const rightPanelOpen = rightPanelState.isOpen;
   const canMaximizeRightPanel = rightPanelOpen && !shouldUseRightPanelSheet;

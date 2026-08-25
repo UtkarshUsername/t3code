@@ -276,7 +276,7 @@ export function shouldDeferRightPanelTerminalClose(input: {
   );
 }
 
-const NO_DEFERRED_TERMINAL_IDS: ReadonlySet<string> = new Set();
+export const NO_DEFERRED_TERMINAL_IDS: ReadonlySet<string> = new Set();
 
 /**
  * Terminal session ids owned by right-panel surfaces whose cleanup is
