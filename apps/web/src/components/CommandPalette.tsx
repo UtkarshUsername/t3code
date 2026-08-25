@@ -461,11 +461,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
       if (command === "project.new") {
         event.preventDefault();
         event.stopPropagation();
-        if (state.open && state.openIntent?.kind === "add-project") {
-          setOpen(false);
-        } else {
-          openAddProject();
-        }
+        openAddProject();
         return;
       }
       const mode = overlayModeForCommand(command);
@@ -483,9 +479,6 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     openAddProject,
     previewOpen,
     resolvedTheme,
-    setOpen,
-    state.open,
-    state.openIntent?.kind,
     terminalOpen,
     theme,
     themeHalves,
