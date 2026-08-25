@@ -1008,6 +1008,8 @@ interface ThreadTerminalDrawerProps {
   onActiveTerminalChange: (terminalId: string) => void;
   onCloseTerminal: (terminalId: string) => void;
   onHeightChange: (height: number) => void;
+  onHeightPreviewChange?: (height: number) => void;
+  onResizeStateChange?: (resizing: boolean) => void;
   onAddTerminalContext: (selection: TerminalContextSelection) => void;
   keybindings: ResolvedKeybindingsConfig;
   /** Prefer server-provided tab titles when present (e.g. active subprocess name). */
@@ -1069,6 +1071,8 @@ export default function ThreadTerminalDrawer({
   onActiveTerminalChange,
   onCloseTerminal,
   onHeightChange,
+  onHeightPreviewChange,
+  onResizeStateChange,
   onAddTerminalContext,
   keybindings,
   terminalLabelsById,
@@ -1304,17 +1308,21 @@ export default function ThreadTerminalDrawer({
     lastSyncedHeightRef.current = controlledDrawerHeight;
   }, [controlledDrawerHeight, threadId]);
 
-  const handleResizePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    didResizeDuringDragRef.current = false;
-    resizeStateRef.current = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      startHeight: drawerHeightRef.current,
-    };
-  }, []);
+  const handleResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      onResizeStateChange?.(true);
+      didResizeDuringDragRef.current = false;
+      resizeStateRef.current = {
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        startHeight: drawerHeightRef.current,
+      };
+    },
+    [onResizeStateChange],
+  );
 
   const handleResizePointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1329,9 +1337,10 @@ export default function ThreadTerminalDrawer({
       }
       didResizeDuringDragRef.current = true;
       drawerHeightRef.current = clampedHeight;
+      onHeightPreviewChange?.(clampedHeight);
       setDrawerHeight(clampedHeight);
     },
-    [setDrawerHeight],
+    [onHeightPreviewChange, setDrawerHeight],
   );
 
   const handleResizePointerEnd = useCallback(
@@ -1342,13 +1351,14 @@ export default function ThreadTerminalDrawer({
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
+      onResizeStateChange?.(false);
       if (!didResizeDuringDragRef.current) {
         return;
       }
       syncHeight(drawerHeightRef.current);
       setResizeEpoch((value) => value + 1);
     },
-    [syncHeight],
+    [onResizeStateChange, syncHeight],
   );
 
   useEffect(() => {
