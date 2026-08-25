@@ -24,10 +24,12 @@ import {
   hasEnvironmentReconnectWarningGraceElapsed,
   hasServerAcknowledgedLocalDispatch,
   isBranchMismatchDismissedForSession,
+  previewTabIdsForRightPanelReconcile,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
   resolveBackgroundDraftWorkspaceOptions,
   resolveDraftPromotionNavigationTarget,
+  rightPanelSurfacesRemovedAfterExit,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   resolveDraftHeroState,
@@ -35,6 +37,7 @@ import {
   startNewThreadForProject,
   shouldDockDraftHeroForSubmission,
   shouldReleaseTimelineAnchorForToolActivity,
+  shouldDeferRightPanelTerminalClose,
   shouldShowBranchMismatchBanner,
   shouldWriteThreadErrorToCurrentServerThread,
 } from "./ChatView.logic";
@@ -627,6 +630,80 @@ describe("reconcileMountedTerminalThreadIds", () => {
         activeThreadTerminalOpen: false,
       }),
     ).toEqual(ids.slice(-MAX_HIDDEN_MOUNTED_TERMINAL_THREADS));
+  });
+});
+
+describe("rightPanelSurfacesRemovedAfterExit", () => {
+  it("returns only resources that stayed closed through the exit", () => {
+    const browser = { id: "browser:one", kind: "preview" };
+    const terminal = { id: "terminal:one", kind: "terminal" };
+
+    expect(
+      rightPanelSurfacesRemovedAfterExit(
+        [browser, terminal],
+        [terminal, { id: "files", kind: "files" }],
+      ),
+    ).toEqual([browser]);
+  });
+
+  it("does not clean up resources when the panel was only hidden", () => {
+    const surfaces = [{ id: "browser:one", kind: "preview" }];
+
+    expect(rightPanelSurfacesRemovedAfterExit(surfaces, surfaces)).toEqual([]);
+  });
+});
+
+describe("previewTabIdsForRightPanelReconcile", () => {
+  it("suppresses preview sessions that are waiting for exit cleanup", () => {
+    expect(
+      previewTabIdsForRightPanelReconcile(
+        ["closing", "open"],
+        [{ id: "browser:closing", kind: "preview", resourceId: "closing" }],
+        [{ id: "browser:open" }],
+      ),
+    ).toEqual(["open"]);
+  });
+
+  it("keeps a preview session that was explicitly reopened during exit", () => {
+    expect(
+      previewTabIdsForRightPanelReconcile(
+        ["reopened"],
+        [{ id: "browser:reopened", kind: "preview", resourceId: "reopened" }],
+        [{ id: "browser:reopened" }],
+      ),
+    ).toEqual(["reopened"]);
+  });
+});
+
+describe("shouldDeferRightPanelTerminalClose", () => {
+  it("defers the last inline terminal so exit cleanup owns teardown", () => {
+    expect(
+      shouldDeferRightPanelTerminalClose({
+        usesSheet: false,
+        panelOpen: true,
+        surfaceCount: 1,
+        terminalCount: 1,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps immediate teardown when closing does not exit the inline panel", () => {
+    expect(
+      shouldDeferRightPanelTerminalClose({
+        usesSheet: false,
+        panelOpen: true,
+        surfaceCount: 2,
+        terminalCount: 1,
+      }),
+    ).toBe(false);
+    expect(
+      shouldDeferRightPanelTerminalClose({
+        usesSheet: true,
+        panelOpen: true,
+        surfaceCount: 1,
+        terminalCount: 1,
+      }),
+    ).toBe(false);
   });
 });
 
