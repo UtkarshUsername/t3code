@@ -16,6 +16,17 @@ export function InlineRightPanelPresence<Snapshot>(props: {
   children: (snapshot: Snapshot, onExitComplete: () => void, animateEnter: boolean) => ReactNode;
 }) {
   const [present, setPresent] = useState(props.open);
+  // A presence instance born already visible (thread switch or sheet-to-inline
+  // flip while open) must not replay the enter animation on its first
+  // presentation; every later presentation in the same instance is a genuine
+  // open and animates. `hasPresented` flips true right after that first
+  // commit, so quick close/reopen still animates.
+  const bornOpenRef = useRef(props.open);
+  const [hasPresented, setHasPresented] = useState(props.open);
+  useEffect(() => {
+    if (!present) return;
+    setHasPresented(true);
+  }, [present]);
   const lastOpenSnapshotRef = useRef(props.snapshot);
   const exitCompletedRef = useRef(!props.open);
   const animationsEnabled = useInterfaceAnimationsEnabled();
@@ -66,20 +77,6 @@ export function InlineRightPanelPresence<Snapshot>(props: {
   }, [animationsEnabled, completeExit, present, props.open]);
 
   const snapshot = props.open ? props.snapshot : lastOpenSnapshotRef.current;
-  return present ? (
-    <PanelEnterGate open={props.open}>
-      {(animateEnter) => props.children(snapshot, completeExit, animateEnter)}
-    </PanelEnterGate>
-  ) : null;
-}
-
-/**
- * Children mount exactly once per presence cycle. Recording whether they
- * mounted while already open separates a genuine open (animate the enter)
- * from a remount against a panel that never left (thread switch or
- * sheet-to-inline flip while open), which must not replay @starting-style.
- */
-function PanelEnterGate(props: { open: boolean; children: (animateEnter: boolean) => ReactNode }) {
-  const mountedOpenRef = useRef(props.open);
-  return props.children(!mountedOpenRef.current);
+  const animateEnter = !(bornOpenRef.current && !hasPresented);
+  return present ? props.children(snapshot, completeExit, animateEnter) : null;
 }
