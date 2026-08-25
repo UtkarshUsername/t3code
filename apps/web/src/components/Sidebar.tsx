@@ -2376,7 +2376,15 @@ export default function Sidebar() {
     async (threadRef: ScopedThreadRef, files: File[]) => {
       setPendingFileDrop({ threadRef, files });
       const threadKey = scopedThreadKey(threadRef);
-      if (routeThreadKeyRef.current === threadKey) return;
+      // Key match alone is not "already there": during draft promotion the
+      // resolved route key is the server thread while the URL is still the
+      // draft route, and its composer would swallow the drop then discard it.
+      const landedBefore =
+        router.buildLocation({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(threadRef),
+        }).pathname === router.state.location.pathname;
+      if (landedBefore) return;
       try {
         await navigateToThread(threadRef);
         // A newer drop may have replaced ours while the navigation was in
