@@ -359,7 +359,7 @@ import {
   deriveLockedProvider,
   readFileAsDataUrl,
   previewTabIdsForRightPanelReconcile,
-  deferredRightPanelTerminalIds,
+  deferredRightPanelTerminalIdsForThread,
   reconcileMountedTerminalThreadIds,
   resolveBackgroundDraftWorkspaceOptions,
   resolveDraftHeroState,
@@ -1926,9 +1926,15 @@ function ChatViewContent(props: ChatViewProps) {
   // Read straight off the ref: it is always written synchronously in an
   // event handler followed by a store update, so the relevant renders see
   // fresh contents. Empty result returns a stable singleton, keeping the
-  // memoized drawers from churning.
-  const deferredPanelTerminalIds = deferredRightPanelTerminalIds(
-    deferredRightPanelCleanupRef.current,
+  // memoized drawers from churning. Scoped per thread because terminal ids
+  // are only unique within one thread.
+  const deferredPanelTerminalIdsFor = useCallback(
+    (mountedThreadKey: string): ReadonlySet<string> =>
+      deferredRightPanelTerminalIdsForThread(
+        deferredRightPanelCleanupRef.current,
+        mountedThreadKey,
+      ),
+    [],
   );
   const allocatableActiveTerminalIds = useMemo(
     () => [...new Set([...activeKnownTerminalIds, ...panelTerminalIds])],
@@ -7492,7 +7498,7 @@ function ChatViewContent(props: ChatViewProps) {
             closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
             keybindings={keybindings}
             onAddTerminalContext={addTerminalContextToDraft}
-            deferredPanelTerminalIds={deferredPanelTerminalIds}
+            deferredPanelTerminalIds={deferredPanelTerminalIdsFor(mountedThreadKey)}
           />
         ))}
       </div>

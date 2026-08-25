@@ -13,6 +13,7 @@ import {
 } from "@t3tools/contracts";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadShell } from "../types";
 import { type RightPanelSurface } from "../rightPanelStore";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import * as Schema from "effect/Schema";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -279,15 +280,23 @@ const NO_DEFERRED_TERMINAL_IDS: ReadonlySet<string> = new Set();
 
 /**
  * Terminal session ids owned by right-panel surfaces whose cleanup is
- * deferred until the panel's exit animation lands. The surfaces are already
- * gone from the panel store, so without this set the drawer's reconcile
- * would adopt those sessions mid-exit and the deferred cleanup would then
- * delete them out from under the drawer.
+ * deferred until the panel's exit animation lands, scoped to the thread the
+ * pending cleanup belongs to. The surfaces are already gone from the panel
+ * store, so without this set the drawer's reconcile would adopt those
+ * sessions mid-exit and the deferred cleanup would then delete them out
+ * from under the drawer. Scoped because terminal ids are only unique per
+ * thread - another thread's `term-1` must keep reconciling normally.
  */
-export function deferredRightPanelTerminalIds(
-  pending: { surfaces: readonly RightPanelSurface[] } | null | undefined,
+export function deferredRightPanelTerminalIdsForThread(
+  pending:
+    | { threadRef: ScopedThreadRef; surfaces: readonly RightPanelSurface[] }
+    | null
+    | undefined,
+  mountedThreadKey: string,
 ): ReadonlySet<string> {
-  if (!pending) return NO_DEFERRED_TERMINAL_IDS;
+  if (!pending || scopedThreadKey(pending.threadRef) !== mountedThreadKey) {
+    return NO_DEFERRED_TERMINAL_IDS;
+  }
   const ids = pending.surfaces.flatMap((surface) =>
     surface.kind === "terminal" ? surface.terminalIds : [],
   );

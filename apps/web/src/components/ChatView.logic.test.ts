@@ -38,10 +38,11 @@ import {
   shouldDockDraftHeroForSubmission,
   shouldReleaseTimelineAnchorForToolActivity,
   shouldDeferRightPanelTerminalClose,
-  deferredRightPanelTerminalIds,
+  deferredRightPanelTerminalIdsForThread,
   shouldShowBranchMismatchBanner,
   shouldWriteThreadErrorToCurrentServerThread,
 } from "./ChatView.logic";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 
 const environmentId = EnvironmentId.make("environment-local");
 const projectId = ProjectId.make("project-1");
@@ -720,41 +721,55 @@ describe("shouldDeferRightPanelTerminalClose", () => {
   });
 });
 
-describe("deferredRightPanelTerminalIds", () => {
-  it("collects terminal ids from deferred surfaces", () => {
+describe("deferredRightPanelTerminalIdsForThread", () => {
+  const threadRefA = {
+    environmentId: EnvironmentId.make("env-1"),
+    threadId: ThreadId.make("thread-a"),
+  };
+  const pending: Parameters<typeof deferredRightPanelTerminalIdsForThread>[0] = {
+    threadRef: threadRefA,
+    surfaces: [
+      {
+        kind: "terminal",
+        id: "terminal:surface-1",
+        resourceId: "resource-1",
+        terminalIds: ["t-1", "t-2"],
+        activeTerminalId: "t-1",
+      },
+    ],
+  };
+
+  it("collects terminal ids for the pending cleanup's own thread", () => {
+    expect([
+      ...deferredRightPanelTerminalIdsForThread(pending, scopedThreadKey(threadRefA)),
+    ]).toEqual(["t-1", "t-2"]);
+  });
+
+  it("returns the shared empty set for other threads and when nothing is pending", () => {
+    const otherThreadKey = scopedThreadKey({
+      environmentId: EnvironmentId.make("env-1"),
+      threadId: ThreadId.make("thread-b"),
+    });
+    expect(deferredRightPanelTerminalIdsForThread(pending, otherThreadKey)).toBe(
+      deferredRightPanelTerminalIdsForThread(null, otherThreadKey),
+    );
     expect(
-      [
-        ...deferredRightPanelTerminalIds({
+      deferredRightPanelTerminalIdsForThread(
+        {
+          threadRef: threadRefA,
           surfaces: [
             {
               kind: "terminal",
-              id: "terminal:surface-1",
-              resourceId: "resource-1",
-              terminalIds: ["t-1", "t-2"],
-              activeTerminalId: "t-1",
+              id: "terminal:s",
+              resourceId: "resource-s",
+              terminalIds: [],
+              activeTerminalId: "",
             },
-            { kind: "agents", id: "agents:surface-2" } as never,
           ],
-        }),
-      ].sort(),
-    ).toEqual(["t-1", "t-2"]);
-  });
-
-  it("returns a stable empty set when nothing is deferred", () => {
-    expect(deferredRightPanelTerminalIds(null)).toBe(deferredRightPanelTerminalIds(null));
-    expect(
-      deferredRightPanelTerminalIds({
-        surfaces: [
-          {
-            kind: "terminal",
-            id: "terminal:s",
-            resourceId: "resource-s",
-            terminalIds: [],
-            activeTerminalId: "",
-          },
-        ],
-      }),
-    ).toBe(deferredRightPanelTerminalIds({ surfaces: [] }));
+        },
+        scopedThreadKey(threadRefA),
+      ),
+    ).toBe(deferredRightPanelTerminalIdsForThread(null, otherThreadKey));
   });
 });
 
