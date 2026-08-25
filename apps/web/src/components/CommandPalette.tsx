@@ -461,7 +461,11 @@ export function CommandPalette({ children }: { children: ReactNode }) {
       if (command === "project.new") {
         event.preventDefault();
         event.stopPropagation();
-        openAddProject();
+        if (state.open && state.openIntent?.kind === "add-project") {
+          setOpen(false);
+        } else {
+          openAddProject();
+        }
         return;
       }
       const mode = overlayModeForCommand(command);
@@ -479,6 +483,9 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     openAddProject,
     previewOpen,
     resolvedTheme,
+    setOpen,
+    state.open,
+    state.openIntent?.kind,
     terminalOpen,
     theme,
     themeHalves,
@@ -1591,6 +1598,7 @@ function OpenCommandPaletteDialog(props: {
     disabled: defaultAddProjectEnvironmentId === null,
     icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
     keepOpen: true,
+    shortcutCommand: "project.new",
     run: async () => {
       openAddProjectFlow();
     },

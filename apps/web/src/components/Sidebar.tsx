@@ -3387,6 +3387,7 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
+  const newProjectShortcutLabel = shortcutLabelForCommand(keybindings, "project.new");
   return (
     <>
       <SidebarChromeHeader isElectron={isElectron} />
@@ -3581,7 +3582,11 @@ export default function Sidebar() {
                       aria-hidden="true"
                     />
                   </TooltipTrigger>
-                  <TooltipPopup side="right">New project</TooltipPopup>
+                  <TooltipPopup side="right">
+                    {newProjectShortcutLabel
+                      ? `New project (${newProjectShortcutLabel})`
+                      : "New project"}
+                  </TooltipPopup>
                 </Tooltip>
               </div>
             ) : null}
