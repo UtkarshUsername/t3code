@@ -1577,72 +1577,71 @@ function PullRequestsRouteView() {
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
-      <div className="relative flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {pullRequestsSupported && rightPanelState.isOpen ? openPanelControls : null}
         <PullRequestsColumn {...columnProps} />
 
-        {rightPanelOpen ? (
-          <InlineRightPanelPresence
-            key="pull-requests:inline"
-            open={rightPanelOpen}
-            snapshot={{
-              surfaces: rightPanelState.surfaces,
-              activeSurfaceId: activePullRequestSurface?.id ?? null,
-              content: detailPanel,
-            }}
-          >
-            {(snapshot, onExitComplete) => (
-              <RightPanelTabs
-                mode="inline"
-                open={rightPanelOpen}
-                onExitComplete={onExitComplete}
-                widthStorageKey="t3code:pull-request-panel-width"
-                // Default to roughly half the viewport: the PR list needs more
-                // room than a chat, so the 540px chat-preview default squashes
-                // it. SSR has no window, so fall back to a reasonable width.
-                defaultWidth={
-                  typeof window === "undefined" ? 640 : Math.floor(window.innerWidth / 2)
-                }
-                surfaces={snapshot.surfaces}
-                activeSurfaceId={snapshot.activeSurfaceId}
-                pendingSurfaceIds={EMPTY_PENDING_SURFACES}
-                previewSessions={EMPTY_PREVIEW_SESSIONS}
-                desktopByTabId={EMPTY_PREVIEW_DESKTOP_STATE}
-                terminalLabelsById={EMPTY_TERMINAL_LABELS}
-                onActivate={(surface) => {
-                  if (surface.kind === "pull-request") activateSurface(surface);
-                }}
-                onCloseSurface={(surface) => {
-                  if (surface.kind === "pull-request") closeSurface(surface);
-                }}
-                onCloseOtherSurfaces={(surface) => {
-                  if (surface.kind === "pull-request") closeOtherSurfaces(surface);
-                }}
-                onCloseSurfacesToRight={(surface) => {
-                  if (surface.kind === "pull-request") closeSurfacesToRight(surface);
-                }}
-                onCloseAllSurfaces={closeAllSurfaces}
-                onCopyFilePath={() => undefined}
-                onAddBrowser={() => undefined}
-                onAddTerminal={() => undefined}
-                onAddDiff={() => undefined}
-                onAddFiles={() => undefined}
-                onAddPullRequest={() => undefined}
-                onAddAgents={() => undefined}
-                browserAvailable={false}
-                terminalAvailable={false}
-                diffAvailable={false}
-                filesAvailable={false}
-                pullRequestAvailable={false}
-                agentsAvailable={false}
-                liveAgentCount={0}
-                pullRequestStatuses={pullRequestTabStatuses}
-              >
-                {snapshot.content}
-              </RightPanelTabs>
-            )}
-          </InlineRightPanelPresence>
-        ) : null}
+        {/* Mounted regardless of open state: the presence owns the exit
+            animation, so it must survive the open flip to false and unmount
+            its children only once the width transition has landed. */}
+        <InlineRightPanelPresence
+          key="pull-requests:inline"
+          open={rightPanelOpen}
+          snapshot={{
+            surfaces: rightPanelState.surfaces,
+            activeSurfaceId: activePullRequestSurface?.id ?? null,
+            content: detailPanel,
+          }}
+        >
+          {(snapshot, onExitComplete) => (
+            <RightPanelTabs
+              mode="inline"
+              open={rightPanelOpen}
+              onExitComplete={onExitComplete}
+              widthStorageKey="t3code:pull-request-panel-width"
+              // Default to roughly half the viewport: the PR list needs more
+              // room than a chat, so the 540px chat-preview default squashes
+              // it. SSR has no window, so fall back to a reasonable width.
+              defaultWidth={typeof window === "undefined" ? 640 : Math.floor(window.innerWidth / 2)}
+              surfaces={snapshot.surfaces}
+              activeSurfaceId={snapshot.activeSurfaceId}
+              pendingSurfaceIds={EMPTY_PENDING_SURFACES}
+              previewSessions={EMPTY_PREVIEW_SESSIONS}
+              desktopByTabId={EMPTY_PREVIEW_DESKTOP_STATE}
+              terminalLabelsById={EMPTY_TERMINAL_LABELS}
+              onActivate={(surface) => {
+                if (surface.kind === "pull-request") activateSurface(surface);
+              }}
+              onCloseSurface={(surface) => {
+                if (surface.kind === "pull-request") closeSurface(surface);
+              }}
+              onCloseOtherSurfaces={(surface) => {
+                if (surface.kind === "pull-request") closeOtherSurfaces(surface);
+              }}
+              onCloseSurfacesToRight={(surface) => {
+                if (surface.kind === "pull-request") closeSurfacesToRight(surface);
+              }}
+              onCloseAllSurfaces={closeAllSurfaces}
+              onCopyFilePath={() => undefined}
+              onAddBrowser={() => undefined}
+              onAddTerminal={() => undefined}
+              onAddDiff={() => undefined}
+              onAddFiles={() => undefined}
+              onAddPullRequest={() => undefined}
+              onAddAgents={() => undefined}
+              browserAvailable={false}
+              terminalAvailable={false}
+              diffAvailable={false}
+              filesAvailable={false}
+              pullRequestAvailable={false}
+              agentsAvailable={false}
+              liveAgentCount={0}
+              pullRequestStatuses={pullRequestTabStatuses}
+            >
+              {snapshot.content}
+            </RightPanelTabs>
+          )}
+        </InlineRightPanelPresence>
       </div>
     </SidebarInset>
   );
