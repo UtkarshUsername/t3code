@@ -6670,10 +6670,12 @@ function ChatViewContent(props: ChatViewProps) {
   );
   useEffect(() => {
     if (pendingSidebarFileDrop === null) return;
+    // A promoting draft can mount this view with the server thread id while
+    // its composer is still draft-keyed; finalization would discard what we
+    // attach there. Only the canonical thread target may consume a drop.
     if (
-      activeThreadId === null ||
-      pendingSidebarFileDrop.threadRef.threadId !== activeThreadId ||
-      activeThreadEnvironmentId !== pendingSidebarFileDrop.threadRef.environmentId
+      typeof composerDraftTarget === "string" ||
+      scopedThreadKey(composerDraftTarget) !== scopedThreadKey(pendingSidebarFileDrop.threadRef)
     ) {
       return;
     }
@@ -6681,13 +6683,7 @@ function ChatViewContent(props: ChatViewProps) {
     if (files !== null) {
       composerRef.current?.addDroppedFiles(files);
     }
-  }, [
-    activeThreadId,
-    activeThreadEnvironmentId,
-    composerRef,
-    consumePendingFileDrop,
-    pendingSidebarFileDrop,
-  ]);
+  }, [composerDraftTarget, composerRef, consumePendingFileDrop, pendingSidebarFileDrop]);
 
   // Empty state: no active thread
   if (!activeThread) {
