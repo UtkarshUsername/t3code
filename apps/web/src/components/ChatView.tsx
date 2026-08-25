@@ -167,7 +167,10 @@ import { isThreadOwnPullRequest } from "./pullRequest/pullRequestDetail.logic";
 import { PullRequestDetailPanel } from "./pullRequest/PullRequestDetailPanel";
 import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
-import { InlineRightPanelPresence } from "./InlineRightPanelPresence";
+import {
+  INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS,
+  InlineRightPanelPresence,
+} from "./InlineRightPanelPresence";
 import { RightPanelTabs, type PullRequestTabStatus } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import {
@@ -3944,7 +3947,10 @@ function ChatViewContent(props: ChatViewProps) {
   // The layout cluster swaps containers when the inline panel closes. Keep
   // it in its row position until the exit transition lands so it rides the
   // collapsing gap edge instead of jumping into a header that is still inset
-  // by the not-yet-collapsed panel width.
+  // by the not-yet-collapsed panel width. The settle timer is the source of
+  // truth for clearing: child effects run before parent effects, so an
+  // exit-complete callback alone loses to this effect's write when the exit
+  // settles instantly (animations off).
   const [inlinePanelExiting, setInlinePanelExiting] = useState(false);
   const wasOpenInlineRef = useRef(rightPanelOpen && !shouldUseRightPanelSheet);
   useEffect(() => {
@@ -3954,10 +3960,19 @@ function ChatViewContent(props: ChatViewProps) {
       setInlinePanelExiting(false);
       return;
     }
-    if (wasOpenInlineRef.current) {
-      wasOpenInlineRef.current = false;
-      setInlinePanelExiting(true);
+    if (!wasOpenInlineRef.current) {
+      // Deps changed while a flag from an aborted close was pending (e.g. a
+      // sheet flip mid-exit); settle immediately rather than stranding it.
+      setInlinePanelExiting(false);
+      return;
     }
+    wasOpenInlineRef.current = false;
+    setInlinePanelExiting(true);
+    const timeoutId = window.setTimeout(
+      () => setInlinePanelExiting(false),
+      INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
   }, [rightPanelOpen, shouldUseRightPanelSheet]);
   const showRowPanelLayoutControls =
     !shouldUseRightPanelSheet && (rightPanelOpen || inlinePanelExiting);

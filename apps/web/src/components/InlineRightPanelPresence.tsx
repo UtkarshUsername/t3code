@@ -2,7 +2,8 @@ import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useSta
 
 import { useInterfaceAnimationsEnabled } from "../hooks/useInterfaceAnimations";
 
-const RIGHT_PANEL_EXIT_FALLBACK_MS = 250;
+/** Longest an inline panel exit can take before presence settles it anyway. */
+export const INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS = 250;
 
 /**
  * Keep the heavy panel mounted only until its CSS exit finishes. Children
@@ -72,7 +73,7 @@ export function InlineRightPanelPresence<Snapshot>(props: {
       completeExit();
       return;
     }
-    const timeoutId = window.setTimeout(completeExit, RIGHT_PANEL_EXIT_FALLBACK_MS);
+    const timeoutId = window.setTimeout(completeExit, INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS);
     return () => window.clearTimeout(timeoutId);
   }, [animationsEnabled, completeExit, present, props.open]);
 
