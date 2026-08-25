@@ -387,8 +387,18 @@ function RightPanelEmptyState(props: {
 
   // Stable identity so React only runs this callback ref on mount/unmount;
   // an inline arrow would re-attach and re-focus on every render.
+  // Focus waits two frames: a synchronous focus during mount forces layout in
+  // the same task that starts the panel's enter transition, which cancels it.
   const focusOnMount = useCallback((node: HTMLDivElement | null) => {
-    node?.focus();
+    if (!node) return;
+    let innerFrame = 0;
+    const outerFrame = requestAnimationFrame(() => {
+      innerFrame = requestAnimationFrame(() => node.focus());
+    });
+    return () => {
+      cancelAnimationFrame(outerFrame);
+      cancelAnimationFrame(innerFrame);
+    };
   }, []);
 
   const isHighlighted = (action: SurfaceAction) =>
