@@ -12,6 +12,7 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadShell } from "../types";
+import { type RightPanelSurface } from "../rightPanelStore";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import * as Schema from "effect/Schema";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -272,6 +273,26 @@ export function shouldDeferRightPanelTerminalClose(input: {
   return (
     !input.usesSheet && input.panelOpen && input.surfaceCount === 1 && input.terminalCount === 1
   );
+}
+
+const NO_DEFERRED_TERMINAL_IDS: ReadonlySet<string> = new Set();
+
+/**
+ * Terminal session ids owned by right-panel surfaces whose cleanup is
+ * deferred until the panel's exit animation lands. The surfaces are already
+ * gone from the panel store, so without this set the drawer's reconcile
+ * would adopt those sessions mid-exit and the deferred cleanup would then
+ * delete them out from under the drawer.
+ */
+export function deferredRightPanelTerminalIds(
+  pending: { surfaces: readonly RightPanelSurface[] } | null | undefined,
+): ReadonlySet<string> {
+  if (!pending) return NO_DEFERRED_TERMINAL_IDS;
+  const ids = pending.surfaces.flatMap((surface) =>
+    surface.kind === "terminal" ? surface.terminalIds : [],
+  );
+  if (ids.length === 0) return NO_DEFERRED_TERMINAL_IDS;
+  return new Set(ids);
 }
 
 export function reconcileRetainedMountedThreadIds(input: {

@@ -38,6 +38,7 @@ import {
   shouldDockDraftHeroForSubmission,
   shouldReleaseTimelineAnchorForToolActivity,
   shouldDeferRightPanelTerminalClose,
+  deferredRightPanelTerminalIds,
   shouldShowBranchMismatchBanner,
   shouldWriteThreadErrorToCurrentServerThread,
 } from "./ChatView.logic";
@@ -716,6 +717,44 @@ describe("shouldDeferRightPanelTerminalClose", () => {
         terminalCount: 1,
       }),
     ).toBe(false);
+  });
+});
+
+describe("deferredRightPanelTerminalIds", () => {
+  it("collects terminal ids from deferred surfaces", () => {
+    expect(
+      [
+        ...deferredRightPanelTerminalIds({
+          surfaces: [
+            {
+              kind: "terminal",
+              id: "terminal:surface-1",
+              resourceId: "resource-1",
+              terminalIds: ["t-1", "t-2"],
+              activeTerminalId: "t-1",
+            },
+            { kind: "agents", id: "agents:surface-2" } as never,
+          ],
+        }),
+      ].sort(),
+    ).toEqual(["t-1", "t-2"]);
+  });
+
+  it("returns a stable empty set when nothing is deferred", () => {
+    expect(deferredRightPanelTerminalIds(null)).toBe(deferredRightPanelTerminalIds(null));
+    expect(
+      deferredRightPanelTerminalIds({
+        surfaces: [
+          {
+            kind: "terminal",
+            id: "terminal:s",
+            resourceId: "resource-s",
+            terminalIds: [],
+            activeTerminalId: "",
+          },
+        ],
+      }),
+    ).toBe(deferredRightPanelTerminalIds({ surfaces: [] }));
   });
 });
 

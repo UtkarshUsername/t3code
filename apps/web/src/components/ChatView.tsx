@@ -359,6 +359,7 @@ import {
   deriveLockedProvider,
   readFileAsDataUrl,
   previewTabIdsForRightPanelReconcile,
+  deferredRightPanelTerminalIds,
   reconcileMountedTerminalThreadIds,
   resolveBackgroundDraftWorkspaceOptions,
   resolveDraftHeroState,
@@ -721,6 +722,12 @@ interface PersistentThreadTerminalDrawerProps {
   closeShortcutLabel: string | undefined;
   keybindings: ResolvedKeybindingsConfig;
   onAddTerminalContext: (selection: TerminalContextSelection) => void;
+  /**
+   * Terminal sessions owned by right-panel surfaces whose teardown is
+   * deferred until the panel exit lands. They must stay invisible to the
+   * drawer (no adoption, no allocation) until the deferred deletion runs.
+   */
+  deferredPanelTerminalIds: ReadonlySet<string>;
 }
 
 const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDrawer({
@@ -736,6 +743,7 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
   closeShortcutLabel,
   keybindings,
   onAddTerminalContext,
+  deferredPanelTerminalIds,
 }: PersistentThreadTerminalDrawerProps) {
   const openTerminal = useAtomCommand(terminalEnvironment.open, "terminal open");
   const writeTerminal = useAtomCommand(terminalEnvironment.write, "terminal write");
@@ -788,8 +796,12 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
   );
   const drawerTerminalSessions = useMemo(
     () =>
-      knownTerminalSessions.filter((session) => !panelTerminalIds.has(session.target.terminalId)),
-    [knownTerminalSessions, panelTerminalIds],
+      knownTerminalSessions.filter(
+        (session) =>
+          !panelTerminalIds.has(session.target.terminalId) &&
+          !deferredPanelTerminalIds.has(session.target.terminalId),
+      ),
+    [knownTerminalSessions, panelTerminalIds, deferredPanelTerminalIds],
   );
   const terminalLabelsById = useMemo(() => {
     const next = new Map<string, string>();
@@ -846,9 +858,15 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
         ...serverOrderedTerminalIds,
         ...terminalUiState.terminalIds,
         ...panelTerminalIds,
+        ...deferredPanelTerminalIds,
       ]),
     ],
-    [panelTerminalIds, serverOrderedTerminalIds, terminalUiState.terminalIds],
+    [
+      panelTerminalIds,
+      deferredPanelTerminalIds,
+      serverOrderedTerminalIds,
+      terminalUiState.terminalIds,
+    ],
   );
   const storeSetTerminalHeight = useTerminalUiStateStore((state) => state.setTerminalHeight);
   const storeSplitTerminal = useTerminalUiStateStore((state) => state.splitTerminal);
@@ -865,12 +883,23 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
       return;
     }
     if (
-      serverTerminalIdsStrictSubsetOfClient(serverOrderedTerminalIds, terminalUiState.terminalIds)
+      serverTerminalIdsStrictSubsetOfClient(serverOrderedTerminalIds, [
+        ...terminalUiState.terminalIds,
+        // Sessions pending deferred panel teardown are dying; adopting them
+        // here would put them in the drawer right before deletion.
+        ...deferredPanelTerminalIds,
+      ])
     ) {
       return;
     }
     reconcileTerminalIds(threadRef, serverOrderedTerminalIds);
-  }, [reconcileTerminalIds, serverOrderedTerminalIds, terminalUiState.terminalIds, threadRef]);
+  }, [
+    reconcileTerminalIds,
+    serverOrderedTerminalIds,
+    terminalUiState.terminalIds,
+    threadRef,
+    deferredPanelTerminalIds,
+  ]);
   const [localFocusRequestId, setLocalFocusRequestId] = useState(0);
   const worktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null;
   const effectiveWorktreePath = useMemo(() => {
@@ -1893,6 +1922,13 @@ function ChatViewContent(props: ChatViewProps) {
         ),
       ),
     [rightPanelState.surfaces],
+  );
+  // Read straight off the ref: it is always written synchronously in an
+  // event handler followed by a store update, so the relevant renders see
+  // fresh contents. Empty result returns a stable singleton, keeping the
+  // memoized drawers from churning.
+  const deferredPanelTerminalIds = deferredRightPanelTerminalIds(
+    deferredRightPanelCleanupRef.current,
   );
   const allocatableActiveTerminalIds = useMemo(
     () => [...new Set([...activeKnownTerminalIds, ...panelTerminalIds])],
@@ -7456,6 +7492,7 @@ function ChatViewContent(props: ChatViewProps) {
             closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
             keybindings={keybindings}
             onAddTerminalContext={addTerminalContextToDraft}
+            deferredPanelTerminalIds={deferredPanelTerminalIds}
           />
         ))}
       </div>
