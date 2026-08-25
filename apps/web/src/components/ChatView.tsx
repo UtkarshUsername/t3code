@@ -754,6 +754,22 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
   const terminalOpen = active && terminalUiState.terminalOpen;
   const [isResizing, setIsResizing] = useState(false);
   const terminalDrawerFrameRef = useRef<HTMLDivElement>(null);
+  // Retained drawers stay mounted while hidden, so this instance can tell a
+  // thread-switch return (hidden with the open flag unchanged) apart from a
+  // genuine open: only the switch-back skips the slide-up. Mounts that appear
+  // already open - the first open creating the drawer, reload restores,
+  // revisits outside the retention cache - still animate; a mount cannot
+  // distinguish those from each other, and gating on mount state suppressed
+  // genuine opens.
+  const hideContextRef = useRef<{ uiOpen: boolean } | null>(null);
+  useEffect(() => {
+    if (active) {
+      hideContextRef.current = null;
+      return;
+    }
+    hideContextRef.current = { uiOpen: terminalUiState.terminalOpen };
+  }, [active, terminalUiState.terminalOpen]);
+  const animateTerminalEnter = terminalOpen && hideContextRef.current?.uiOpen !== true;
   const knownTerminalSessions = useKnownTerminalSessions({
     environmentId: threadRef.environmentId,
     threadId,
@@ -1066,10 +1082,7 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     <TerminalDrawerTransitionShell
       active={active}
       open={terminalOpen}
-      // The drawer does not stay mounted through a close, so every appearance
-      // is an entrance; unlike the inline panel there is no continuous reveal
-      // to suppress.
-      animateEnter
+      animateEnter={animateTerminalEnter}
       height={terminalUiState.terminalHeight}
       resizing={terminalOpen && isResizing}
       frameRef={terminalDrawerFrameRef}
