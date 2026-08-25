@@ -1,5 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { useInterfaceAnimationsEnabled } from "../hooks/useInterfaceAnimations";
+
 const RIGHT_PANEL_EXIT_FALLBACK_MS = 250;
 
 /**
@@ -16,6 +18,7 @@ export function InlineRightPanelPresence<Snapshot>(props: {
   const [present, setPresent] = useState(props.open);
   const lastOpenSnapshotRef = useRef(props.snapshot);
   const exitCompletedRef = useRef(!props.open);
+  const animationsEnabled = useInterfaceAnimationsEnabled();
 
   useLayoutEffect(() => {
     if (!props.open) return;
@@ -52,13 +55,15 @@ export function InlineRightPanelPresence<Snapshot>(props: {
       return;
     }
     if (!present) return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    // Without animations (setting off or reduced motion) there is no exit
+    // transition to wait for, so settle immediately.
+    if (!animationsEnabled) {
       completeExit();
       return;
     }
     const timeoutId = window.setTimeout(completeExit, RIGHT_PANEL_EXIT_FALLBACK_MS);
     return () => window.clearTimeout(timeoutId);
-  }, [completeExit, present, props.open]);
+  }, [animationsEnabled, completeExit, present, props.open]);
 
   const snapshot = props.open ? props.snapshot : lastOpenSnapshotRef.current;
   return present ? props.children(snapshot, completeExit) : null;

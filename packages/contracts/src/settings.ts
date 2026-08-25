@@ -221,6 +221,12 @@ export const ClientSettingsSchema = Schema.Struct({
       modelOrder: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
     }),
   ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  /**
+   * Opt-in motion for layout surfaces: the app sidebar's collapse, right
+   * panels opening and closing, and the terminal drawer. Off by default, so
+   * every surface snaps unless the user asks for the animation.
+   */
+  interfaceAnimations: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Legacy plan mode. The composer's Build/Plan toggle was removed from the
   // default UI; this beta flag restores it (plus the /plan and /default slash
   // commands) for users who still rely on the old workflow.
@@ -925,6 +931,7 @@ export const ClientSettingsPatch = Schema.Struct({
       }),
     ),
   ),
+  interfaceAnimations: Schema.optionalKey(Schema.Boolean),
   providerModelPreferences: Schema.optionalKey(
     Schema.Record(
       ProviderInstanceId,

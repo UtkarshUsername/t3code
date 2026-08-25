@@ -2610,3 +2610,19 @@ code {
     transform: scaleX(0.9);
   }
 }
+
+/* Layout motion is opt-in (Settings > Appearance > Animations), so without
+   the flag every animated surface snaps: right panels and the terminal
+   drawer's gap/surface transitions above, plus the app sidebar's width
+   utilities. Unlayered so it outranks Tailwind's utility layer too. */
+html:not([data-interface-animations="true"])
+  :is(
+    .right-panel-inline-gap,
+    .right-panel-inline-surface,
+    .terminal-drawer-inline-gap,
+    .terminal-drawer-inline-surface,
+    [data-slot="sidebar-gap"],
+    [data-slot="sidebar-container"]
+  ) {
+  transition: none;
+}

@@ -1119,6 +1119,32 @@ export function AppearanceSettingsPanel() {
           }
         />
 
+        <SettingsRow
+          {...searchableSetting("interface-animations")}
+          description="Animate the sidebar, right panels, and terminal drawer as they open and close."
+          resetAction={
+            settings.interfaceAnimations !== DEFAULT_UNIFIED_SETTINGS.interfaceAnimations ? (
+              <SettingResetButton
+                label="animations"
+                onClick={() =>
+                  updateSettings({
+                    interfaceAnimations: DEFAULT_UNIFIED_SETTINGS.interfaceAnimations,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.interfaceAnimations}
+              onCheckedChange={(checked) =>
+                updateSettings({ interfaceAnimations: Boolean(checked) })
+              }
+              aria-label="Interface animations"
+            />
+          }
+        />
+
         {showEnvironmentIdentification ? (
           <SettingsRow
             {...searchableSetting("environment-identification")}

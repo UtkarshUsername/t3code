@@ -134,6 +134,7 @@ function RootRouteView() {
         <DocumentTitleSync />
         <ContrastAppearanceSync />
         <GlassAppearanceSync />
+        <InterfaceAnimationsSync />
         <FontAppearanceSync />
         {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
         <RelayClientInstallDialog />
@@ -170,6 +171,19 @@ function GlassAppearanceSync() {
   useEffect(() => {
     document.documentElement.style.setProperty("--glass-opacity", `${glassOpacity}%`);
   }, [glassOpacity]);
+
+  return null;
+}
+
+// The CSS kill-switch for layout motion reads this flag; the exit-wait logic
+// in the panel presence components reads the setting through
+// `useInterfaceAnimationsEnabled` instead.
+function InterfaceAnimationsSync() {
+  const interfaceAnimations = useClientSettings((settings) => settings.interfaceAnimations);
+
+  useEffect(() => {
+    document.documentElement.dataset.interfaceAnimations = interfaceAnimations ? "true" : "false";
+  }, [interfaceAnimations]);
 
   return null;
 }

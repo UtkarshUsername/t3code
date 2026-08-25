@@ -117,6 +117,15 @@ describe("ClientSettings environment identification", () => {
 });
 
 describe("ClientSettings sidebar", () => {
+  it("defaults layout animations off and accepts an explicit opt-in", () => {
+    expect(decodeClientSettings({}).interfaceAnimations).toBe(false);
+    expect(decodeClientSettings({ interfaceAnimations: true }).interfaceAnimations).toBe(true);
+    expect(decodeClientSettingsPatch({ interfaceAnimations: false }).interfaceAnimations).toBe(
+      false,
+    );
+    expect(decodeClientSettingsPatch({ interfaceAnimations: true }).interfaceAnimations).toBe(true);
+  });
+
   it("defaults to the current sidebar with automatic merge and inactivity settling", () => {
     const settings = decodeClientSettings({});
     expect(settings.legacySidebarEnabled).toBe(false);

@@ -212,6 +212,7 @@ import {
   useClientSettingsHydrated,
   useEnvironmentSettings,
 } from "../hooks/useSettings";
+import { useInterfaceAnimationsEnabled } from "../hooks/useInterfaceAnimations";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useThreadActions } from "../hooks/useThreadActions";
@@ -1046,9 +1047,12 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
   );
 
   const terminalThreadKey = scopedThreadKey(threadRef);
+  const animationsEnabled = useInterfaceAnimationsEnabled();
   useEffect(() => {
     if (!active || terminalOpen) return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    // Without animations (setting off or reduced motion) there is no exit
+    // transition to wait for, so settle immediately.
+    if (!animationsEnabled) {
       onExitComplete(terminalThreadKey);
       return;
     }
@@ -1057,7 +1061,7 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
       TERMINAL_DRAWER_EXIT_FALLBACK_MS,
     );
     return () => window.clearTimeout(timeoutId);
-  }, [active, onExitComplete, terminalOpen, terminalThreadKey]);
+  }, [active, animationsEnabled, onExitComplete, terminalOpen, terminalThreadKey]);
 
   if (!project || !cwd) {
     return null;
