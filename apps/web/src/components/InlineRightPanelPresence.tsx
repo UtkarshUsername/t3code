@@ -22,7 +22,7 @@ export function InlineRightPanelPresence<Snapshot>(props: {
   // open and animates. `hasPresented` flips true right after that first
   // commit, so quick close/reopen still animates.
   const bornOpenRef = useRef(props.open);
-  const [hasPresented, setHasPresented] = useState(props.open);
+  const [hasPresented, setHasPresented] = useState(false);
   useEffect(() => {
     if (!present) return;
     setHasPresented(true);

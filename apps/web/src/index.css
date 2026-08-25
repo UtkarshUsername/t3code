@@ -2615,8 +2615,9 @@ code {
 /* Layout motion is opt-in (Settings > Appearance > Animations), so without
    the flag every animated surface snaps: right panels and the terminal
    drawer's gap/surface transitions above, plus the app sidebar's width
-   utilities and its off-canvas sheet variant. Unlayered so it outranks
-   Tailwind's utility layer too. */
+   utilities and its off-canvas sheet variant (surface + backdrop, scoped via
+   :has so other sheets keep their motion). Unlayered so it outranks Tailwind's
+   utility layer too. */
 html:not([data-interface-animations="true"])
   :is(
     .right-panel-inline-gap,
@@ -2625,7 +2626,8 @@ html:not([data-interface-animations="true"])
     .terminal-drawer-inline-surface,
     [data-slot="sidebar-gap"],
     [data-slot="sidebar-container"],
-    [data-mobile="true"][data-sidebar="sidebar"]
+    [data-mobile="true"][data-sidebar="sidebar"],
+    [data-slot="sheet-backdrop"]:has(~ [data-mobile="true"][data-sidebar="sidebar"])
   ) {
   transition: none;
 }
@@ -2637,7 +2639,8 @@ html:not([data-interface-animations="true"])
   :is(
     [data-slot="sidebar-gap"],
     [data-slot="sidebar-container"],
-    [data-mobile="true"][data-sidebar="sidebar"]
+    [data-mobile="true"][data-sidebar="sidebar"],
+    [data-slot="sheet-backdrop"]:has(~ [data-mobile="true"][data-sidebar="sidebar"])
   ) {
     transition: none;
   }
