@@ -754,7 +754,11 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
   const terminalOpen = active && terminalUiState.terminalOpen;
   const [isResizing, setIsResizing] = useState(false);
   const terminalDrawerFrameRef = useRef<HTMLDivElement>(null);
-  const wasActiveRef = useRef(active);
+  // Seeded false: a drawer that mounts already open (reload into a thread
+  // with a persisted terminal, or a switch to a thread outside the retained
+  // mount cache) is a reveal, not an open toggle, and must not replay the
+  // slide-up. Genuine toggles animate because active stays true across them.
+  const wasActiveRef = useRef(false);
   const animateTerminalEnter = active && wasActiveRef.current;
   useLayoutEffect(() => {
     wasActiveRef.current = active;

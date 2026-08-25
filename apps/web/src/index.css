@@ -2627,7 +2627,9 @@ html:not([data-interface-animations="true"])
     [data-slot="sidebar-gap"],
     [data-slot="sidebar-container"],
     [data-mobile="true"][data-sidebar="sidebar"],
-    [data-slot="sheet-backdrop"]:has(~ [data-mobile="true"][data-sidebar="sidebar"])
+    [data-slot="sheet-backdrop"]:has(
+      ~ [data-slot="sheet-viewport"] [data-mobile="true"][data-sidebar="sidebar"]
+    )
   ) {
   transition: none;
 }
@@ -2640,7 +2642,9 @@ html:not([data-interface-animations="true"])
     [data-slot="sidebar-gap"],
     [data-slot="sidebar-container"],
     [data-mobile="true"][data-sidebar="sidebar"],
-    [data-slot="sheet-backdrop"]:has(~ [data-mobile="true"][data-sidebar="sidebar"])
+    [data-slot="sheet-backdrop"]:has(
+      ~ [data-slot="sheet-viewport"] [data-mobile="true"][data-sidebar="sidebar"]
+    )
   ) {
     transition: none;
   }
