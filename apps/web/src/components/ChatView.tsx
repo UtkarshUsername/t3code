@@ -7181,7 +7181,10 @@ function ChatViewContent(props: ChatViewProps) {
             }
             keybindings={keybindings}
             availableEditors={availableEditors}
-            rightPanelOpen={rightPanelOpen}
+            // Track placement, not the open flag: the actions' reserve must
+            // agree with where the layout cluster actually renders through
+            // the whole exit transition, not just after it.
+            rightPanelOpen={showRowPanelLayoutControls}
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
             onRunProjectScript={runProjectScript}
