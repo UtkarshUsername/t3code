@@ -3952,6 +3952,7 @@ function ChatViewContent(props: ChatViewProps) {
   // exit-complete callback alone loses to this effect's write when the exit
   // settles instantly (animations off).
   const [inlinePanelExiting, setInlinePanelExiting] = useState(false);
+  const inlinePanelAnimationsEnabled = useInterfaceAnimationsEnabled();
   const wasOpenInlineRef = useRef(rightPanelOpen && !shouldUseRightPanelSheet);
   useEffect(() => {
     const openInline = rightPanelOpen && !shouldUseRightPanelSheet;
@@ -3967,13 +3968,19 @@ function ChatViewContent(props: ChatViewProps) {
       return;
     }
     wasOpenInlineRef.current = false;
+    // Without animations there is no exit to ride; settle immediately
+    // instead of holding the cluster at the row level for the fallback.
+    if (!inlinePanelAnimationsEnabled) {
+      setInlinePanelExiting(false);
+      return;
+    }
     setInlinePanelExiting(true);
     const timeoutId = window.setTimeout(
       () => setInlinePanelExiting(false),
       INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS,
     );
     return () => window.clearTimeout(timeoutId);
-  }, [rightPanelOpen, shouldUseRightPanelSheet]);
+  }, [rightPanelOpen, shouldUseRightPanelSheet, inlinePanelAnimationsEnabled]);
   const showRowPanelLayoutControls =
     !shouldUseRightPanelSheet && (rightPanelOpen || inlinePanelExiting);
   // In sheet mode the open panel supplies its own cluster via layoutControls,
