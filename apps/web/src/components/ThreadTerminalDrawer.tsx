@@ -1134,6 +1134,16 @@ export default function ThreadTerminalDrawer({
     },
     [],
   );
+  useEffect(() => {
+    if (visible) return;
+    // A retained drawer is display:none while inactive, which drops the
+    // capture just like an unmount; navigating away mid-drag would otherwise
+    // leave the parent's resizing flag stuck.
+    if (resizeStateRef.current === null) return;
+    resizeStateRef.current = null;
+    didResizeDuringDragRef.current = false;
+    onResizeStateChangeRef.current?.(false);
+  }, [visible]);
 
   const normalizedTerminalIds = useMemo(() => {
     const normalizedIds: string[] = [];
