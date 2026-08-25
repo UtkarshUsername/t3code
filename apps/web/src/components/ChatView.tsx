@@ -7181,10 +7181,13 @@ function ChatViewContent(props: ChatViewProps) {
             }
             keybindings={keybindings}
             availableEditors={availableEditors}
-            // Track placement, not the open flag: the actions' reserve must
-            // agree with where the layout cluster actually renders through
-            // the whole exit transition, not just after it.
-            rightPanelOpen={showRowPanelLayoutControls}
+            // Deliberately the instantaneous open flag, not placement: the
+            // floating cluster overlaps the header actions zone whenever the
+            // panel is not genuinely open-inline (closed, or mid-exit with
+            // the gap still shrinking), so those states keep the full
+            // reserve; genuinely open clears it because the cluster anchors
+            // out over the panel instead.
+            rightPanelOpen={rightPanelOpen}
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
             onRunProjectScript={runProjectScript}
