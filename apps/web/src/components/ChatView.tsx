@@ -3976,6 +3976,12 @@ function ChatViewContent(props: ChatViewProps) {
   }, [rightPanelOpen, shouldUseRightPanelSheet]);
   const showRowPanelLayoutControls =
     !shouldUseRightPanelSheet && (rightPanelOpen || inlinePanelExiting);
+  // In sheet mode the open panel supplies its own cluster via layoutControls,
+  // so the header must stay empty while the sheet is up - only a closed
+  // inline panel hands the cluster to the header.
+  const showHeaderPanelLayoutControls = shouldUseRightPanelSheet
+    ? !rightPanelOpen
+    : !showRowPanelLayoutControls;
   const handleInlineRightPanelExitComplete = useCallback(
     (snapshot: InlineRightPanelSnapshot) => {
       setInlinePanelExiting(false);
@@ -7147,7 +7153,7 @@ function ChatViewContent(props: ChatViewProps) {
           reserveNativeControls={reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar}
           className="relative bg-background"
         >
-          {!showRowPanelLayoutControls ? panelLayoutControls : null}
+          {showHeaderPanelLayoutControls ? panelLayoutControls : null}
           <ChatHeader
             {...(!supportsPullRequests || activeProjectRepository === null
               ? {}

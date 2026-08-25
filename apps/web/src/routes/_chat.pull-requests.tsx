@@ -68,7 +68,10 @@ import { PullRequestListEmptyState } from "../components/pullRequest/PullRequest
 import { PullRequestListGhost } from "../components/pullRequest/PullRequestGhosts";
 import { PullRequestRow } from "../components/pullRequest/PullRequestRow";
 import { PullRequestsUnavailableState } from "../components/pullRequest/PullRequestsUnavailableState";
-import { InlineRightPanelPresence } from "../components/InlineRightPanelPresence";
+import {
+  INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS,
+  InlineRightPanelPresence,
+} from "../components/InlineRightPanelPresence";
 import { RightPanelTabs, type PullRequestTabStatus } from "../components/RightPanelTabs";
 import {
   WorkspaceBreadcrumb,
@@ -1482,6 +1485,32 @@ function PullRequestsRouteView() {
       }
     />
   );
+  const rightPanelOpen =
+    rightPanelState.isOpen && activePullRequestSurface !== null && panelEnvironmentId !== null;
+  // The titlebar strip swaps containers when the panel closes. Keep it at the
+  // route-row anchor until the exit transition lands so it rides the
+  // collapsing gap edge instead of jumping into a header still inset by the
+  // not-yet-collapsed panel width; same settle-timer scheme as ChatView.
+  const [panelControlsRidingExit, setPanelControlsRidingExit] = useState(false);
+  const wasOpenRef = useRef(rightPanelOpen);
+  useEffect(() => {
+    if (rightPanelOpen) {
+      wasOpenRef.current = true;
+      setPanelControlsRidingExit(false);
+      return;
+    }
+    if (!wasOpenRef.current) {
+      setPanelControlsRidingExit(false);
+      return;
+    }
+    wasOpenRef.current = false;
+    setPanelControlsRidingExit(true);
+    const timeoutId = window.setTimeout(
+      () => setPanelControlsRidingExit(false),
+      INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [rightPanelOpen]);
   const columnProps = {
     refreshing,
     onRefresh: () => void refreshFromHost(),
@@ -1508,8 +1537,11 @@ function PullRequestsRouteView() {
       // descendant beats the header's desktop drag-region, where a floating
       // sibling loses (app-region hit-testing ignores z-index). Open, it moves
       // back out to the route container, which spans the panel too, so the
-      // toggle keeps one fixed top-right anchor and never jumps sideways.
-      pullRequestsSupported && !rightPanelState.isOpen ? openPanelControls : null,
+      // toggle keeps one fixed top-right anchor and never jumps sideways. It
+      // stays at the row anchor through the exit transition as well.
+      pullRequestsSupported && !rightPanelOpen && !panelControlsRidingExit
+        ? openPanelControls
+        : null,
     rightPanelOpen: rightPanelState.isOpen,
     listBody,
   };
@@ -1548,8 +1580,6 @@ function PullRequestsRouteView() {
     selectSurfaceInUrl(null);
   };
 
-  const rightPanelOpen =
-    rightPanelState.isOpen && activePullRequestSurface !== null && panelEnvironmentId !== null;
   // Frozen into the presence snapshot so the exiting panel keeps rendering the
   // detail view it had while open, even after the surface state clears.
   const detailPanel =
@@ -1581,7 +1611,9 @@ function PullRequestsRouteView() {
           scrollable, and focus scrolling during the panel's enter transition
           shifted the whole row left. Clip forbids scrolling entirely. */}
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-clip">
-        {pullRequestsSupported && rightPanelState.isOpen ? openPanelControls : null}
+        {pullRequestsSupported && (rightPanelOpen || panelControlsRidingExit)
+          ? openPanelControls
+          : null}
         <PullRequestsColumn {...columnProps} />
 
         {/* Mounted regardless of open state: the presence owns the exit
@@ -1590,6 +1622,7 @@ function PullRequestsRouteView() {
         <InlineRightPanelPresence
           key="pull-requests:inline"
           open={rightPanelOpen}
+          onExitComplete={() => setPanelControlsRidingExit(false)}
           snapshot={{
             surfaces: rightPanelState.surfaces,
             activeSurfaceId: activePullRequestSurface?.id ?? null,
