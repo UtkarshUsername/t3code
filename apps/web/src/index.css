@@ -824,6 +824,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
       .right-panel-inline-surface {
       translate: 100%;
     }
+
+    /* Maximized panels have no gap; their full-width surface slides in to
+       mirror the maximized-exit translate. */
+    .right-panel-inline-frame[data-preview-panel-maximized="true"][data-right-panel-animate-enter="true"]
+      .right-panel-inline-surface {
+      translate: 100%;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -2615,10 +2622,10 @@ code {
 /* Layout motion is opt-in (Settings > Appearance > Animations), so without
    the flag every animated surface snaps: right panels and the terminal
    drawer's gap/surface transitions above, plus the app sidebar's width
-   utilities, its off-canvas sheet variant (surface + backdrop, scoped via
-   :has so other sheets keep their motion), and the workspace header inset
-   that collapses in lockstep with the sidebar. Unlayered so it outranks
-   Tailwind's utility layer too. */
+   utilities, its off-canvas sheet variant and the right panel's sheet
+   variant (surfaces + backdrops, scoped via :has so other sheets keep their
+   motion), and the workspace header inset that collapses in lockstep with
+   the sidebar. Unlayered so it outranks Tailwind's utility layer too. */
 html:not([data-interface-animations="true"])
   :is(
     .right-panel-inline-gap,
@@ -2629,24 +2636,29 @@ html:not([data-interface-animations="true"])
     [data-slot="sidebar-container"],
     [data-workspace-page-header],
     [data-mobile="true"][data-sidebar="sidebar"],
+    [data-right-panel-sheet],
     [data-slot="sheet-backdrop"]:has(
       ~ [data-slot="sheet-viewport"] [data-mobile="true"][data-sidebar="sidebar"]
-    )
+    ),
+    [data-slot="sheet-backdrop"]:has(~ [data-slot="sheet-viewport"] [data-right-panel-sheet])
   ) {
   transition: none;
 }
 
 /* The OS reduced-motion preference wins even with animations opted into.
-   Only the sidebar slots and sheet need this here: the panel and drawer
+   Only the sidebar slots and sheets need this here: the panel and drawer
    classes carry their own reduced-motion rules up in the base layer. */
 @media (prefers-reduced-motion: reduce) {
   :is(
     [data-slot="sidebar-gap"],
     [data-slot="sidebar-container"],
+    [data-workspace-page-header],
     [data-mobile="true"][data-sidebar="sidebar"],
+    [data-right-panel-sheet],
     [data-slot="sheet-backdrop"]:has(
       ~ [data-slot="sheet-viewport"] [data-mobile="true"][data-sidebar="sidebar"]
-    )
+    ),
+    [data-slot="sheet-backdrop"]:has(~ [data-slot="sheet-viewport"] [data-right-panel-sheet])
   ) {
     transition: none;
   }

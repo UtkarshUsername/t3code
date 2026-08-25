@@ -22,6 +22,7 @@ export function RightPanelSheet(props: {
         showCloseButton={false}
         keepMounted
         className={RIGHT_PANEL_SHEET_CLASS_NAME}
+        data-right-panel-sheet=""
       >
         {props.children}
       </SheetPopup>

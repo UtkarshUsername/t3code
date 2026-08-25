@@ -122,9 +122,7 @@ export function PreviewPanelShell(props: {
         data-preview-panel-mode={props.mode}
         data-preview-panel-maximized={maximized ? "true" : "false"}
         data-right-panel-open={open ? "true" : "false"}
-        data-right-panel-animate-enter={
-          open && props.animateEnter !== false && !maximized ? "true" : undefined
-        }
+        data-right-panel-animate-enter={open && props.animateEnter !== false ? "true" : undefined}
         data-right-panel-resizing={
           !maximized && (isResizing || isViewportResizing || isContainerResizing)
             ? "true"
