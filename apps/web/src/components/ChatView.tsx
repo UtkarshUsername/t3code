@@ -3941,8 +3941,29 @@ function ChatViewContent(props: ChatViewProps) {
       threadKey === routeThreadKey ? null : routeThreadKey,
     );
   }, [canMaximizeRightPanel, routeThreadKey]);
+  // The layout cluster swaps containers when the inline panel closes. Keep
+  // it in its row position until the exit transition lands so it rides the
+  // collapsing gap edge instead of jumping into a header that is still inset
+  // by the not-yet-collapsed panel width.
+  const [inlinePanelExiting, setInlinePanelExiting] = useState(false);
+  const wasOpenInlineRef = useRef(rightPanelOpen && !shouldUseRightPanelSheet);
+  useEffect(() => {
+    const openInline = rightPanelOpen && !shouldUseRightPanelSheet;
+    if (openInline) {
+      wasOpenInlineRef.current = true;
+      setInlinePanelExiting(false);
+      return;
+    }
+    if (wasOpenInlineRef.current) {
+      wasOpenInlineRef.current = false;
+      setInlinePanelExiting(true);
+    }
+  }, [rightPanelOpen, shouldUseRightPanelSheet]);
+  const showRowPanelLayoutControls =
+    !shouldUseRightPanelSheet && (rightPanelOpen || inlinePanelExiting);
   const handleInlineRightPanelExitComplete = useCallback(
     (snapshot: InlineRightPanelSnapshot) => {
+      setInlinePanelExiting(false);
       const pendingCleanup = deferredRightPanelCleanupRef.current;
       if (
         !pendingCleanup ||
@@ -7096,7 +7117,7 @@ function ChatViewContent(props: ChatViewProps) {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 overflow-clip bg-background">
-      {rightPanelOpen && !shouldUseRightPanelSheet ? panelLayoutControls : null}
+      {showRowPanelLayoutControls ? panelLayoutControls : null}
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
@@ -7111,7 +7132,7 @@ function ChatViewContent(props: ChatViewProps) {
           reserveNativeControls={reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar}
           className="relative bg-background"
         >
-          {!rightPanelOpen ? panelLayoutControls : null}
+          {!showRowPanelLayoutControls ? panelLayoutControls : null}
           <ChatHeader
             {...(!supportsPullRequests || activeProjectRepository === null
               ? {}
