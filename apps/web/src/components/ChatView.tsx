@@ -167,6 +167,7 @@ import { isThreadOwnPullRequest } from "./pullRequest/pullRequestDetail.logic";
 import { PullRequestDetailPanel } from "./pullRequest/PullRequestDetailPanel";
 import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
+import { InlineRightPanelPresence } from "./InlineRightPanelPresence";
 import { RightPanelTabs, type PullRequestTabStatus } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import {
@@ -1277,65 +1278,6 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
 });
 
 const TERMINAL_DRAWER_EXIT_FALLBACK_MS = 250;
-const RIGHT_PANEL_EXIT_FALLBACK_MS = 250;
-
-/** Keep the heavy panel mounted only until its CSS exit finishes. */
-function InlineRightPanelPresence<Snapshot>(props: {
-  open: boolean;
-  snapshot: Snapshot;
-  onExitComplete?: (snapshot: Snapshot) => void;
-  children: (snapshot: Snapshot, onExitComplete: () => void) => ReactNode;
-}) {
-  const [present, setPresent] = useState(props.open);
-  const lastOpenSnapshotRef = useRef(props.snapshot);
-  const exitCompletedRef = useRef(!props.open);
-
-  useLayoutEffect(() => {
-    if (!props.open) return;
-    lastOpenSnapshotRef.current = props.snapshot;
-    exitCompletedRef.current = false;
-  }, [props.open, props.snapshot]);
-
-  const notifyExitComplete = useCallback(() => {
-    if (props.open || exitCompletedRef.current) return false;
-    exitCompletedRef.current = true;
-    props.onExitComplete?.(lastOpenSnapshotRef.current);
-    return true;
-  }, [props.onExitComplete, props.open]);
-
-  const completeExit = useCallback(() => {
-    if (notifyExitComplete()) setPresent(false);
-  }, [notifyExitComplete]);
-
-  const notifyExitCompleteRef = useRef(notifyExitComplete);
-  useLayoutEffect(() => {
-    notifyExitCompleteRef.current = notifyExitComplete;
-  }, [notifyExitComplete]);
-
-  useEffect(
-    () => () => {
-      notifyExitCompleteRef.current();
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (props.open) {
-      setPresent(true);
-      return;
-    }
-    if (!present) return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
-      completeExit();
-      return;
-    }
-    const timeoutId = window.setTimeout(completeExit, RIGHT_PANEL_EXIT_FALLBACK_MS);
-    return () => window.clearTimeout(timeoutId);
-  }, [completeExit, present, props.open]);
-
-  const snapshot = props.open ? props.snapshot : lastOpenSnapshotRef.current;
-  return present ? props.children(snapshot, completeExit) : null;
-}
 
 type InlineRightPanelSnapshot = {
   threadRef: ScopedThreadRef;
