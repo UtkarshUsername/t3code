@@ -1577,7 +1577,10 @@ function PullRequestsRouteView() {
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
-      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      {/* overflow-clip (not hidden): a hidden box is still programmatically
+          scrollable, and focus scrolling during the panel's enter transition
+          shifted the whole row left. Clip forbids scrolling entirely. */}
+      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-clip">
         {pullRequestsSupported && rightPanelState.isOpen ? openPanelControls : null}
         <PullRequestsColumn {...columnProps} />
 
