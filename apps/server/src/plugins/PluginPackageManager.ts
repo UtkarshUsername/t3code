@@ -656,7 +656,11 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
 
     for (const id of [...enabledIds].sort()) {
       if (!discovered.has(id)) {
-        errors.push({ directory: id, error: "enabled package was not discovered" });
+        errors.push({
+          directory: id,
+          error: "enabled package was not discovered",
+          pluginId: id,
+        });
       }
     }
 

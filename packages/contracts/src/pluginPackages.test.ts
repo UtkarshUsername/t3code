@@ -82,6 +82,30 @@ describe("plugin package contracts", () => {
     });
   });
 
+  it("tags undiscovered enabled packages with their plugin id", () => {
+    expect(
+      decodeStatus({
+        errors: [
+          {
+            directory: "com.acme.gone",
+            error: "enabled package was not discovered",
+            pluginId: "com.acme.gone",
+          },
+        ],
+        packages: [],
+      }),
+    ).toEqual({
+      errors: [
+        {
+          directory: "com.acme.gone",
+          error: "enabled package was not discovered",
+          pluginId: "com.acme.gone",
+        },
+      ],
+      packages: [],
+    });
+  });
+
   it("decodes an enabled package blocked by dependency resolution", () => {
     expect(
       decodeStatus({

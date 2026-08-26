@@ -1149,6 +1149,42 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
           });
           expect(status.errors[0]?.error).toContain("manifestVersion");
           expect(status.errors[0]?.error).not.toContain("Cause([");
+          expect(status.errors[0]?.pluginId).toBeUndefined();
+        }),
+      );
+    }),
+  );
+
+  it.effect("tags enabled packages that are no longer discovered with their plugin id", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3code-plugin-package-missing-test-",
+      });
+      const packageDirectory = `${baseDir}/userdata/plugins/${packageId}`;
+      yield* fileSystem.makeDirectory(packageDirectory, { recursive: true });
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/t3-plugin.json`,
+        encodeManifest(manifest),
+      );
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/index.mjs`,
+        pluginSource(`${packageDirectory}/disposed.log`),
+      );
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          yield* manager.enable(packageId);
+          yield* fileSystem.remove(packageDirectory, { recursive: true });
+
+          const status = yield* manager.status;
+          const error = status.errors.find((entry) => entry.directory === packageId);
+          expect(error).toMatchObject({ directory: packageId, pluginId: packageId });
+          expect(error?.error).toContain("not discovered");
+          expect((yield* Effect.exit(manager.disable(packageId)))._tag).toBe("Success");
+          expect((yield* manager.status).errors).toEqual([]);
         }),
       );
     }),

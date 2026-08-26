@@ -95,6 +95,7 @@ export type PluginPackageStatus = typeof PluginPackageStatus.Type;
 export const PluginPackageDiscoveryError = Schema.Struct({
   directory: TrimmedNonEmptyString.check(Schema.isMaxLength(255), Schema.isPattern(/^[^/\\]+$/)),
   error: TrimmedNonEmptyString.check(Schema.isMaxLength(2_000)),
+  pluginId: Schema.optional(PluginPackageId),
 });
 export type PluginPackageDiscoveryError = typeof PluginPackageDiscoveryError.Type;
 

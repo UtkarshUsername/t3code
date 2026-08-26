@@ -413,6 +413,53 @@ describe("PluginsSettingsPanel", () => {
     ).toBeNull();
   });
 
+  it("offers a disable action for enabled packages that are no longer discovered", async () => {
+    query.data = {
+      packages: [],
+      errors: [
+        {
+          directory: "com.acme.gone",
+          error: "enabled package was not discovered",
+          pluginId: "com.acme.gone",
+        },
+      ],
+    };
+    const panel = renderPanel();
+    const button = visitElements(
+      panel,
+      (element) => element.props["data-plugin-missing-disable"] === "com.acme.gone",
+    );
+    expect(button).not.toBeNull();
+    (button?.props.onClick as (() => void) | undefined)?.();
+    await flushPromises();
+
+    expect(commands.disable).toHaveBeenCalledWith({
+      environmentId,
+      input: { id: "com.acme.gone" },
+    });
+    expect(query.refresh).toHaveBeenCalled();
+  });
+
+  it("keeps the undiscovered-package disable action read-only for limited sessions", () => {
+    access.value = "denied";
+    query.data = {
+      packages: [],
+      errors: [
+        {
+          directory: "com.acme.gone",
+          error: "enabled package was not discovered",
+          pluginId: "com.acme.gone",
+        },
+      ],
+    };
+    const button = visitElements(
+      renderPanel(),
+      (element) => element.props["data-plugin-missing-disable"] === "com.acme.gone",
+    );
+
+    expect(button?.props.disabled).toBe(true);
+  });
+
   it("shows package status without offering writes when the session is read only", () => {
     access.value = "denied";
     const panel = renderPanel();

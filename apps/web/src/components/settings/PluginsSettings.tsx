@@ -207,15 +207,15 @@ export function PluginsSettingsPanel() {
   );
 
   const runAction = useCallback(
-    (pluginPackage: PluginPackageStatus, action: PackageAction) => {
+    (id: string, action: PackageAction) => {
       if (environmentId === null || pending !== null || readOnly) return;
-      setPending({ id: pluginPackage.id, action });
+      setPending({ id, action });
       const command =
         action === "enable" ? enablePlugin : action === "disable" ? disablePlugin : reloadPlugin;
       void (async () => {
         const result = await command({
           environmentId,
-          input: { id: pluginPackage.id },
+          input: { id },
         });
         setPending(null);
         status.refresh();
@@ -297,18 +297,38 @@ export function PluginsSettingsPanel() {
           </Alert>
         ) : null}
 
-        {status.data?.errors.map((error) => (
-          <Alert
-            key={error.directory}
-            variant="error"
-            className="mb-2"
-            data-plugin-error={error.directory}
-          >
-            <CircleAlertIcon />
-            <AlertTitle>{error.directory}</AlertTitle>
-            <AlertDescription>{error.error}</AlertDescription>
-          </Alert>
-        ))}
+        {status.data?.errors.map((error) => {
+          const pluginId = error.pluginId;
+          const disabling =
+            pluginId !== undefined && pending?.id === pluginId && pending.action === "disable";
+          return (
+            <Alert
+              key={error.directory}
+              variant="error"
+              className="mb-2"
+              data-plugin-error={error.directory}
+            >
+              <CircleAlertIcon />
+              <AlertTitle>{error.directory}</AlertTitle>
+              <AlertDescription>
+                {error.error}
+                {pluginId !== undefined ? (
+                  <Button
+                    size="compact"
+                    variant="outline"
+                    className="mt-2"
+                    data-plugin-missing-disable={pluginId}
+                    disabled={pending !== null || readOnly}
+                    onClick={() => runAction(pluginId, "disable")}
+                  >
+                    {disabling ? <Spinner className="size-3" /> : null}
+                    Disable
+                  </Button>
+                ) : null}
+              </AlertDescription>
+            </Alert>
+          );
+        })}
 
         {status.isPending && status.data === null ? (
           <Empty className="min-h-52 gap-2 text-sm text-muted-foreground">
@@ -345,9 +365,9 @@ export function PluginsSettingsPanel() {
                 pending !== null && pending.id === pluginPackage.id ? pending.action : null
               }
               onEnabledChange={(enabled) =>
-                runAction(pluginPackage, enabled ? "enable" : "disable")
+                runAction(pluginPackage.id, enabled ? "enable" : "disable")
               }
-              onReload={() => runAction(pluginPackage, "reload")}
+              onReload={() => runAction(pluginPackage.id, "reload")}
             />
           ))}
         </div>
