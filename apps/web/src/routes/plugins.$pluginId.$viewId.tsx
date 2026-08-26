@@ -1,17 +1,27 @@
 import { createFileRoute, useCanGoBack, useNavigate } from "@tanstack/react-router";
 import { ArrowLeftIcon, PuzzleIcon } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
-import { PluginUiPage } from "../components/plugins/PluginUi";
+import { PluginUiPage, usePluginUiCatalog } from "../components/plugins/PluginUi";
 import { Button } from "../components/ui/button";
 import { SidebarInset } from "../components/ui/sidebar";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { WorkspacePageContainer } from "../components/WorkspacePageContainer";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { isElectron } from "../env";
+import { usePrimaryEnvironmentId } from "../state/environments";
 
 function PluginPageRoute() {
   const { pluginId, viewId } = Route.useParams();
+  const environmentId = usePrimaryEnvironmentId();
+  const catalog = usePluginUiCatalog(environmentId);
+  const viewLabel = useMemo(() => {
+    const currentSurface = isElectron ? "desktop" : "web";
+    const pluginPackage = catalog.packages.find((candidate) => candidate.pluginId === pluginId);
+    return pluginPackage?.views.find(
+      (candidate) => candidate.id === viewId && candidate.surfaces.includes(currentSurface),
+    )?.label;
+  }, [catalog.packages, pluginId, viewId]);
   const canGoBack = useCanGoBack();
   const navigate = useNavigate();
   const back = useCallback(() => {
@@ -28,7 +38,7 @@ function PluginPageRoute() {
               <ArrowLeftIcon />
             </Button>
             <PuzzleIcon className="size-4 text-muted-foreground" />
-            <span className="truncate text-sm font-medium">{pluginId}</span>
+            <span className="truncate text-sm font-medium">{viewLabel ?? pluginId}</span>
           </div>
         </WorkspacePageHeader>
         <ScrollArea className="min-h-0 flex-1" scrollFade scrollbarGutter>
