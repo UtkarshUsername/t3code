@@ -48,6 +48,20 @@ export class PluginHostCapabilityError extends Schema.TaggedErrorClass<PluginHos
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
+  static fromBoundary(
+    pluginId: string,
+    operation: string,
+    detail: string,
+    cause?: unknown,
+  ): PluginHostCapabilityError {
+    return new PluginHostCapabilityError({
+      pluginId,
+      operation,
+      detail,
+      ...(cause === undefined ? {} : { cause }),
+    });
+  }
+
   override get message(): string {
     return `${this.operation} failed for plugin ${this.pluginId}: ${this.detail}`;
   }
@@ -144,26 +158,15 @@ export const make = Effect.gen(function* () {
       Effect.provideService(Path.Path, path),
     );
 
-  const fail = (
-    pluginId: string,
-    operation: string,
-    detail: string,
-    cause?: unknown,
-  ): PluginHostCapabilityError =>
-    new PluginHostCapabilityError({
-      pluginId,
-      operation,
-      detail,
-      ...(cause === undefined ? {} : { cause }),
-    });
-
   const validatePluginId = (
     pluginId: string,
     operation: string,
   ): Effect.Effect<void, PluginHostCapabilityError> =>
     pluginIdPattern.test(pluginId)
       ? Effect.void
-      : Effect.fail(fail(pluginId, operation, "invalid plugin id"));
+      : Effect.fail(
+          PluginHostCapabilityError.fromBoundary(pluginId, operation, "invalid plugin id"),
+        );
 
   const validateKey = (
     pluginId: string,
@@ -172,7 +175,9 @@ export const make = Effect.gen(function* () {
   ): Effect.Effect<void, PluginHostCapabilityError> =>
     dataKeyPattern.test(key)
       ? Effect.void
-      : Effect.fail(fail(pluginId, operation, `invalid key ${key}`));
+      : Effect.fail(
+          PluginHostCapabilityError.fromBoundary(pluginId, operation, `invalid key ${key}`),
+        );
 
   const requirePermission = (
     pluginId: string,
@@ -182,7 +187,13 @@ export const make = Effect.gen(function* () {
   ): Effect.Effect<void, PluginHostCapabilityError> =>
     requested.has(permission)
       ? Effect.void
-      : Effect.fail(fail(pluginId, operation, `permission not declared: ${permission}`));
+      : Effect.fail(
+          PluginHostCapabilityError.fromBoundary(
+            pluginId,
+            operation,
+            `permission not declared: ${permission}`,
+          ),
+        );
 
   const readTextIfPresent = Effect.fn("PluginHostCapabilityBroker.readTextIfPresent")(function* (
     filePath: string,
@@ -195,23 +206,41 @@ export const make = Effect.gen(function* () {
         cause.reason._tag === "NotFound"
           ? Effect.succeed(Option.none<FileSystem.File.Info>())
           : Effect.fail(
-              fail(pluginId, operation, `could not stat ${path.basename(filePath)}`, cause),
+              PluginHostCapabilityError.fromBoundary(
+                pluginId,
+                operation,
+                `could not stat ${path.basename(filePath)}`,
+                cause,
+              ),
             ),
       ),
     );
     if (Option.isNone(info)) return Option.none();
     if (info.value.size > BigInt(MAX_DATA_FILE_BYTES)) {
-      return yield* fail(pluginId, operation, `${path.basename(filePath)} exceeds data limit`);
+      return yield* PluginHostCapabilityError.fromBoundary(
+        pluginId,
+        operation,
+        `${path.basename(filePath)} exceeds data limit`,
+      );
     }
     const contents = yield* fileSystem
       .readFileString(filePath)
       .pipe(
         Effect.mapError((cause) =>
-          fail(pluginId, operation, `could not read ${path.basename(filePath)}`, cause),
+          PluginHostCapabilityError.fromBoundary(
+            pluginId,
+            operation,
+            `could not read ${path.basename(filePath)}`,
+            cause,
+          ),
         ),
       );
     if (Buffer.byteLength(contents, "utf8") > MAX_DATA_FILE_BYTES) {
-      return yield* fail(pluginId, operation, `${path.basename(filePath)} exceeds data limit`);
+      return yield* PluginHostCapabilityError.fromBoundary(
+        pluginId,
+        operation,
+        `${path.basename(filePath)} exceeds data limit`,
+      );
     }
     return Option.some(contents);
   });
@@ -223,7 +252,14 @@ export const make = Effect.gen(function* () {
     const contents = yield* readTextIfPresent(grantFilePath, pluginId, operation);
     if (Option.isNone(contents)) return new Map();
     const decoded = yield* decodeGrantFile(contents.value).pipe(
-      Effect.mapError((cause) => fail(pluginId, operation, "plugin grant file is invalid", cause)),
+      Effect.mapError((cause) =>
+        PluginHostCapabilityError.fromBoundary(
+          pluginId,
+          operation,
+          "plugin grant file is invalid",
+          cause,
+        ),
+      ),
     );
     return new Map(
       decoded.grants.map(({ id, permissions }) => [id, [...new Set(permissions)].sort()] as const),
@@ -241,12 +277,22 @@ export const make = Effect.gen(function* () {
         .map(([id, permissions]) => ({ id, permissions: [...permissions].sort() })),
     }).pipe(
       Effect.mapError((cause) =>
-        fail(pluginId, operation, "could not encode plugin grants", cause),
+        PluginHostCapabilityError.fromBoundary(
+          pluginId,
+          operation,
+          "could not encode plugin grants",
+          cause,
+        ),
       ),
     );
     yield* atomicWrite(grantFilePath, contents).pipe(
       Effect.mapError((cause) =>
-        fail(pluginId, operation, "could not persist plugin grants", cause),
+        PluginHostCapabilityError.fromBoundary(
+          pluginId,
+          operation,
+          "could not persist plugin grants",
+          cause,
+        ),
       ),
     );
   });
@@ -270,7 +316,12 @@ export const make = Effect.gen(function* () {
         yield* validatePluginId(pluginId, "grant");
         const validatedPermissions = yield* decodePermissions(permissions).pipe(
           Effect.mapError((cause) =>
-            fail(pluginId, "grant", "plugin permissions are invalid", cause),
+            PluginHostCapabilityError.fromBoundary(
+              pluginId,
+              "grant",
+              "plugin permissions are invalid",
+              cause,
+            ),
           ),
         );
         const grants = yield* readGrants(pluginId, "grant");
@@ -292,7 +343,14 @@ export const make = Effect.gen(function* () {
       const contents = yield* readTextIfPresent(filePath, pluginId, operation);
       if (Option.isNone(contents)) return new Map<string, JsonValue>();
       const decoded = yield* decodeStoreFile(contents.value).pipe(
-        Effect.mapError((cause) => fail(pluginId, operation, `${name} data is invalid`, cause)),
+        Effect.mapError((cause) =>
+          PluginHostCapabilityError.fromBoundary(
+            pluginId,
+            operation,
+            `${name} data is invalid`,
+            cause,
+          ),
+        ),
       );
       return new Map(decoded.entries.map(({ key, value }) => [key, value]));
     });
@@ -306,11 +364,16 @@ export const make = Effect.gen(function* () {
           .map(([key, value]) => ({ key, value })),
       }).pipe(
         Effect.mapError((cause) =>
-          fail(pluginId, operation, `could not encode ${name} data`, cause),
+          PluginHostCapabilityError.fromBoundary(
+            pluginId,
+            operation,
+            `could not encode ${name} data`,
+            cause,
+          ),
         ),
       );
       if (Buffer.byteLength(contents, "utf8") > MAX_DATA_FILE_BYTES) {
-        return yield* fail(
+        return yield* PluginHostCapabilityError.fromBoundary(
           pluginId,
           operation,
           `${name} data exceeds ${MAX_DATA_FILE_BYTES} bytes`,
@@ -318,7 +381,12 @@ export const make = Effect.gen(function* () {
       }
       yield* atomicWrite(filePath, contents).pipe(
         Effect.mapError((cause) =>
-          fail(pluginId, operation, `could not persist ${name} data`, cause),
+          PluginHostCapabilityError.fromBoundary(
+            pluginId,
+            operation,
+            `could not persist ${name} data`,
+            cause,
+          ),
         ),
       );
     });
@@ -346,7 +414,12 @@ export const make = Effect.gen(function* () {
             yield* validateKey(pluginId, operation, key);
             const detached = yield* decodeJson(value).pipe(
               Effect.mapError((cause) =>
-                fail(pluginId, operation, "value must be JSON-compatible", cause),
+                PluginHostCapabilityError.fromBoundary(
+                  pluginId,
+                  operation,
+                  "value must be JSON-compatible",
+                  cause,
+                ),
               ),
             );
             const entries = yield* read;
@@ -382,7 +455,13 @@ export const make = Effect.gen(function* () {
       relative !== ".." &&
       !relative.startsWith(`..${path.sep}`)
       ? Effect.succeed(resolved)
-      : Effect.fail(fail(pluginId, "filesystem", "path escapes plugin data directory"));
+      : Effect.fail(
+          PluginHostCapabilityError.fromBoundary(
+            pluginId,
+            "filesystem",
+            "path escapes plugin data directory",
+          ),
+        );
   };
 
   const isContained = (root: string, target: string): boolean => {
@@ -403,14 +482,27 @@ export const make = Effect.gen(function* () {
         { concurrency: "unbounded" },
       ).pipe(
         Effect.mapError((cause) =>
-          fail(pluginId, operation, `could not resolve ${relativePath}`, cause),
+          PluginHostCapabilityError.fromBoundary(
+            pluginId,
+            operation,
+            `could not resolve ${relativePath}`,
+            cause,
+          ),
         ),
       );
       if (!isContained(canonicalRoot, canonicalTarget)) {
-        return yield* fail(pluginId, operation, "path escapes plugin data directory");
+        return yield* PluginHostCapabilityError.fromBoundary(
+          pluginId,
+          operation,
+          "path escapes plugin data directory",
+        );
       }
       if (path.normalize(lexical) !== path.normalize(canonicalTarget)) {
-        return yield* fail(pluginId, operation, "symbolic links are not allowed in plugin data");
+        return yield* PluginHostCapabilityError.fromBoundary(
+          pluginId,
+          operation,
+          "symbolic links are not allowed in plugin data",
+        );
       }
       return canonicalTarget;
     },
@@ -431,7 +523,12 @@ export const make = Effect.gen(function* () {
           .exists(existingAncestor)
           .pipe(
             Effect.mapError((cause) =>
-              fail(pluginId, "filesystem write", `could not inspect ${relativePath}`, cause),
+              PluginHostCapabilityError.fromBoundary(
+                pluginId,
+                "filesystem write",
+                `could not inspect ${relativePath}`,
+                cause,
+              ),
             ),
           );
         if (exists) break;
@@ -442,14 +539,19 @@ export const make = Effect.gen(function* () {
         { concurrency: "unbounded" },
       ).pipe(
         Effect.mapError((cause) =>
-          fail(pluginId, "filesystem write", `could not resolve ${relativePath}`, cause),
+          PluginHostCapabilityError.fromBoundary(
+            pluginId,
+            "filesystem write",
+            `could not resolve ${relativePath}`,
+            cause,
+          ),
         ),
       );
       if (
         !isContained(canonicalPluginRoot, canonicalAncestor) ||
         path.normalize(existingAncestor) !== path.normalize(canonicalAncestor)
       ) {
-        return yield* fail(
+        return yield* PluginHostCapabilityError.fromBoundary(
           pluginId,
           "filesystem write",
           "symbolic links are not allowed in plugin data",
@@ -459,7 +561,12 @@ export const make = Effect.gen(function* () {
         .makeDirectory(parent, { recursive: true })
         .pipe(
           Effect.mapError((cause) =>
-            fail(pluginId, "filesystem write", `could not create ${relativePath}`, cause),
+            PluginHostCapabilityError.fromBoundary(
+              pluginId,
+              "filesystem write",
+              `could not create ${relativePath}`,
+              cause,
+            ),
           ),
         );
       const [canonicalRoot, canonicalParent] = yield* Effect.all(
@@ -467,14 +574,23 @@ export const make = Effect.gen(function* () {
         { concurrency: "unbounded" },
       ).pipe(
         Effect.mapError((cause) =>
-          fail(pluginId, "filesystem write", `could not resolve ${relativePath}`, cause),
+          PluginHostCapabilityError.fromBoundary(
+            pluginId,
+            "filesystem write",
+            `could not resolve ${relativePath}`,
+            cause,
+          ),
         ),
       );
       if (!isContained(canonicalRoot, canonicalParent)) {
-        return yield* fail(pluginId, "filesystem write", "path escapes plugin data directory");
+        return yield* PluginHostCapabilityError.fromBoundary(
+          pluginId,
+          "filesystem write",
+          "path escapes plugin data directory",
+        );
       }
       if (path.normalize(parent) !== path.normalize(canonicalParent)) {
-        return yield* fail(
+        return yield* PluginHostCapabilityError.fromBoundary(
           pluginId,
           "filesystem write",
           "symbolic links are not allowed in plugin data",
@@ -507,7 +623,13 @@ export const make = Effect.gen(function* () {
       (collected, chunk) => {
         const bytes = collected.bytes + chunk.byteLength;
         if (bytes > MAX_EXTERNAL_OUTPUT_BYTES) {
-          return Effect.fail(fail(pluginId, operation, `${operation} output exceeds limit`));
+          return Effect.fail(
+            PluginHostCapabilityError.fromBoundary(
+              pluginId,
+              operation,
+              `${operation} output exceeds limit`,
+            ),
+          );
         }
         collected.chunks.push(chunk);
         return Effect.succeed({ bytes, chunks: collected.chunks });
@@ -517,7 +639,12 @@ export const make = Effect.gen(function* () {
       Effect.mapError((cause) =>
         isPluginHostCapabilityError(cause)
           ? cause
-          : fail(pluginId, operation, `${operation} output failed`, cause),
+          : PluginHostCapabilityError.fromBoundary(
+              pluginId,
+              operation,
+              `${operation} output failed`,
+              cause,
+            ),
       ),
     );
 
@@ -529,14 +656,23 @@ export const make = Effect.gen(function* () {
       const requested = new Set(requestedPermissions);
       const missing = [...requested].filter((permission) => !grantedSet.has(permission)).sort();
       if (missing.length > 0) {
-        return yield* fail(pluginId, "open", `permission approval required: ${missing.join(", ")}`);
+        return yield* PluginHostCapabilityError.fromBoundary(
+          pluginId,
+          "open",
+          `permission approval required: ${missing.join(", ")}`,
+        );
       }
 
       yield* fileSystem
         .makeDirectory(path.join(pluginDataRoot, pluginId), { recursive: true })
         .pipe(
           Effect.mapError((cause) =>
-            fail(pluginId, "open", "could not create plugin data directory", cause),
+            PluginHostCapabilityError.fromBoundary(
+              pluginId,
+              "open",
+              "could not create plugin data directory",
+              cause,
+            ),
           ),
         );
 
@@ -560,7 +696,12 @@ export const make = Effect.gen(function* () {
                 .get(secretResourceName(pluginId, name))
                 .pipe(
                   Effect.mapError((cause) =>
-                    fail(pluginId, "secret read", `could not read ${name}`, cause),
+                    PluginHostCapabilityError.fromBoundary(
+                      pluginId,
+                      "secret read",
+                      `could not read ${name}`,
+                      cause,
+                    ),
                   ),
                 );
               return Option.isSome(value) ? textDecoder.decode(value.value) : undefined;
@@ -572,7 +713,12 @@ export const make = Effect.gen(function* () {
                 .set(secretResourceName(pluginId, name), textEncoder.encode(value))
                 .pipe(
                   Effect.mapError((cause) =>
-                    fail(pluginId, "secret write", `could not write ${name}`, cause),
+                    PluginHostCapabilityError.fromBoundary(
+                      pluginId,
+                      "secret write",
+                      `could not write ${name}`,
+                      cause,
+                    ),
                   ),
                 );
             }),
@@ -583,7 +729,12 @@ export const make = Effect.gen(function* () {
                 .remove(secretResourceName(pluginId, name))
                 .pipe(
                   Effect.mapError((cause) =>
-                    fail(pluginId, "secret delete", `could not remove ${name}`, cause),
+                    PluginHostCapabilityError.fromBoundary(
+                      pluginId,
+                      "secret delete",
+                      `could not remove ${name}`,
+                      cause,
+                    ),
                   ),
                 );
             }),
@@ -601,21 +752,39 @@ export const make = Effect.gen(function* () {
                 .stat(filePath)
                 .pipe(
                   Effect.mapError((cause) =>
-                    fail(pluginId, "filesystem read", `could not inspect ${relativePath}`, cause),
+                    PluginHostCapabilityError.fromBoundary(
+                      pluginId,
+                      "filesystem read",
+                      `could not inspect ${relativePath}`,
+                      cause,
+                    ),
                   ),
                 );
               if (info.size > BigInt(MAX_DATA_FILE_BYTES)) {
-                return yield* fail(pluginId, "filesystem read", "file exceeds plugin data limit");
+                return yield* PluginHostCapabilityError.fromBoundary(
+                  pluginId,
+                  "filesystem read",
+                  "file exceeds plugin data limit",
+                );
               }
               const contents = yield* fileSystem
                 .readFileString(filePath)
                 .pipe(
                   Effect.mapError((cause) =>
-                    fail(pluginId, "filesystem read", `could not read ${relativePath}`, cause),
+                    PluginHostCapabilityError.fromBoundary(
+                      pluginId,
+                      "filesystem read",
+                      `could not read ${relativePath}`,
+                      cause,
+                    ),
                   ),
                 );
               if (Buffer.byteLength(contents, "utf8") > MAX_DATA_FILE_BYTES) {
-                return yield* fail(pluginId, "filesystem read", "file exceeds plugin data limit");
+                return yield* PluginHostCapabilityError.fromBoundary(
+                  pluginId,
+                  "filesystem read",
+                  "file exceeds plugin data limit",
+                );
               }
               return contents;
             }),
@@ -623,12 +792,21 @@ export const make = Effect.gen(function* () {
             Effect.gen(function* () {
               yield* requireFiles("filesystem write");
               if (Buffer.byteLength(contents, "utf8") > MAX_DATA_FILE_BYTES) {
-                return yield* fail(pluginId, "filesystem write", "file exceeds plugin data limit");
+                return yield* PluginHostCapabilityError.fromBoundary(
+                  pluginId,
+                  "filesystem write",
+                  "file exceeds plugin data limit",
+                );
               }
               const filePath = yield* resolveWritableFilePath(pluginId, relativePath);
               yield* atomicWrite(filePath, contents).pipe(
                 Effect.mapError((cause) =>
-                  fail(pluginId, "filesystem write", `could not write ${relativePath}`, cause),
+                  PluginHostCapabilityError.fromBoundary(
+                    pluginId,
+                    "filesystem write",
+                    `could not write ${relativePath}`,
+                    cause,
+                  ),
                 ),
               );
             }),
@@ -644,7 +822,12 @@ export const make = Effect.gen(function* () {
                 .remove(filePath, { force: true })
                 .pipe(
                   Effect.mapError((cause) =>
-                    fail(pluginId, "filesystem remove", `could not remove ${relativePath}`, cause),
+                    PluginHostCapabilityError.fromBoundary(
+                      pluginId,
+                      "filesystem remove",
+                      `could not remove ${relativePath}`,
+                      cause,
+                    ),
                   ),
                 );
             }),
@@ -654,7 +837,13 @@ export const make = Effect.gen(function* () {
             Effect.gen(function* () {
               const parsed = yield* Effect.try({
                 try: () => new URL(url),
-                catch: (cause) => fail(pluginId, "network fetch", "invalid URL", cause),
+                catch: (cause) =>
+                  PluginHostCapabilityError.fromBoundary(
+                    pluginId,
+                    "network fetch",
+                    "invalid URL",
+                    cause,
+                  ),
               });
               yield* requirePermission(
                 pluginId,
@@ -667,11 +856,20 @@ export const make = Effect.gen(function* () {
               const response = yield* httpClient.get(parsed).pipe(
                 Effect.timeout(EXTERNAL_OPERATION_TIMEOUT),
                 Effect.mapError((cause) =>
-                  fail(pluginId, "network fetch", `request failed for ${parsed.origin}`, cause),
+                  PluginHostCapabilityError.fromBoundary(
+                    pluginId,
+                    "network fetch",
+                    `request failed for ${parsed.origin}`,
+                    cause,
+                  ),
                 ),
               );
               if (response.status >= 300 && response.status < 400) {
-                return yield* fail(pluginId, "network fetch", "redirect responses are not allowed");
+                return yield* PluginHostCapabilityError.fromBoundary(
+                  pluginId,
+                  "network fetch",
+                  "redirect responses are not allowed",
+                );
               }
               const body = textDecoder.decode(
                 yield* collectBounded(pluginId, "network fetch", response.stream).pipe(
@@ -679,7 +877,7 @@ export const make = Effect.gen(function* () {
                   Effect.mapError((cause) =>
                     isPluginHostCapabilityError(cause)
                       ? cause
-                      : fail(
+                      : PluginHostCapabilityError.fromBoundary(
                           pluginId,
                           "network fetch",
                           `response timed out for ${parsed.origin}`,
@@ -696,7 +894,11 @@ export const make = Effect.gen(function* () {
             Effect.gen(function* () {
               yield* requirePermission(pluginId, requested, `process:${command}`, "process run");
               if (!processNamePattern.test(command)) {
-                return yield* fail(pluginId, "process run", "invalid process name");
+                return yield* PluginHostCapabilityError.fromBoundary(
+                  pluginId,
+                  "process run",
+                  "invalid process name",
+                );
               }
               const executable = command === "node" ? process.execPath : command;
               const childCommand = ChildProcess.make(executable, [...args], {
@@ -731,7 +933,12 @@ export const make = Effect.gen(function* () {
                 Effect.mapError((cause) =>
                   isPluginHostCapabilityError(cause)
                     ? cause
-                    : fail(pluginId, "process run", "process execution failed", cause),
+                    : PluginHostCapabilityError.fromBoundary(
+                        pluginId,
+                        "process run",
+                        "process execution failed",
+                        cause,
+                      ),
                 ),
               );
               return result;
@@ -741,7 +948,13 @@ export const make = Effect.gen(function* () {
           notify: (_notification) =>
             requirePermission(pluginId, requested, "notifications:send", "notification send").pipe(
               Effect.flatMap(() =>
-                Effect.fail(fail(pluginId, "notification send", "notification sink unavailable")),
+                Effect.fail(
+                  PluginHostCapabilityError.fromBoundary(
+                    pluginId,
+                    "notification send",
+                    "notification sink unavailable",
+                  ),
+                ),
               ),
             ),
         },

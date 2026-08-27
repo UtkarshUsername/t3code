@@ -61,6 +61,7 @@ const decodePluginUi = Schema.decodeUnknownSync(PluginUiContribution);
 const decodePluginUiPackage = Schema.decodeUnknownSync(PluginUiPackageContribution);
 const decodePluginUiNotification = Schema.decodeUnknownEffect(PluginUiNotification);
 const decodePluginUiCatalog = Schema.decodeUnknownEffect(PluginUiCatalogSchema);
+const decodePluginUiCatalogSync = Schema.decodeUnknownSync(PluginUiCatalogSchema);
 const decodeContributionData = Schema.decodeUnknownSync(Schema.Json);
 const decodeUiSetting = Schema.decodeUnknownSync(PluginUiSettingSchema);
 const decodeUiNavigation = Schema.decodeUnknownSync(PluginUiNavigationItemSchema);
@@ -100,6 +101,13 @@ interface MutableUiPackage {
 
 const uiPackagesFromSnapshot = (snapshot: PluginRuntimeSnapshot) => {
   const packages = new Map<string, MutableUiPackage>();
+  const views = snapshot.contributions.views ?? [];
+  const visibleViewById = new Map(views.map((entry) => [entry.id, entry]));
+  const replacementViewByTarget = new Map(
+    views.flatMap((entry) =>
+      entry.replaces === undefined ? [] : ([[entry.replaces, entry]] as const),
+    ),
+  );
   const packageFor = (pluginId: string) => {
     const existing = packages.get(pluginId);
     if (existing !== undefined) return existing;
@@ -125,7 +133,16 @@ const uiPackagesFromSnapshot = (snapshot: PluginRuntimeSnapshot) => {
           pluginPackage.settings.push(decodeUiSetting(input));
           break;
         case "navigation":
-          pluginPackage.navigation.push(decodeUiNavigation(input));
+          {
+            const navigation = decodeUiNavigation(input);
+            const view =
+              visibleViewById.get(navigation.viewId) ??
+              replacementViewByTarget.get(navigation.viewId);
+            if (view === undefined) break;
+            packageFor(view.owner.pluginId).navigation.push(
+              decodeUiNavigation({ ...navigation, viewId: view.id }),
+            );
+          }
           break;
         case "views":
           pluginPackage.views.push(decodeUiView(input));
@@ -145,14 +162,24 @@ const uiPackagesFromSnapshot = (snapshot: PluginRuntimeSnapshot) => {
       }
     }
   }
-  return [...packages.values()].map((pluginPackage) => decodePluginUiPackage(pluginPackage));
+  return [...packages.values()]
+    .filter((pluginPackage) => UI_SLOTS.some((slot) => pluginPackage[slot].length > 0))
+    .map((pluginPackage) => decodePluginUiPackage(pluginPackage));
 };
+
+const uiCatalogInputFromSnapshot = (snapshot: PluginRuntimeSnapshot, generation: number) => ({
+  generation,
+  packages: uiPackagesFromSnapshot(snapshot),
+  order: Object.fromEntries(
+    UI_SLOTS.map((slot) => [slot, (snapshot.contributions[slot] ?? []).map((entry) => entry.id)]),
+  ),
+});
 
 const validateSnapshot = (snapshot: PluginRuntimeSnapshot): void => {
   for (const entry of snapshot.contributions[COMMAND_SLOT] ?? []) {
     decodePluginCommand(commandInputFromContribution(entry));
   }
-  uiPackagesFromSnapshot(snapshot);
+  decodePluginUiCatalogSync(uiCatalogInputFromSnapshot(snapshot, 0));
 };
 
 export class PluginCommandExecutionError extends Schema.TaggedErrorClass<PluginCommandExecutionError>()(
@@ -245,10 +272,10 @@ export const registerPluginUi = (
 
 export class PluginUiDefinitionError extends Schema.TaggedErrorClass<PluginUiDefinitionError>()(
   "PluginUiDefinitionError",
-  { cause: Schema.Defect(), id: Schema.String },
+  { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return `Plugin ${this.id} has invalid declarative UI metadata.`;
+    return "Plugin UI catalog has invalid declarative metadata.";
   }
 }
 
@@ -336,17 +363,13 @@ const uiFromRuntime = Effect.fn("PluginCommandCatalog.uiFromRuntime")(function* 
     runtime.snapshot,
     runtime.contributions(UI_SLOTS[0]),
   ]);
-  const packages = yield* Effect.try({
-    try: () => uiPackagesFromSnapshot(snapshot),
-    catch: (cause) => new PluginUiDefinitionError({ cause, id: "catalog" }),
+  const input = yield* Effect.try({
+    try: () => uiCatalogInputFromSnapshot(snapshot, generationSnapshot.generation),
+    catch: (cause) => new PluginUiDefinitionError({ cause }),
   });
-  const catalog = yield* decodePluginUiCatalog({
-    generation: generationSnapshot.generation,
-    packages,
-    order: Object.fromEntries(
-      UI_SLOTS.map((slot) => [slot, (snapshot.contributions[slot] ?? []).map((entry) => entry.id)]),
-    ),
-  }).pipe(Effect.mapError((cause) => new PluginUiDefinitionError({ cause, id: "catalog" })));
+  const catalog = yield* decodePluginUiCatalog(input).pipe(
+    Effect.mapError((cause) => new PluginUiDefinitionError({ cause })),
+  );
   return deepFreeze(catalog);
 });
 

@@ -62,12 +62,57 @@ class PluginPackageUndeclaredCommandError extends Schema.TaggedErrorClass<Plugin
   }
 }
 
-class PluginPackageUiReferenceError extends Schema.TaggedErrorClass<PluginPackageUiReferenceError>()(
-  "PluginPackageUiReferenceError",
-  { id: Schema.String, reference: Schema.String, detail: Schema.String },
+class PluginPackageUiNamespaceError extends Schema.TaggedErrorClass<PluginPackageUiNamespaceError>()(
+  "PluginPackageUiNamespaceError",
+  { id: Schema.String, reference: Schema.String },
 ) {
   override get message(): string {
-    return `Plugin UI reference ${this.reference} is invalid: ${this.detail}`;
+    return `Plugin UI contribution ${this.reference} is outside namespace ${this.id}`;
+  }
+}
+
+class PluginPackageUndeclaredUiError extends Schema.TaggedErrorClass<PluginPackageUndeclaredUiError>()(
+  "PluginPackageUndeclaredUiError",
+  { id: Schema.String, reference: Schema.String, slot: Schema.String },
+) {
+  override get message(): string {
+    return `Plugin UI contribution ${this.slot}/${this.reference} is not declared by ${this.id}`;
+  }
+}
+
+class PluginPackageUiPermissionError extends Schema.TaggedErrorClass<PluginPackageUiPermissionError>()(
+  "PluginPackageUiPermissionError",
+  { id: Schema.String, permission: Schema.String },
+) {
+  override get message(): string {
+    return `Plugin ${this.id} UI requires host permission ${this.permission}`;
+  }
+}
+
+class PluginPackageUiCommandReferenceError extends Schema.TaggedErrorClass<PluginPackageUiCommandReferenceError>()(
+  "PluginPackageUiCommandReferenceError",
+  { commandId: Schema.String, id: Schema.String, reference: Schema.String },
+) {
+  override get message(): string {
+    return `Plugin UI contribution ${this.reference} references unregistered command ${this.commandId}`;
+  }
+}
+
+class PluginPackageUiActionReferenceError extends Schema.TaggedErrorClass<PluginPackageUiActionReferenceError>()(
+  "PluginPackageUiActionReferenceError",
+  { actionId: Schema.String, id: Schema.String, reference: Schema.String },
+) {
+  override get message(): string {
+    return `Plugin UI contribution ${this.reference} references uncontributed action ${this.actionId}`;
+  }
+}
+
+class PluginPackageCompositionSourceError extends Schema.TaggedErrorClass<PluginPackageCompositionSourceError>()(
+  "PluginPackageCompositionSourceError",
+  { id: Schema.String, ruleId: Schema.String, slot: Schema.String, sourceId: Schema.String },
+) {
+  override get message(): string {
+    return `Plugin composition rule ${this.ruleId} references undeclared source ${this.slot}/${this.sourceId}`;
   }
 }
 
@@ -157,10 +202,11 @@ const makeDefinition = (
       (rule.operation === "extend" || rule.operation === "replace") &&
       !declaredCompositionSources[rule.slot].has(rule.sourceId)
     ) {
-      throw new PluginPackageUiReferenceError({
+      throw new PluginPackageCompositionSourceError({
         id: discovered.manifest.id,
-        reference: rule.id,
-        detail: `composition source ${rule.slot}/${rule.sourceId} is not declared`,
+        ruleId: rule.id,
+        slot: rule.slot,
+        sourceId: rule.sourceId,
       });
     }
   }
@@ -175,17 +221,16 @@ const makeDefinition = (
   ] as const) {
     for (const entry of entries) {
       if (!entry.id.startsWith(`${discovered.manifest.id}.`)) {
-        throw new PluginPackageUiReferenceError({
+        throw new PluginPackageUiNamespaceError({
           id: discovered.manifest.id,
           reference: entry.id,
-          detail: "contribution is outside plugin namespace",
         });
       }
       if (!declaredUi[slot].has(entry.id)) {
-        throw new PluginPackageUiReferenceError({
+        throw new PluginPackageUndeclaredUiError({
           id: discovered.manifest.id,
           reference: entry.id,
-          detail: "contribution is not declared in the manifest",
+          slot,
         });
       }
     }
@@ -194,10 +239,9 @@ const makeDefinition = (
     ui.settings.length > 0 &&
     !(discovered.manifest.permissions ?? []).includes("settings:read-write")
   ) {
-    throw new PluginPackageUiReferenceError({
+    throw new PluginPackageUiPermissionError({
       id: discovered.manifest.id,
-      reference: "settings:read-write",
-      detail: "plugin settings require the settings host permission",
+      permission: "settings:read-write",
     });
   }
   const registeredCommandIds = new Set(worker.commands.map((command) => command.id));
@@ -217,19 +261,19 @@ const makeDefinition = (
   ];
   for (const [reference, commandId] of commandReferences) {
     if (!registeredCommandIds.has(commandId)) {
-      throw new PluginPackageUiReferenceError({
+      throw new PluginPackageUiCommandReferenceError({
+        commandId,
         id: discovered.manifest.id,
         reference,
-        detail: `command ${commandId} is not registered`,
       });
     }
   }
   for (const card of ui.cards) {
     if (card.actionId !== undefined && !actionIds.has(card.actionId)) {
-      throw new PluginPackageUiReferenceError({
+      throw new PluginPackageUiActionReferenceError({
+        actionId: card.actionId,
         id: discovered.manifest.id,
         reference: card.id,
-        detail: `action ${card.actionId} is not contributed`,
       });
     }
   }
@@ -342,6 +386,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
   const activeHosts = new Map<string, PluginHostCapabilityBroker.PluginHostApi>();
   const activeRetirements = new Map<string, Promise<void>>();
   const packageErrors = new Map<string, string>();
+  const dependencyBlocked = new Map<string, string>();
   let loadSequence = 0;
 
   const removeCacheDirectory = (directory: string) =>
@@ -613,7 +658,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
       const grantedPermissionSet = new Set(grantSnapshot.get(id) ?? []);
       const enabled = enabledIds.has(id);
       const active = composition.active.includes(id);
-      const blocked = composition.blocked[id];
+      const blocked = composition.blocked[id] ?? dependencyBlocked.get(id);
       const workerHealth = activeWorkers.get(id)?.health() ?? {
         state: "stopped" as const,
         restartCount: 0,
@@ -790,12 +835,33 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
             }
           }
 
+          const runtimeComposition = yield* catalog.composition;
+          const blockedReason = runtimeComposition.blocked[id];
+          if (blockedReason !== undefined) {
+            dependencyBlocked.set(id, blockedReason);
+            activeDefinitions.delete(id);
+            activeCacheDirectories.delete(id);
+            activeManifests.delete(id);
+            activeWorkers.delete(id);
+            activeHosts.delete(id);
+            activeRetirements.delete(id);
+            yield* stopWorker(id, loaded.worker);
+            yield* removeCacheDirectory(loaded.cacheDirectory);
+            if (previousRetirement !== undefined) yield* Effect.promise(() => previousRetirement);
+            if (previousWorker !== undefined) yield* stopWorker(id, previousWorker);
+            if (previousCacheDirectory !== undefined) {
+              yield* removeCacheDirectory(previousCacheDirectory);
+            }
+            return yield* statusUnlocked(operation);
+          }
+
           activeDefinitions.set(id, loaded.definition);
           activeCacheDirectories.set(id, loaded.cacheDirectory);
           activeManifests.set(id, pluginPackage.manifest);
           activeWorkers.set(id, loaded.worker);
           activeHosts.set(id, loaded.host);
           activeRetirements.set(id, loaded.retired);
+          dependencyBlocked.delete(id);
           if (previousCacheDirectory !== undefined) {
             if (reconciled._tag === "Failure" && previousRetirement !== undefined) {
               yield* Effect.promise(() => previousRetirement);
@@ -848,6 +914,25 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
             }
             return yield* Effect.failCause(reconciled.cause);
           }
+        }
+
+        const runtimeComposition = yield* catalog.composition;
+        for (const [blockedId, reason] of Object.entries(runtimeComposition.blocked)) {
+          if (blockedId === id || reason === undefined || !activeDefinitions.has(blockedId))
+            continue;
+          dependencyBlocked.set(blockedId, reason);
+          const blockedWorker = activeWorkers.get(blockedId);
+          const blockedCache = activeCacheDirectories.get(blockedId);
+          const blockedRetirement = activeRetirements.get(blockedId);
+          activeDefinitions.delete(blockedId);
+          activeCacheDirectories.delete(blockedId);
+          activeManifests.delete(blockedId);
+          activeWorkers.delete(blockedId);
+          activeHosts.delete(blockedId);
+          activeRetirements.delete(blockedId);
+          if (blockedRetirement !== undefined) yield* Effect.promise(() => blockedRetirement);
+          if (blockedWorker !== undefined) yield* stopWorker(blockedId, blockedWorker);
+          if (blockedCache !== undefined) yield* removeCacheDirectory(blockedCache);
         }
 
         const worker = activeWorkers.get(id);
@@ -908,12 +993,21 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
         yield* removeCacheDirectory(loaded.cacheDirectory);
         return yield* Effect.failCause(reconciled.cause);
       }
+      const runtimeComposition = yield* catalog.composition;
+      const blockedReason = runtimeComposition.blocked[id];
+      if (blockedReason !== undefined) {
+        dependencyBlocked.set(id, blockedReason);
+        yield* stopWorker(id, loaded.worker);
+        yield* removeCacheDirectory(loaded.cacheDirectory);
+        return;
+      }
       activeDefinitions.set(id, loaded.definition);
       activeCacheDirectories.set(id, loaded.cacheDirectory);
       activeManifests.set(id, pluginPackage.manifest);
       activeWorkers.set(id, loaded.worker);
       activeHosts.set(id, loaded.host);
       activeRetirements.set(id, loaded.retired);
+      dependencyBlocked.delete(id);
     }).pipe(
       Effect.retry({ times: 1 }),
       Effect.catchCause((cause) => {
@@ -922,6 +1016,18 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
         packageErrors.set(id, detail);
         return Effect.logWarning("Failed to activate enabled local plugin package", { id, detail });
       }),
+    );
+  }
+  for (const id of [...dependencyBlocked.keys()].sort()) {
+    yield* Effect.exit(transition("enable", id)).pipe(
+      Effect.flatMap((exit) =>
+        exit._tag === "Failure"
+          ? Effect.logWarning("Failed to activate startup dependency-blocked package", {
+              id,
+              error: detailFromCause(exit.cause),
+            })
+          : Effect.void,
+      ),
     );
   }
 
@@ -1031,9 +1137,27 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
     ),
   );
 
+  const enableUnlocked = Effect.fn("PluginPackageManager.enable")(function* (id: string) {
+    yield* transition("enable", id);
+    const enabledIds = yield* readEnabledIds.pipe(
+      Effect.mapError((error) => operationError("enable", error, id)),
+    );
+    for (const blockedId of [...dependencyBlocked.keys()].sort()) {
+      if (blockedId === id || !enabledIds.has(blockedId)) continue;
+      const retried = yield* Effect.exit(transition("enable", blockedId));
+      if (retried._tag === "Failure") {
+        yield* Effect.logWarning("Failed to activate unblocked plugin package", {
+          id: blockedId,
+          error: detailFromCause(retried.cause),
+        });
+      }
+    }
+    return yield* statusUnlocked("enable");
+  });
+
   return {
     status: semaphore.withPermits(1)(statusUnlocked("status")),
-    enable: (id: string) => semaphore.withPermits(1)(transition("enable", id)),
+    enable: (id: string) => semaphore.withPermits(1)(enableUnlocked(id)),
     disable: (id: string) => semaphore.withPermits(1)(disableUnlocked(id)),
     reload: (id: string) => semaphore.withPermits(1)(transition("reload", id)),
     settingRead,

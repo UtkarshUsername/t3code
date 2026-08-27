@@ -56,6 +56,8 @@ const EMPTY_PLUGIN_NOTIFICATION: PluginUiNotification = {
   tone: "info",
 };
 const EMPTY_PLUGIN_NOTIFICATION_ATOM = Atom.make(AsyncResult.success(EMPTY_PLUGIN_NOTIFICATION));
+const MAX_RENDERED_PLUGIN_SETTINGS = 256;
+const MAX_RENDERED_PLUGIN_NAVIGATION = 128;
 
 const surface = (): "web" | "desktop" => (isElectron ? "desktop" : "web");
 
@@ -173,7 +175,7 @@ export function PluginUiNavigationItems({ closeMobile }: { readonly closeMobile:
         .filter((item) => item.surfaces.includes(currentSurface))
         .map((item) => ({ ...item, item, pluginId: pluginPackage.pluginId })),
     ),
-  );
+  ).slice(0, MAX_RENDERED_PLUGIN_NAVIGATION);
 
   return items.map(({ item, pluginId }) => (
     <SidebarUtilityItem
@@ -502,12 +504,14 @@ export function PluginUiSettingsSections({ readOnly }: { readonly readOnly: bool
       firstSettingOrder(left) - firstSettingOrder(right) ||
       left.pluginId.localeCompare(right.pluginId),
   );
+  let remainingSettings = MAX_RENDERED_PLUGIN_SETTINGS;
   return orderedPackages.map((pluginPackage) => {
     const settings = orderUiItems(
       catalog,
       "settings",
       pluginPackage.settings.filter((setting) => setting.surfaces.includes(currentSurface)),
-    );
+    ).slice(0, remainingSettings);
+    remainingSettings -= settings.length;
     if (settings.length === 0) return null;
     return (
       <SettingsSection key={pluginPackage.pluginId} title={`${pluginPackage.pluginId} settings`}>

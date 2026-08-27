@@ -249,13 +249,13 @@ export type PluginUiPackageContribution = typeof PluginUiPackageContribution.Typ
 
 export const PluginUiOrder = strict(
   Schema.Struct({
-    settings: Schema.Array(PluginUiId),
-    navigation: Schema.Array(PluginUiId),
-    views: Schema.Array(PluginUiId),
-    cards: Schema.Array(PluginUiId),
-    statusItems: Schema.Array(PluginUiId),
-    composerActions: Schema.Array(PluginUiId),
-    contextualActions: Schema.Array(PluginUiId),
+    settings: Schema.Array(PluginUiId).check(Schema.isMaxLength(256)),
+    navigation: Schema.Array(PluginUiId).check(Schema.isMaxLength(128)),
+    views: Schema.Array(PluginUiId).check(Schema.isMaxLength(1_024)),
+    cards: Schema.Array(PluginUiId).check(Schema.isMaxLength(1_024)),
+    statusItems: Schema.Array(PluginUiId).check(Schema.isMaxLength(1_024)),
+    composerActions: Schema.Array(PluginUiId).check(Schema.isMaxLength(1_024)),
+    contextualActions: Schema.Array(PluginUiId).check(Schema.isMaxLength(1_024)),
   }),
 );
 export type PluginUiOrder = typeof PluginUiOrder.Type;

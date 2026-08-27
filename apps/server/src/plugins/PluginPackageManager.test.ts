@@ -969,6 +969,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
           expect(blocked.packages.find(({ id }) => id === consumerId)).toMatchObject({
             enabled: true,
             state: "blocked",
+            runtimeState: "stopped",
             error: `Missing dependency: ${databaseCapability}`,
           });
           expect((yield* catalog.list).commands.map(({ id }) => id)).not.toContain(
@@ -997,6 +998,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
           expect(providerDisabled.packages.find(({ id }) => id === consumerId)).toMatchObject({
             enabled: true,
             state: "blocked",
+            runtimeState: "stopped",
             error: `Missing dependency: ${databaseCapability}`,
           });
           const remainingCommandIds = (yield* catalog.list).commands.map(({ id }) => id);

@@ -156,7 +156,14 @@ describe("plugin command catalog", () => {
         activate(context) {
           PluginCommandCatalog.registerPluginUi(context, "t3.bundled.example", {
             settings: [],
-            navigation: [],
+            navigation: [
+              {
+                id: "t3.bundled.example.navigation",
+                label: "Example",
+                viewId: "t3.bundled.example.view",
+                surfaces: ["web"],
+              },
+            ],
             views: [
               {
                 id: "t3.bundled.example.view",
@@ -211,6 +218,18 @@ describe("plugin command catalog", () => {
         ui.packages.flatMap((pluginPackage) => pluginPackage.views.map((view) => view.id)),
       ).toEqual(["local.example.view"]);
       expect(ui.order.views).toEqual(["local.example.view"]);
+      expect(ui.packages).toEqual([
+        expect.objectContaining({
+          pluginId: "local.example",
+          navigation: [
+            expect.objectContaining({
+              id: "t3.bundled.example.navigation",
+              viewId: "local.example.view",
+            }),
+          ],
+          views: [expect.objectContaining({ id: "local.example.view" })],
+        }),
+      ]);
       expect((yield* catalog.composition).composition).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ outcome: "applied", ruleId: "local.example.replace-view" }),
@@ -264,6 +283,39 @@ describe("plugin command catalog", () => {
 
       const restored = yield* catalog.reconcile([]);
       expect(restored.commands.map((command) => command.id)).toContain("t3.plugin-runtime.status");
+    }).pipe(Effect.provide(PluginCommandCatalog.layer)),
+  );
+
+  it.effect("rejects an oversized resolved UI catalog before committing", () =>
+    Effect.gen(function* () {
+      const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+      const original = yield* catalog.ui;
+      const definitions: Array<PluginDefinition> = Array.from({ length: 1_001 }, (_, index) => ({
+        id: `com.acme.catalog-${index}`,
+        version: "1.0.0",
+        activate(context) {
+          PluginCommandCatalog.registerPluginUi(context, `com.acme.catalog-${index}`, {
+            settings: [],
+            navigation: [],
+            views: [
+              {
+                id: `com.acme.catalog-${index}.view`,
+                label: `Catalog ${index}`,
+                surfaces: ["web"],
+                blocks: [],
+              },
+            ],
+            cards: [],
+            statusItems: [],
+            composerActions: [],
+            contextualActions: [],
+          });
+        },
+      }));
+
+      expect((yield* Effect.exit(catalog.reconcile(definitions)))._tag).toBe("Failure");
+      expect(yield* catalog.ui).toBe(original);
+      expect((yield* catalog.composition).active).toEqual(["t3.plugin-runtime.commands"]);
     }).pipe(Effect.provide(PluginCommandCatalog.layer)),
   );
 
