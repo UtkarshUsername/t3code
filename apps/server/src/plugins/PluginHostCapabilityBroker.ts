@@ -497,7 +497,8 @@ export const make = Effect.gen(function* () {
           "path escapes plugin data directory",
         );
       }
-      if (path.normalize(lexical) !== path.normalize(canonicalTarget)) {
+      const expectedCanonicalTarget = path.join(canonicalRoot, path.relative(root, lexical));
+      if (path.normalize(expectedCanonicalTarget) !== path.normalize(canonicalTarget)) {
         return yield* PluginHostCapabilityError.fromBoundary(
           pluginId,
           operation,
@@ -549,7 +550,9 @@ export const make = Effect.gen(function* () {
       );
       if (
         !isContained(canonicalPluginRoot, canonicalAncestor) ||
-        path.normalize(existingAncestor) !== path.normalize(canonicalAncestor)
+        path.normalize(
+          path.join(canonicalPluginRoot, path.relative(pluginRoot, existingAncestor)),
+        ) !== path.normalize(canonicalAncestor)
       ) {
         return yield* PluginHostCapabilityError.fromBoundary(
           pluginId,
@@ -589,7 +592,8 @@ export const make = Effect.gen(function* () {
           "path escapes plugin data directory",
         );
       }
-      if (path.normalize(parent) !== path.normalize(canonicalParent)) {
+      const expectedCanonicalParent = path.join(canonicalRoot, path.relative(root, parent));
+      if (path.normalize(expectedCanonicalParent) !== path.normalize(canonicalParent)) {
         return yield* PluginHostCapabilityError.fromBoundary(
           pluginId,
           "filesystem write",

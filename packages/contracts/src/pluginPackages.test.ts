@@ -156,6 +156,7 @@ describe("plugin package contracts", () => {
   it("rejects unsupported host permissions in package status", () => {
     for (const permission of [
       "network:https://example.com:443",
+      "network:https://API.example.com",
       "network:https://example.com:99999",
     ]) {
       expect(() =>

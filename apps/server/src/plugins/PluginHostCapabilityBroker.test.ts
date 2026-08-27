@@ -68,6 +68,31 @@ it.layer(NodeServices.layer)("plugin host capability broker", (it) => {
     }),
   );
 
+  it.effect("allows canonical files when the configured base path has a symlinked prefix", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const parent = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3code-plugin-host-prefix-link-test-",
+      });
+      const realBase = path.join(parent, "real");
+      const linkedBase = path.join(parent, "linked");
+      yield* fileSystem.makeDirectory(realBase);
+      yield* fileSystem.symlink(realBase, linkedBase);
+
+      yield* useBroker(
+        linkedBase,
+        Effect.gen(function* () {
+          const broker = yield* PluginHostCapabilityBroker.PluginHostCapabilityBroker;
+          yield* broker.grant(pluginId, ["filesystem:data"]);
+          const api = yield* broker.open(pluginId, ["filesystem:data"]);
+          yield* api.files.writeText("nested/value.txt", "ok");
+          expect(yield* api.files.readText("nested/value.txt")).toBe("ok");
+        }),
+      );
+    }),
+  );
+
   it.effect("keeps settings, state, and cache detached and isolated by plugin", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
