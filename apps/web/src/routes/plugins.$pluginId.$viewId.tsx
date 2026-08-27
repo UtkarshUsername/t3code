@@ -7,6 +7,7 @@ import { Button } from "../components/ui/button";
 import { SidebarInset } from "../components/ui/sidebar";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { WorkspacePageContainer } from "../components/WorkspacePageContainer";
+import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "../components/WorkspaceBreadcrumb";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { isElectron } from "../env";
 import { usePrimaryEnvironmentId } from "../state/environments";
@@ -38,7 +39,11 @@ function PluginPageRoute() {
               <ArrowLeftIcon />
             </Button>
             <PuzzleIcon className="size-4 text-muted-foreground" />
-            <span className="truncate text-sm font-medium">{viewLabel ?? pluginId}</span>
+            <WorkspaceBreadcrumb ariaLabel="Plugin breadcrumb" className="min-w-0">
+              <WorkspaceBreadcrumbItem current className="truncate">
+                {viewLabel ?? pluginId}
+              </WorkspaceBreadcrumbItem>
+            </WorkspaceBreadcrumb>
           </div>
         </WorkspacePageHeader>
         <ScrollArea className="min-h-0 flex-1" scrollFade scrollbarGutter>
