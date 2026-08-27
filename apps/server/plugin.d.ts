@@ -10,7 +10,7 @@ export type PluginSurface = "web" | "desktop" | "mobile";
 export type PluginUiTone = "neutral" | "muted" | "info" | "success" | "warning" | "danger";
 export type PluginCommandTone = "info" | "success";
 export type PluginCapability = `${string}@${number}`;
-export type PluginEntrypoint = `./${string}`;
+export type PluginEntrypoint = `./${string}.ts` | `./${string}.js`;
 export type PluginPermission =
   | "settings:read-write"
   | "state:read-write"

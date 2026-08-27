@@ -27,7 +27,7 @@ import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as PluginCommandCatalog from "./PluginCommandCatalog.ts";
 import * as PluginHostCapabilityBroker from "./PluginHostCapabilityBroker.ts";
-import { compilePluginTypeScriptEntrypoint } from "./PluginTypeScriptCompiler.ts";
+import { compilePluginEntrypoint } from "./PluginEntrypointCompiler.ts";
 import * as PluginWorkerSupervisor from "./PluginWorkerSupervisor.ts";
 
 const MANIFEST_FILE_NAME = "t3-plugin.json";
@@ -566,7 +566,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
     }
     const copiedEntrypointPath = path.resolve(cacheDirectory, serverEntrypoint);
     const compilation = yield* Effect.exit(
-      compilePluginTypeScriptEntrypoint({
+      compilePluginEntrypoint({
         packageDirectory: cacheDirectory,
         entrypointPath: copiedEntrypointPath,
       }).pipe(

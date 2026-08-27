@@ -18,7 +18,7 @@ the manifest marks this package as a local fork of the core runtime command and 
 
 ## typescript authoring
 
-server entrypoints may use `.ts`, `.mts`, or `.cts`. t3 code bundles the entrypoint and its package-local imports into a generation-specific ESM file before worker activation. compilation errors abort the candidate generation, source maps remain attached, and the last working generation stays live. `.mjs` entrypoints remain supported.
+server entrypoints use `.ts` or `.js`. t3 code bundles either format into generation-specific ESM before worker activation, and `.js` source must already use ESM syntax. compilation errors abort the candidate generation, source maps remain attached, and the last working generation stays live.
 
 install `t3` as a development dependency to use the current authoring types, then import them with a type-only import:
 

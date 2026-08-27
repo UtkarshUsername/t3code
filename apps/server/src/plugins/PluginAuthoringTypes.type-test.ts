@@ -13,6 +13,10 @@ export const manifest = {
 
 export const invalidManifest = {
   ...manifest,
+  entrypoints: {
+    // @ts-expect-error plugin entrypoints are .ts or .js only
+    server: "./index.mjs",
+  },
   permissions: [
     // @ts-expect-error arbitrary filesystem grants are not part of the manifest contract
     "filesystem:/tmp",

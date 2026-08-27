@@ -49,7 +49,7 @@ const manifest = {
   id: packageId,
   version: "1.0.0",
   apiVersion: 1,
-  entrypoints: { server: "./index.mjs" },
+  entrypoints: { server: "./index.js" },
   capabilities: ["t3.commands@1"],
   contributes: { commands: [commandId] },
 } as const;
@@ -165,7 +165,7 @@ export default async function activate(api) {
 `;
 
 const pluginSourceWithHelper = `
-import { message } from "./message.mjs";
+import { message } from "./message.js";
 
 export default function activate(api) {
   api.registerCommand(
@@ -300,7 +300,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
         encodeManifest({ ...manifest, permissions: ["state:read-write"] }),
       );
       yield* fileSystem.writeFileString(
-        `${packageDirectory}/index.mjs`,
+        `${packageDirectory}/index.js`,
         statefulCommandPluginSource(commandId),
       );
 
@@ -351,7 +351,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
         encodeManifest({ ...manifest, permissions: ["state:read-write"] }),
       );
       yield* fileSystem.writeFileString(
-        `${packageDirectory}/index.mjs`,
+        `${packageDirectory}/index.js`,
         crashOnceCommandPluginSource(commandId),
       );
 
@@ -402,7 +402,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
         encodeManifest(manifest),
       );
       yield* fileSystem.writeFileString(
-        `${packageDirectory}/index.mjs`,
+        `${packageDirectory}/index.js`,
         commandPluginSource(commandId, "old generation"),
       );
 
@@ -419,7 +419,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
             encodeManifest({ ...manifest, permissions: ["state:read-write"] }),
           );
           yield* fileSystem.writeFileString(
-            `${packageDirectory}/index.mjs`,
+            `${packageDirectory}/index.js`,
             statefulCommandPluginSource(commandId),
           );
 
@@ -490,7 +490,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
         encodeManifest(manifest),
       );
       yield* fileSystem.writeFileString(
-        `${packageDirectory}/index.mjs`,
+        `${packageDirectory}/index.js`,
         retryingCommandPluginSource(commandId, "startup retry", attemptsFile),
       );
       yield* fileSystem.writeFileString(attemptsFile, "1");
@@ -541,7 +541,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
           encodeManifest({ ...manifest, id, contributes: { commands: [declaredCommand] } }),
         );
         yield* fileSystem.writeFileString(
-          `${directory}/index.mjs`,
+          `${directory}/index.js`,
           id === failingId
             ? retryingCommandPluginSource(declaredCommand, id, attemptsFile, 2)
             : commandPluginSource(declaredCommand, id),
@@ -599,7 +599,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
         encodeManifest(manifest),
       );
       yield* fileSystem.writeFileString(
-        `${packageDirectory}/index.mjs`,
+        `${packageDirectory}/index.js`,
         gatedCommandPluginSource(commandId, gateFile, startedFile, releaseFile),
       );
 
@@ -667,7 +667,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
         encodeManifest(uiManifest),
       );
       yield* fileSystem.writeFileString(
-        `${packageDirectory}/index.mjs`,
+        `${packageDirectory}/index.js`,
         `export default function activate(api) {
           api.registerUi({
             settings: [{
@@ -774,7 +774,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
           });
           const committed = yield* catalog.list;
           yield* fileSystem.writeFileString(
-            `${packageDirectory}/index.mjs`,
+            `${packageDirectory}/index.js`,
             `export default function activate() { throw new Error("fork reload failed"); }`,
           );
           expect((yield* Effect.exit(manager.reload(uiPackageId)))._tag).toBe("Failure");
@@ -960,7 +960,7 @@ export default activate;
         encodeManifest(manifest),
       );
       yield* fileSystem.writeFileString(
-        `${packageDirectory}/index.mjs`,
+        `${packageDirectory}/index.js`,
         pluginSource(`${packageDirectory}/disposed.log`),
       );
 
@@ -1061,7 +1061,7 @@ export default activate;
           }),
         );
         yield* fileSystem.writeFileString(
-          `${directory}/index.mjs`,
+          `${directory}/index.js`,
           commandPluginSource(pluginPackage.commandId, pluginPackage.id),
         );
       }
@@ -1138,7 +1138,7 @@ export default activate;
           `${directory}/t3-plugin.json`,
           encodeManifest(packageManifest),
         );
-        yield* fileSystem.writeFileString(`${directory}/index.mjs`, source);
+        yield* fileSystem.writeFileString(`${directory}/index.js`, source);
       }
 
       yield* useEnvironment(
@@ -1212,9 +1212,9 @@ export default activate;
         `${packageDirectory}/t3-plugin.json`,
         encodeManifest(manifest),
       );
-      yield* fileSystem.writeFileString(`${packageDirectory}/index.mjs`, pluginSourceWithHelper);
+      yield* fileSystem.writeFileString(`${packageDirectory}/index.js`, pluginSourceWithHelper);
       yield* fileSystem.writeFileString(
-        `${packageDirectory}/message.mjs`,
+        `${packageDirectory}/message.js`,
         'export const message = "generation one";\n',
       );
 
@@ -1231,7 +1231,7 @@ export default activate;
             encodeManifest(manifestV2),
           );
 
-          yield* fileSystem.writeFileString(`${packageDirectory}/index.mjs`, "export default (");
+          yield* fileSystem.writeFileString(`${packageDirectory}/index.js`, "export default (");
           expect((yield* Effect.exit(manager.reload(packageId)))._tag).toBe("Failure");
           expect(yield* catalog.list).toBe(committed);
           expect(
@@ -1239,7 +1239,7 @@ export default activate;
           ).toEqual({ message: "generation one", tone: "success" });
 
           yield* fileSystem.writeFileString(
-            `${packageDirectory}/index.mjs`,
+            `${packageDirectory}/index.js`,
             "export default function activate() { throw new Error('activation failed') }",
           );
           expect((yield* Effect.exit(manager.reload(packageId)))._tag).toBe("Failure");
@@ -1260,12 +1260,9 @@ export default activate;
             packages: [{ id: packageId, state: "error", error: "activation failed" }],
           });
 
+          yield* fileSystem.writeFileString(`${packageDirectory}/index.js`, pluginSourceWithHelper);
           yield* fileSystem.writeFileString(
-            `${packageDirectory}/index.mjs`,
-            pluginSourceWithHelper,
-          );
-          yield* fileSystem.writeFileString(
-            `${packageDirectory}/message.mjs`,
+            `${packageDirectory}/message.js`,
             'export const message = "generation two";\n',
           );
           yield* manager.reload(packageId);
@@ -1300,7 +1297,7 @@ export default activate;
         encodeManifest(manifest),
       );
       yield* fileSystem.writeFileString(
-        `${sourceDirectory}/index.mjs`,
+        `${sourceDirectory}/index.js`,
         pluginSource(`${sourceDirectory}/disposed.log`),
       );
       yield* fileSystem.symlink(sourceDirectory, packageDirectory);
@@ -1335,7 +1332,7 @@ export default activate;
         encodeManifest({ ...manifest, permissions: ["state:read-write"] }),
       );
       yield* fileSystem.writeFileString(
-        `${packageDirectory}/index.mjs`,
+        `${packageDirectory}/index.js`,
         pluginSource(`${packageDirectory}/disposed.log`),
       );
 
@@ -1419,7 +1416,7 @@ export default activate;
         encodeManifest(manifest),
       );
       yield* fileSystem.writeFileString(
-        `${packageDirectory}/index.mjs`,
+        `${packageDirectory}/index.js`,
         pluginSource(`${packageDirectory}/disposed.log`),
       );
 
@@ -1454,7 +1451,7 @@ export default activate;
         encodeManifest(manifest),
       );
       yield* fileSystem.writeFileString(
-        `${packageDirectory}/index.mjs`,
+        `${packageDirectory}/index.js`,
         pluginSourceWithCleanupFailure,
       );
 
@@ -1497,7 +1494,7 @@ export default activate;
         encodeManifest(manifest),
       );
       yield* fileSystem.writeFileString(
-        `${packageDirectory}/index.mjs`,
+        `${packageDirectory}/index.js`,
         pluginSourceWithRetirementGate(startedFile, releaseFile),
       );
 

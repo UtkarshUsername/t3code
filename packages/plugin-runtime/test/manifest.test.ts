@@ -140,6 +140,23 @@ describe("PluginManifest", () => {
     }
   });
 
+  it("rejects unsupported executable entrypoint extensions", () => {
+    for (const server of [
+      "./dist/server.mjs",
+      "./dist/server.cjs",
+      "./dist/server.mts",
+      "./dist/server.cts",
+      "./dist/server.tsx",
+    ]) {
+      expect(() =>
+        decodeManifest({
+          ...validManifest,
+          entrypoints: { ...validManifest.entrypoints, server },
+        }),
+      ).toThrow();
+    }
+  });
+
   it("rejects entrypoints that escape the plugin directory", () => {
     for (const server of ["./../outside.js", "./dist/../../outside.js"]) {
       expect(() =>
