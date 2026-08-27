@@ -99,15 +99,27 @@ interface MutableUiPackage {
   readonly contextualActions: Array<PluginUiContributionType["contextualActions"][number]>;
 }
 
-const uiPackagesFromSnapshot = (snapshot: PluginRuntimeSnapshot) => {
-  const packages = new Map<string, MutableUiPackage>();
-  const views = snapshot.contributions.views ?? [];
-  const visibleViewById = new Map(views.map((entry) => [entry.id, entry]));
-  const replacementViewByTarget = new Map(
-    views.flatMap((entry) =>
+const referenceResolver = <Entry extends { readonly id: string; readonly replaces?: string }>(
+  entries: ReadonlyArray<Entry>,
+) => {
+  const visible = new Map(entries.map((entry) => [entry.id, entry]));
+  const replacements = new Map(
+    entries.flatMap((entry) =>
       entry.replaces === undefined ? [] : ([[entry.replaces, entry]] as const),
     ),
   );
+  return (id: string): Entry | undefined => visible.get(id) ?? replacements.get(id);
+};
+
+const uiPackagesFromSnapshot = (snapshot: PluginRuntimeSnapshot) => {
+  const packages = new Map<string, MutableUiPackage>();
+  const views = snapshot.contributions.views ?? [];
+  const resolveView = referenceResolver(views);
+  const resolveCommand = referenceResolver(snapshot.contributions.commands ?? []);
+  const resolveAction = referenceResolver([
+    ...(snapshot.contributions.composerActions ?? []),
+    ...(snapshot.contributions.contextualActions ?? []),
+  ]);
   const packageFor = (pluginId: string) => {
     const existing = packages.get(pluginId);
     if (existing !== undefined) return existing;
@@ -135,9 +147,7 @@ const uiPackagesFromSnapshot = (snapshot: PluginRuntimeSnapshot) => {
         case "navigation":
           {
             const navigation = decodeUiNavigation(input);
-            const view =
-              visibleViewById.get(navigation.viewId) ??
-              replacementViewByTarget.get(navigation.viewId);
+            const view = resolveView(navigation.viewId);
             if (view === undefined) break;
             packageFor(view.owner.pluginId).navigation.push(
               decodeUiNavigation({ ...navigation, viewId: view.id }),
@@ -145,19 +155,65 @@ const uiPackagesFromSnapshot = (snapshot: PluginRuntimeSnapshot) => {
           }
           break;
         case "views":
-          pluginPackage.views.push(decodeUiView(input));
+          {
+            const view = decodeUiView(input);
+            const blocks: Array<(typeof view.blocks)[number]> = [];
+            for (const block of view.blocks) {
+              if (!("commandId" in block) || block.commandId === undefined) {
+                blocks.push(block);
+                continue;
+              }
+              const command = resolveCommand(block.commandId);
+              if (command !== undefined) {
+                blocks.push({ ...block, commandId: command.id });
+                continue;
+              }
+              if (block.kind === "card") {
+                const { commandId: _commandId, ...withoutCommand } = block;
+                blocks.push(withoutCommand);
+              }
+            }
+            pluginPackage.views.push(decodeUiView({ ...view, blocks }));
+          }
           break;
         case "cards":
-          pluginPackage.cards.push(decodeUiCard(input));
+          {
+            const card = decodeUiCard(input);
+            if (card.actionId === undefined) {
+              pluginPackage.cards.push(card);
+              break;
+            }
+            const action = resolveAction(card.actionId);
+            const { actionId: _actionId, ...withoutAction } = card;
+            pluginPackage.cards.push(
+              decodeUiCard(action === undefined ? withoutAction : { ...card, actionId: action.id }),
+            );
+          }
           break;
         case "statusItems":
           pluginPackage.statusItems.push(decodeUiStatus(input));
           break;
         case "composerActions":
-          pluginPackage.composerActions.push(decodeUiAction(input));
+          {
+            const action = decodeUiAction(input);
+            const command = resolveCommand(action.commandId);
+            if (command !== undefined) {
+              pluginPackage.composerActions.push(
+                decodeUiAction({ ...action, commandId: command.id }),
+              );
+            }
+          }
           break;
         case "contextualActions":
-          pluginPackage.contextualActions.push(decodeUiContextualAction(input));
+          {
+            const action = decodeUiContextualAction(input);
+            const command = resolveCommand(action.commandId);
+            if (command !== undefined) {
+              pluginPackage.contextualActions.push(
+                decodeUiContextualAction({ ...action, commandId: command.id }),
+              );
+            }
+          }
           break;
       }
     }
