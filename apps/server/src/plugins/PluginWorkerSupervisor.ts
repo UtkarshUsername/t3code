@@ -292,6 +292,7 @@ export const make = Effect.gen(function* () {
           [
             `--max-old-space-size=${String(options.memoryLimitMb)}`,
             "--no-addons",
+            "--enable-source-maps",
             "--unhandled-rejections=strict",
             runtimePath,
             input.entrypointPath,

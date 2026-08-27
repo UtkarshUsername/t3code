@@ -5,7 +5,7 @@
   "forkOf": "t3.plugin-runtime.commands",
   "apiVersion": 1,
   "entrypoints": {
-    "server": "./index.mjs"
+    "server": "./index.ts"
   },
   "capabilities": ["t3.commands@1", "t3.ui@1"],
   "permissions": ["settings:read-write", "notifications:send"],

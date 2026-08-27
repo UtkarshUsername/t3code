@@ -50,6 +50,8 @@ describe("shouldBundleCliDependency", () => {
       "@clerk/electron-passkeys",
       "msgpackr-extract",
       "@msgpackr-extract/msgpackr-extract-win32-x64",
+      "esbuild",
+      "@esbuild/linux-x64",
     ]) {
       assert.strictEqual(shouldBundleCliDependency(id), false, id);
     }
@@ -75,10 +77,12 @@ describe("selectCliRuntimeExternalDependencies", () => {
         "@effect/platform-bun": "1.0.0",
         "@ff-labs/fff-node": "2.0.0",
         effect: "3.0.0",
+        esbuild: "5.0.0",
         "node-pty": "4.0.0",
       }),
       {
         "@ff-labs/fff-node": "2.0.0",
+        esbuild: "5.0.0",
         "node-pty": "4.0.0",
       },
     );
@@ -87,7 +91,7 @@ describe("selectCliRuntimeExternalDependencies", () => {
   it("selects every external root declared by the server", () => {
     assert.deepStrictEqual(
       Object.keys(selectCliRuntimeExternalDependencies(serverPackageJson.dependencies)).sort(),
-      ["@ff-labs/fff-node", "msgpackr-extract", "node-pty"],
+      ["@ff-labs/fff-node", "esbuild", "msgpackr-extract", "node-pty"],
     );
   });
 });

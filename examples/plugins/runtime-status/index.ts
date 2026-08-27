@@ -1,4 +1,10 @@
-export default function activate(api) {
+import type { PluginActivate, PluginCommandResult } from "t3/plugin";
+
+enum CommandTone {
+  Success = "success",
+}
+
+const activate = ((api) => {
   api.registerUi({
     settings: [
       {
@@ -92,7 +98,7 @@ export default function activate(api) {
           const message = context?.threadId
             ? `external plugin runtime is active for thread ${context.threadId}.`
             : "external plugin runtime is active.";
-          const result = { message, tone: "success" };
+          const result = { message, tone: CommandTone.Success } satisfies PluginCommandResult;
           if (enabled === false) return api.effect.succeed(result);
           return api.effect.flatMap(
             api.host.ui.notify({
@@ -106,4 +112,6 @@ export default function activate(api) {
         },
       ),
   );
-}
+}) satisfies PluginActivate;
+
+export default activate;

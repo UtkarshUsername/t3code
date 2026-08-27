@@ -77,8 +77,8 @@ it.layer(NodeServices.layer)("plugin worker supervisor", (it) => {
         yield* fileSystem.writeFileString(
           entrypointPath,
           `export default function activate(api) {
-            if (!process.execArgv.includes("--max-old-space-size=128") || !process.execArgv.includes("--no-addons")) {
-              throw new Error("worker resource flags missing");
+            if (!process.execArgv.includes("--max-old-space-size=128") || !process.execArgv.includes("--no-addons") || !process.execArgv.includes("--enable-source-maps")) {
+              throw new Error("worker resource or source-map flags missing");
             }
             api.registerUi({
               settings: [],
