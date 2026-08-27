@@ -1324,14 +1324,50 @@ export default function ThreadTerminalDrawer({
     drawerHeightRef.current = drawerHeight;
   }, [drawerHeight]);
 
+  const clampResizeFrameRef = useRef(0);
+  const clampResizeActiveRef = useRef(false);
   useLayoutEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      if (clampResizeActiveRef.current) {
+        clampResizeActiveRef.current = false;
+        onResizeStateChangeRef.current?.(false);
+      }
+      if (clampResizeFrameRef.current !== 0) {
+        window.cancelAnimationFrame(clampResizeFrameRef.current);
+        clampResizeFrameRef.current = 0;
+      }
+      return;
+    }
     // The animated frame reserves space from --terminal-drawer-height but
     // cannot know this drawer's viewport-dependent clamp; report the
     // effective height so the frame never reserves more than the terminal
     // renders (a height saved on a larger window would otherwise leave a
     // dead band under the drawer).
     onHeightPreviewChange?.(drawerHeight);
+    // Window-resize clamping changes drawerHeight outside a drag. That path
+    // must also flag a resize so the gap and its fixed-height surface move
+    // together; otherwise the gap tweens height for 200ms while the surface
+    // snaps, clipping or leaving a band. Skip while a drag holds capture.
+    if (resizeStateRef.current !== null) return;
+    clampResizeActiveRef.current = true;
+    onResizeStateChangeRef.current?.(true);
+    if (clampResizeFrameRef.current !== 0) {
+      window.cancelAnimationFrame(clampResizeFrameRef.current);
+    }
+    const firstFrame = window.requestAnimationFrame(() => {
+      clampResizeFrameRef.current = window.requestAnimationFrame(() => {
+        clampResizeFrameRef.current = 0;
+        clampResizeActiveRef.current = false;
+        onResizeStateChangeRef.current?.(false);
+      });
+    });
+    clampResizeFrameRef.current = firstFrame;
+    return () => {
+      if (clampResizeFrameRef.current !== 0) {
+        window.cancelAnimationFrame(clampResizeFrameRef.current);
+        clampResizeFrameRef.current = 0;
+      }
+    };
   }, [onHeightPreviewChange, visible, drawerHeight]);
 
   const syncHeight = useCallback((nextHeight: number) => {
