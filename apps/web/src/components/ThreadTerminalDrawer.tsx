@@ -1326,8 +1326,10 @@ export default function ThreadTerminalDrawer({
 
   const clampResizeFrameRef = useRef(0);
   const clampResizeActiveRef = useRef(false);
+  const lastPreviewedHeightRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     if (!visible) {
+      lastPreviewedHeightRef.current = null;
       if (clampResizeActiveRef.current) {
         clampResizeActiveRef.current = false;
         onResizeStateChangeRef.current?.(false);
@@ -1338,12 +1340,12 @@ export default function ThreadTerminalDrawer({
       }
       return;
     }
-    // The animated frame reserves space from --terminal-drawer-height but
-    // cannot know this drawer's viewport-dependent clamp; report the
-    // effective height so the frame never reserves more than the terminal
-    // renders (a height saved on a larger window would otherwise leave a
-    // dead band under the drawer).
     onHeightPreviewChange?.(drawerHeight);
+    const previousHeight = lastPreviewedHeightRef.current;
+    lastPreviewedHeightRef.current = drawerHeight;
+    // Only a clamp change while already visible needs the snap; flagging on
+    // the reveal itself would kill the drawer's enter transition.
+    if (previousHeight === null || previousHeight === drawerHeight) return;
     // Window-resize clamping changes drawerHeight outside a drag. That path
     // must also flag a resize so the gap and its fixed-height surface move
     // together; otherwise the gap tweens height for 200ms while the surface
