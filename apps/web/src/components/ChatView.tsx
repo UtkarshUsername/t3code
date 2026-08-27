@@ -3962,16 +3962,19 @@ function ChatViewContent(props: ChatViewProps) {
   // truth for clearing. The hook uses layout timing so the close flag lands
   // before paint and the cluster never renders in the header for one frame.
   const inlinePanelAnimationsEnabled = useInterfaceAnimationsEnabled();
+  const inlinePanelPresenceKey = `${activeThreadKey}:${shouldUseRightPanelSheet ? "sheet" : "inline"}`;
   const { ridingExit: inlinePanelExiting, completeExit: completeInlinePanelControlsExit } =
     usePanelControlsRidingExit(
       rightPanelOpen && !shouldUseRightPanelSheet,
       inlinePanelAnimationsEnabled,
       INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS,
+      inlinePanelPresenceKey,
     );
   const { ridingExit: inlinePanelEntering } = usePanelControlsRidingExit(
     !rightPanelOpen || shouldUseRightPanelSheet,
     inlinePanelAnimationsEnabled,
     INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS,
+    inlinePanelPresenceKey,
   );
   const showRowPanelLayoutControls =
     !shouldUseRightPanelSheet && (rightPanelOpen || inlinePanelExiting);
@@ -7563,7 +7566,7 @@ function ChatViewContent(props: ChatViewProps) {
 
       {activeThreadRef ? (
         <InlineRightPanelPresence
-          key={`${activeThreadKey}:${shouldUseRightPanelSheet ? "sheet" : "inline"}`}
+          key={inlinePanelPresenceKey}
           open={!shouldUseRightPanelSheet && rightPanelOpen}
           onExitComplete={handleInlineRightPanelExitComplete}
           snapshot={{

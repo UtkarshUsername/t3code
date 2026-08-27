@@ -9,11 +9,19 @@ export function usePanelControlsRidingExit(
   open: boolean,
   animationsEnabled: boolean,
   exitFallbackMs = 250,
+  scopeKey?: unknown,
 ): { ridingExit: boolean; completeExit: () => void } {
   const [ridingExit, setRidingExit] = useState(false);
   const wasOpenRef = useRef(open);
+  const scopeKeyRef = useRef(scopeKey);
 
   useLayoutEffect(() => {
+    if (!Object.is(scopeKeyRef.current, scopeKey)) {
+      scopeKeyRef.current = scopeKey;
+      wasOpenRef.current = open;
+      setRidingExit(false);
+      return;
+    }
     if (open) {
       wasOpenRef.current = true;
       setRidingExit(false);
@@ -31,7 +39,7 @@ export function usePanelControlsRidingExit(
     setRidingExit(true);
     const timeoutId = window.setTimeout(() => setRidingExit(false), exitFallbackMs);
     return () => window.clearTimeout(timeoutId);
-  }, [animationsEnabled, exitFallbackMs, open]);
+  }, [animationsEnabled, exitFallbackMs, open, scopeKey]);
 
   const completeExit = useCallback(() => setRidingExit(false), []);
   return { ridingExit, completeExit };

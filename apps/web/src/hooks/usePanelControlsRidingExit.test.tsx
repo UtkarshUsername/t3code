@@ -61,21 +61,26 @@ function installTestDom() {
   return document;
 }
 
-function mountHook(initialOpen: boolean, initialAnimationsEnabled: boolean) {
+function mountHook(initialOpen: boolean, initialAnimationsEnabled: boolean, initialScopeKey = "a") {
   const document = installTestDom();
   const root = createRoot(document.createElement("div") as unknown as Element);
   let ridingExit = false;
   let completeExit = () => {};
 
-  const Harness = (props: { open: boolean; animationsEnabled: boolean }) => {
-    const result = usePanelControlsRidingExit(props.open, props.animationsEnabled);
+  const Harness = (props: { open: boolean; animationsEnabled: boolean; scopeKey: string }) => {
+    const result = usePanelControlsRidingExit(
+      props.open,
+      props.animationsEnabled,
+      250,
+      props.scopeKey,
+    );
     ridingExit = result.ridingExit;
     completeExit = result.completeExit;
     return jsx("div", {});
   };
-  const render = (open: boolean, animationsEnabled: boolean) => {
+  const render = (open: boolean, animationsEnabled: boolean, scopeKey = initialScopeKey) => {
     flushSync(() => {
-      root.render(jsx(Harness, { open, animationsEnabled }));
+      root.render(jsx(Harness, { open, animationsEnabled, scopeKey }));
     });
   };
 
@@ -122,6 +127,16 @@ describe("usePanelControlsRidingExit", () => {
     try {
       view.render(false, true);
       view.completeExit();
+      expect(view.ridingExit).toBe(false);
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("does not ride an exit when the panel presence changes", () => {
+    const view = mountHook(true, true, "thread-a:inline");
+    try {
+      view.render(false, true, "thread-b:inline");
       expect(view.ridingExit).toBe(false);
     } finally {
       view.unmount();
