@@ -26,7 +26,7 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
+import { DraftInput } from "../ui/draft-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -459,7 +459,10 @@ function PluginUiSettingControl({
         }}
       >
         <SelectTrigger size="compact" className="w-56">
-          <SelectValue />
+          <SelectValue>
+            {setting.options.find((option) => option.value === String(value))?.label ??
+              String(value)}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           {setting.options.map((option) => (
@@ -470,16 +473,13 @@ function PluginUiSettingControl({
         </SelectContent>
       </Select>
     ) : (
-      <Input
+      <DraftInput
         size="sm"
         className="w-56"
-        value={String(value)}
+        value={String(committedValue)}
         placeholder={setting.placeholder}
         disabled={readOnly || busy || loading}
-        onChange={(event) => setValue(event.target.value)}
-        onBlur={() => {
-          if (!readOnly && !loading && !busy) void update(String(value));
-        }}
+        onCommit={(next) => void update(next)}
       />
     );
 
