@@ -1536,7 +1536,8 @@ function PullRequestsRouteView() {
       pullRequestsSupported && !rightPanelOpen && !panelControlsRidingExit
         ? openPanelControls
         : null,
-    rightPanelOpen: rightPanelState.isOpen,
+    // The panel owns the titlebar once its enter lands, and through its exit.
+    rightPanelOpen: (rightPanelOpen && !panelControlsEntering) || panelControlsRidingExit,
     listBody,
   };
 
