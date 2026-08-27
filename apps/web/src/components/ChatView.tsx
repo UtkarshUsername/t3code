@@ -216,6 +216,7 @@ import {
   useEnvironmentSettings,
 } from "../hooks/useSettings";
 import { useInterfaceAnimationsEnabled } from "../hooks/useInterfaceAnimations";
+import { usePanelControlsRidingExit } from "../hooks/usePanelControlsRidingExit";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useThreadActions } from "../hooks/useThreadActions";
@@ -3959,39 +3960,15 @@ function ChatViewContent(props: ChatViewProps) {
   // it in its row position until the exit transition lands so it rides the
   // collapsing gap edge instead of jumping into a header that is still inset
   // by the not-yet-collapsed panel width. The settle timer is the source of
-  // truth for clearing: child effects run before parent effects, so an
-  // exit-complete callback alone loses to this effect's write when the exit
-  // settles instantly (animations off).
-  const [inlinePanelExiting, setInlinePanelExiting] = useState(false);
+  // truth for clearing. The hook uses layout timing so the close flag lands
+  // before paint and the cluster never renders in the header for one frame.
   const inlinePanelAnimationsEnabled = useInterfaceAnimationsEnabled();
-  const wasOpenInlineRef = useRef(rightPanelOpen && !shouldUseRightPanelSheet);
-  useEffect(() => {
-    const openInline = rightPanelOpen && !shouldUseRightPanelSheet;
-    if (openInline) {
-      wasOpenInlineRef.current = true;
-      setInlinePanelExiting(false);
-      return;
-    }
-    if (!wasOpenInlineRef.current) {
-      // Deps changed while a flag from an aborted close was pending (e.g. a
-      // sheet flip mid-exit); settle immediately rather than stranding it.
-      setInlinePanelExiting(false);
-      return;
-    }
-    wasOpenInlineRef.current = false;
-    // Without animations there is no exit to ride; settle immediately
-    // instead of holding the cluster at the row level for the fallback.
-    if (!inlinePanelAnimationsEnabled) {
-      setInlinePanelExiting(false);
-      return;
-    }
-    setInlinePanelExiting(true);
-    const timeoutId = window.setTimeout(
-      () => setInlinePanelExiting(false),
+  const { ridingExit: inlinePanelExiting, completeExit: completeInlinePanelControlsExit } =
+    usePanelControlsRidingExit(
+      rightPanelOpen && !shouldUseRightPanelSheet,
+      inlinePanelAnimationsEnabled,
       INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS,
     );
-    return () => window.clearTimeout(timeoutId);
-  }, [rightPanelOpen, shouldUseRightPanelSheet, inlinePanelAnimationsEnabled]);
   const showRowPanelLayoutControls =
     !shouldUseRightPanelSheet && (rightPanelOpen || inlinePanelExiting);
   // In sheet mode the open panel supplies its own cluster via layoutControls,
@@ -4002,7 +3979,7 @@ function ChatViewContent(props: ChatViewProps) {
     : !showRowPanelLayoutControls;
   const handleInlineRightPanelExitComplete = useCallback(
     (snapshot: InlineRightPanelSnapshot) => {
-      setInlinePanelExiting(false);
+      completeInlinePanelControlsExit();
       const pendingCleanup = deferredRightPanelCleanupRef.current;
       if (
         !pendingCleanup ||
@@ -4013,7 +3990,7 @@ function ChatViewContent(props: ChatViewProps) {
       deferredRightPanelCleanupRef.current = null;
       runDeferredRightPanelCleanup(pendingCleanup);
     },
-    [runDeferredRightPanelCleanup],
+    [completeInlinePanelControlsExit, runDeferredRightPanelCleanup],
   );
   const syncActivePreviewSurface = useCallback(() => {
     if (!activeThreadRef) return;

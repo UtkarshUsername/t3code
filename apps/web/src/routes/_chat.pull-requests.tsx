@@ -73,6 +73,7 @@ import {
   InlineRightPanelPresence,
 } from "../components/InlineRightPanelPresence";
 import { useInterfaceAnimationsEnabled } from "../hooks/useInterfaceAnimations";
+import { usePanelControlsRidingExit } from "../hooks/usePanelControlsRidingExit";
 import { RightPanelTabs, type PullRequestTabStatus } from "../components/RightPanelTabs";
 import {
   WorkspaceBreadcrumb,
@@ -1492,34 +1493,13 @@ function PullRequestsRouteView() {
   // route-row anchor until the exit transition lands so it rides the
   // collapsing gap edge instead of jumping into a header still inset by the
   // not-yet-collapsed panel width; same settle-timer scheme as ChatView.
-  const [panelControlsRidingExit, setPanelControlsRidingExit] = useState(false);
   const panelAnimationsEnabled = useInterfaceAnimationsEnabled();
-  const wasOpenRef = useRef(rightPanelOpen);
-  useEffect(() => {
-    if (rightPanelOpen) {
-      wasOpenRef.current = true;
-      setPanelControlsRidingExit(false);
-      return;
-    }
-    if (!wasOpenRef.current) {
-      setPanelControlsRidingExit(false);
-      return;
-    }
-    wasOpenRef.current = false;
-    // Without animations there is no exit to ride; settle immediately so the
-    // strip returns to the header instead of floating at row level, where it
-    // loses Electron app-region hit-testing to the header's drag region.
-    if (!panelAnimationsEnabled) {
-      setPanelControlsRidingExit(false);
-      return;
-    }
-    setPanelControlsRidingExit(true);
-    const timeoutId = window.setTimeout(
-      () => setPanelControlsRidingExit(false),
+  const { ridingExit: panelControlsRidingExit, completeExit: completePanelControlsExit } =
+    usePanelControlsRidingExit(
+      rightPanelOpen,
+      panelAnimationsEnabled,
       INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS,
     );
-    return () => window.clearTimeout(timeoutId);
-  }, [rightPanelOpen, panelAnimationsEnabled]);
   const columnProps = {
     refreshing,
     onRefresh: () => void refreshFromHost(),
@@ -1631,7 +1611,7 @@ function PullRequestsRouteView() {
         <InlineRightPanelPresence
           key="pull-requests:inline"
           open={rightPanelOpen}
-          onExitComplete={() => setPanelControlsRidingExit(false)}
+          onExitComplete={completePanelControlsExit}
           snapshot={{
             surfaces: rightPanelState.surfaces,
             activeSurfaceId: activePullRequestSurface?.id ?? null,
