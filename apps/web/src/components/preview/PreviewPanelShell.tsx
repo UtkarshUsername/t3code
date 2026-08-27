@@ -232,12 +232,13 @@ function useClampedMaxWidth(
     if (!enabled) return;
     const parent = hostRef.current?.parentElement;
     if (!parent) return;
-    // Defer the first row measurement by a frame: forcing layout in the
-    // insertion task makes Chrome resolve the panel's initial width without
-    // starting the enter transition (@starting-style never fires). Until it
-    // lands, the viewport fraction cap governs, as during a window resize;
-    // the enter animation starts from 0, so the unclamped first target
-    // cannot flash over-wide.
+    // Defer the first row measurement by a frame. We intentionally do not
+    // read parent.clientWidth synchronously in the insertion task: a sync
+    // read forces layout and makes Chrome resolve the panel's initial width
+    // immediately, so @starting-style never fires and the enter animation
+    // does not run. Until the deferred read lands, the viewport fraction
+    // cap governs, as during a window resize; the enter animation starts
+    // from 0, so the unclamped first target cannot flash over-wide.
     let measured = false;
     let settleFrame = 0;
     const startFrame = window.requestAnimationFrame(() => {
