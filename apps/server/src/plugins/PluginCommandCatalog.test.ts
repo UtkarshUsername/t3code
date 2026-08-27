@@ -146,6 +146,159 @@ describe("plugin command catalog", () => {
       }).pipe(Effect.provide(PluginCommandCatalog.layer)),
   );
 
+  it.effect("composes individual declarative ui contributions across package origins", () =>
+    Effect.gen(function* () {
+      const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+      const coreUi: PluginDefinition = {
+        id: "t3.bundled.example",
+        origin: "bundled",
+        version: "1.0.0",
+        activate(context) {
+          PluginCommandCatalog.registerPluginUi(context, "t3.bundled.example", {
+            settings: [],
+            navigation: [],
+            views: [
+              {
+                id: "t3.bundled.example.view",
+                label: "Bundled example",
+                surfaces: ["web"],
+                blocks: [{ kind: "text", text: "Bundled" }],
+              },
+            ],
+            cards: [],
+            statusItems: [],
+            composerActions: [],
+            contextualActions: [],
+          });
+        },
+      };
+      const forkUi: PluginDefinition = {
+        id: "local.example",
+        origin: "local-fork",
+        version: "1.0.0",
+        composition: [
+          {
+            id: "local.example.replace-view",
+            operation: "replace",
+            slot: "views",
+            sourceId: "local.example.view",
+            targetId: "t3.bundled.example.view",
+          },
+        ],
+        activate(context) {
+          PluginCommandCatalog.registerPluginUi(context, "local.example", {
+            settings: [],
+            navigation: [],
+            views: [
+              {
+                id: "local.example.view",
+                label: "Forked example",
+                surfaces: ["web"],
+                blocks: [{ kind: "text", text: "Forked" }],
+              },
+            ],
+            cards: [],
+            statusItems: [],
+            composerActions: [],
+            contextualActions: [],
+          });
+        },
+      };
+
+      yield* catalog.reconcile([coreUi, forkUi]);
+      const ui = yield* catalog.ui;
+      expect(
+        ui.packages.flatMap((pluginPackage) => pluginPackage.views.map((view) => view.id)),
+      ).toEqual(["local.example.view"]);
+      expect(ui.order.views).toEqual(["local.example.view"]);
+      expect((yield* catalog.composition).composition).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ outcome: "applied", ruleId: "local.example.replace-view" }),
+        ]),
+      );
+    }).pipe(Effect.provide(PluginCommandCatalog.layer)),
+  );
+
+  it.effect("replaces and restores the built-in command through composition", () =>
+    Effect.gen(function* () {
+      const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+      const replacement: PluginDefinition = {
+        id: "com.acme.runtime-status-fork",
+        origin: "local-fork",
+        version: "1.0.0",
+        composition: [
+          {
+            id: "com.acme.runtime-status-fork.replace",
+            operation: "replace",
+            slot: "commands",
+            sourceId: "com.acme.runtime-status-fork.command",
+            targetId: "t3.plugin-runtime.status",
+          },
+        ],
+        activate(context) {
+          PluginCommandCatalog.registerPluginCommand(context, {
+            command: {
+              id: "com.acme.runtime-status-fork.command",
+              label: "Check custom runtime",
+              surfaces: ["web"],
+            },
+            handler: Effect.succeed({ message: "Fork runtime is active.", tone: "success" }),
+          });
+        },
+      };
+
+      const replaced = yield* catalog.reconcile([replacement]);
+      expect(replaced.commands.map((command) => command.id)).toEqual([
+        "com.acme.runtime-status-fork.command",
+      ]);
+      expect((yield* catalog.composition).origins).toMatchObject({
+        "com.acme.runtime-status-fork": "local-fork",
+        "t3.plugin-runtime.commands": "core",
+      });
+      expect(
+        yield* catalog.invoke({
+          generation: replaced.generation,
+          id: "com.acme.runtime-status-fork.command",
+        }),
+      ).toEqual({ message: "Fork runtime is active.", tone: "success" });
+
+      const restored = yield* catalog.reconcile([]);
+      expect(restored.commands.map((command) => command.id)).toContain("t3.plugin-runtime.status");
+    }).pipe(Effect.provide(PluginCommandCatalog.layer)),
+  );
+
+  it.effect("rolls back a decoration that makes resolved metadata invalid", () =>
+    Effect.gen(function* () {
+      const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+      const original = yield* catalog.list;
+      const invalidDecorator: PluginDefinition = {
+        id: "com.acme.invalid-decoration",
+        origin: "local-fork",
+        version: "1.0.0",
+        composition: [
+          {
+            id: "com.acme.invalid-decoration.status",
+            operation: "decorate",
+            slot: "commands",
+            targetId: "t3.plugin-runtime.status",
+            patch: { data: { surfaces: ["server"] } },
+          },
+        ],
+        activate() {},
+      };
+
+      const failed = yield* Effect.exit(catalog.reconcile([invalidDecorator]));
+      expect(Exit.isFailure(failed)).toBe(true);
+      expect(yield* catalog.list).toBe(original);
+      expect(
+        yield* catalog.invoke({
+          generation: original.generation,
+          id: "t3.plugin-runtime.status",
+        }),
+      ).toEqual({ message: "Plugin runtime is active.", tone: "success" });
+    }).pipe(Effect.provide(PluginCommandCatalog.layer)),
+  );
+
   it.effect("keeps the committed command and handler when replacement activation fails", () =>
     Effect.gen(function* () {
       const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
@@ -342,9 +495,21 @@ describe("plugin command catalog", () => {
         reconcile: () =>
           Effect.sync(() => {
             generation += 1;
-            return { active: [], blocked: {}, contributions: {} };
+            return {
+              active: [],
+              blocked: {},
+              contributions: {},
+              composition: [],
+              origins: {},
+            };
           }),
-        snapshot: Effect.succeed({ active: [], blocked: {}, contributions: {} }),
+        snapshot: Effect.succeed({
+          active: [],
+          blocked: {},
+          contributions: {},
+          composition: [],
+          origins: {},
+        }),
         contributions: () =>
           Effect.suspend(() => {
             if (!blockPublication) {

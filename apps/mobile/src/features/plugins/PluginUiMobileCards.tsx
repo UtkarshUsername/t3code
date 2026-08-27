@@ -10,6 +10,18 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useWorkspaceState } from "../../state/workspace";
 
+const orderByIds = <Item extends { readonly id: string }>(
+  ids: ReadonlyArray<string>,
+  items: ReadonlyArray<Item>,
+): Array<Item> => {
+  const order = new Map(ids.map((id, index) => [id, index]));
+  return [...items].sort(
+    (left, right) =>
+      (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+        (order.get(right.id) ?? Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id),
+  );
+};
+
 export function PluginUiMobileNotificationHost() {
   const { environments } = useWorkspaceState();
   return environments.map((environment) => (
@@ -60,14 +72,23 @@ function EnvironmentPluginUiMobileCards({
   const invoke = useAtomCommand(serverEnvironment.invokePluginCommand, { reportFailure: false });
   if (catalog === null) return null;
 
-  const packages = catalog.packages
-    .map((pluginPackage) => ({
-      pluginPackage,
-      cards: pluginPackage.cards.filter((card) => card.surfaces.includes("mobile")),
-      statuses: pluginPackage.statusItems.filter((item) => item.surfaces.includes("mobile")),
-    }))
-    .filter(({ cards, statuses }) => cards.length > 0 || statuses.length > 0);
-  if (packages.length === 0) return null;
+  const cards = orderByIds(
+    catalog.order.cards,
+    catalog.packages.flatMap((pluginPackage) =>
+      pluginPackage.cards
+        .filter((card) => card.surfaces.includes("mobile"))
+        .map((card) => ({ ...card, pluginPackage })),
+    ),
+  );
+  const statuses = orderByIds(
+    catalog.order.statusItems,
+    catalog.packages.flatMap((pluginPackage) =>
+      pluginPackage.statusItems
+        .filter((status) => status.surfaces.includes("mobile"))
+        .map((status) => ({ ...status, pluginPackage })),
+    ),
+  );
+  if (cards.length === 0 && statuses.length === 0) return null;
 
   return (
     <ScrollView
@@ -76,8 +97,8 @@ function EnvironmentPluginUiMobileCards({
       contentContainerClassName="gap-3 px-4 py-2"
       accessibilityLabel="Plugin cards"
     >
-      {packages.flatMap(({ pluginPackage, cards, statuses }) => [
-        ...cards.map((card) => {
+      {[
+        ...cards.map(({ pluginPackage, ...card }) => {
           const action = card.actionId
             ? [...pluginPackage.composerActions, ...pluginPackage.contextualActions].find(
                 (candidate) => candidate.id === card.actionId,
@@ -121,7 +142,7 @@ function EnvironmentPluginUiMobileCards({
             </Pressable>
           );
         }),
-        ...statuses.map((status) => (
+        ...statuses.map(({ pluginPackage, ...status }) => (
           <View
             key={`${pluginPackage.pluginId}:${status.id}`}
             className="min-w-36 rounded-2xl border border-border bg-card p-4"
@@ -131,7 +152,7 @@ function EnvironmentPluginUiMobileCards({
             <Text className="mt-1 text-base font-t3-semibold text-foreground">{status.value}</Text>
           </View>
         )),
-      ])}
+      ]}
     </ScrollView>
   );
 }

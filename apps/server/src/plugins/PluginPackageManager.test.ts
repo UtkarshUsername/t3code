@@ -636,6 +636,16 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
       const uiManifest = {
         ...manifest,
         id: uiPackageId,
+        forkOf: "t3.plugin-runtime.commands",
+        composition: [
+          {
+            id: "com.acme.fun.replace-status",
+            operation: "replace",
+            slot: "commands",
+            sourceId: uiCommandId,
+            targetId: "t3.plugin-runtime.status",
+          },
+        ],
         capabilities: ["t3.commands@1", "t3.ui@1"],
         permissions: ["settings:read-write", "notifications:send"],
         contributes: {
@@ -731,6 +741,19 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
             navigation: [{ id: "com.acme.fun.navigation" }],
             cards: [{ id: "com.acme.fun.card" }],
           });
+          expect(yield* manager.status).toMatchObject({
+            packages: [
+              {
+                id: uiPackageId,
+                origin: "local-fork",
+                forkOf: "t3.plugin-runtime.commands",
+                composition: [{ outcome: "applied", ruleId: "com.acme.fun.replace-status" }],
+              },
+            ],
+          });
+          expect((yield* catalog.list).commands.map((command) => command.id)).not.toContain(
+            "t3.plugin-runtime.status",
+          );
           expect(yield* manager.settingRead(uiPackageId, "com.acme.fun.enabled")).toBeUndefined();
           yield* manager.settingWrite(uiPackageId, "com.acme.fun.enabled", false);
           expect(yield* manager.settingRead(uiPackageId, "com.acme.fun.enabled")).toBe(false);
@@ -747,6 +770,17 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
             pluginId: uiPackageId,
             message: "thread-1",
           });
+          const committed = yield* catalog.list;
+          yield* fileSystem.writeFileString(
+            `${packageDirectory}/index.mjs`,
+            `export default function activate() { throw new Error("fork reload failed"); }`,
+          );
+          expect((yield* Effect.exit(manager.reload(uiPackageId)))._tag).toBe("Failure");
+          expect(yield* catalog.list).toBe(committed);
+          yield* manager.disable(uiPackageId);
+          expect((yield* catalog.list).commands.map((command) => command.id)).toContain(
+            "t3.plugin-runtime.status",
+          );
         }),
       );
     }),
@@ -774,9 +808,42 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
           const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
           yield* manager.enable(exampleId);
           const listed = yield* catalog.list;
+          expect(listed.commands.map((command) => command.id)).not.toContain(
+            "t3.plugin-runtime.status",
+          );
           expect(
             yield* catalog.invoke({ generation: listed.generation, id: exampleCommandId }),
           ).toEqual({ message: "external plugin runtime is active.", tone: "success" });
+        }),
+      );
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+          expect(yield* manager.status).toMatchObject({
+            packages: [
+              {
+                id: exampleId,
+                enabled: true,
+                origin: "local-fork",
+                composition: [
+                  {
+                    outcome: "applied",
+                    ruleId: "com.t3code.runtime-status-example.replace-core-status",
+                  },
+                ],
+              },
+            ],
+          });
+          expect((yield* catalog.list).commands.map((command) => command.id)).not.toContain(
+            "t3.plugin-runtime.status",
+          );
+          yield* manager.disable(exampleId);
+          expect((yield* catalog.list).commands.map((command) => command.id)).toContain(
+            "t3.plugin-runtime.status",
+          );
         }),
       );
     }),

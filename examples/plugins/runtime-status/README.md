@@ -14,6 +14,8 @@ t3 code discovers the package without a rebuild. use `pluginPackages.status` to 
 
 once enabled, the example adds a command, plugin settings, a navigation page, a card, a status item, composer and thread actions, and host-rendered notifications. mobile renders its card and status metadata without loading plugin renderer code.
 
+the manifest marks this package as a local fork of the core runtime command and replaces `t3.plugin-runtime.status`. disabling the package restores the core contribution automatically.
+
 ## host capabilities and plugin-owned data
 
 manifest permissions are explicit, bounded grants:

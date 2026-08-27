@@ -64,6 +64,28 @@ export const PluginPackageRuntimeState = Schema.Literals([
 ]);
 export type PluginPackageRuntimeState = typeof PluginPackageRuntimeState.Type;
 
+export const PluginPackageOrigin = Schema.Literals(["core", "bundled", "installed", "local-fork"]);
+export type PluginPackageOrigin = typeof PluginPackageOrigin.Type;
+
+export const PluginCompositionDiagnostic = Schema.Struct({
+  operation: Schema.Literals(["extend", "decorate", "replace", "disable"]),
+  outcome: Schema.Literals(["applied", "ignored"]),
+  pluginId: PluginPackageId,
+  reason: Schema.Literals([
+    "applied",
+    "forbidden",
+    "higher-precedence-rule",
+    "missing-source",
+    "missing-target",
+    "source-not-owned",
+  ]),
+  ruleId: PluginUiId,
+  slot: TrimmedNonEmptyString.check(Schema.isMaxLength(100)),
+  sourceId: Schema.optional(PluginUiId),
+  targetId: PluginUiId,
+});
+export type PluginCompositionDiagnostic = typeof PluginCompositionDiagnostic.Type;
+
 export const PluginPackageContributions = Schema.Struct({
   commands: Schema.Array(PluginCommandId),
   settings: Schema.Array(PluginUiId),
@@ -79,6 +101,8 @@ export type PluginPackageContributions = typeof PluginPackageContributions.Type;
 export const PluginPackageStatus = Schema.Struct({
   id: PluginPackageId,
   version: TrimmedNonEmptyString,
+  origin: PluginPackageOrigin,
+  forkOf: Schema.optional(PluginPackageId),
   apiVersion: Schema.Literal(1),
   enabled: Schema.Boolean,
   state: PluginPackageState,
@@ -88,6 +112,7 @@ export const PluginPackageStatus = Schema.Struct({
   permissions: Schema.Array(PluginHostPermission),
   grantedPermissions: Schema.Array(PluginHostPermission),
   contributions: PluginPackageContributions,
+  composition: Schema.Array(PluginCompositionDiagnostic),
   error: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(2_000))),
 });
 export type PluginPackageStatus = typeof PluginPackageStatus.Type;

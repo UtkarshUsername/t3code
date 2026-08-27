@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import type { PluginDefinition } from "./contract.ts";
+import type { ContributionData, PluginCompositionRule, PluginDefinition } from "./contract.ts";
 
 export interface PlannedComposition {
   readonly blocked: Readonly<Record<string, string>>;
@@ -256,10 +256,77 @@ const sameStrings = (left: ReadonlyArray<string>, right: ReadonlyArray<string>):
   return sortedLeft.every((value, index) => value === sortedRight[index]);
 };
 
+const sameContributionData = (
+  left: ContributionData | undefined,
+  right: ContributionData | undefined,
+): boolean => {
+  if (Object.is(left, right)) return true;
+  if (left === undefined || right === undefined || left === null || right === null) return false;
+  if (typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => sameContributionData(value, right[index]))
+    );
+  }
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  const leftRecord = left as Readonly<Record<string, ContributionData>>;
+  const rightRecord = right as Readonly<Record<string, ContributionData>>;
+  return (
+    sameStrings(leftKeys, rightKeys) &&
+    leftKeys.every((key) => sameContributionData(leftRecord[key], rightRecord[key]))
+  );
+};
+
+const sameCompositionRule = (
+  left: PluginCompositionRule,
+  right: PluginCompositionRule,
+): boolean => {
+  if (
+    left.id !== right.id ||
+    left.operation !== right.operation ||
+    left.slot !== right.slot ||
+    left.targetId !== right.targetId
+  ) {
+    return false;
+  }
+  if (left.operation === "extend" || left.operation === "replace") {
+    return (
+      (right.operation === "extend" || right.operation === "replace") &&
+      left.sourceId === right.sourceId
+    );
+  }
+  if (left.operation === "decorate") {
+    return (
+      right.operation === "decorate" &&
+      left.patch.label === right.patch.label &&
+      sameContributionData(left.patch.data, right.patch.data)
+    );
+  }
+  return right.operation === "disable";
+};
+
+const sameComposition = (
+  left: ReadonlyArray<PluginCompositionRule>,
+  right: ReadonlyArray<PluginCompositionRule>,
+): boolean => {
+  if (left.length !== right.length) return false;
+  const rightById = new Map(right.map((rule) => [rule.id, rule]));
+  return left.every((rule) => {
+    const candidate = rightById.get(rule.id);
+    return candidate !== undefined && sameCompositionRule(rule, candidate);
+  });
+};
+
 const sameDefinition = (left: PluginDefinition, right: PluginDefinition): boolean => {
   if (
     left.id !== right.id ||
     left.version !== right.version ||
+    (left.origin ?? "installed") !== (right.origin ?? "installed") ||
+    !sameComposition(left.composition ?? [], right.composition ?? []) ||
     !Object.is(left.activate, right.activate)
   ) {
     return false;

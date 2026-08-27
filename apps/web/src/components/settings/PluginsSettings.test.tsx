@@ -103,6 +103,8 @@ const snapshot: PluginPackageStatusSnapshot = {
     {
       id: "com.acme.active",
       version: "1.2.3",
+      origin: "installed",
+      composition: [],
       apiVersion: 1,
       enabled: true,
       state: "active",
@@ -125,6 +127,8 @@ const snapshot: PluginPackageStatusSnapshot = {
     {
       id: "com.acme.disabled",
       version: "2.0.0",
+      origin: "installed",
+      composition: [],
       apiVersion: 1,
       enabled: false,
       state: "disabled",
@@ -211,6 +215,55 @@ describe("PluginsSettingsPanel", () => {
     ).not.toBeNull();
     expect(
       visitElements(panel, (element) => element.props["data-plugin-error"] === "broken-package"),
+    ).not.toBeNull();
+  });
+
+  it("shows package origin, fork target, and composition decisions", () => {
+    query.data = {
+      errors: [],
+      packages: [
+        {
+          ...snapshot.packages[0]!,
+          origin: "local-fork",
+          forkOf: "t3.bundled.example",
+          composition: [
+            {
+              operation: "replace",
+              outcome: "applied",
+              pluginId: "com.acme.active",
+              reason: "applied",
+              ruleId: "com.acme.active.replace-example",
+              slot: "views",
+              sourceId: "com.acme.active.view",
+              targetId: "t3.bundled.example.view",
+            },
+          ],
+        },
+      ],
+    };
+
+    const row = renderPackageRow(renderPanel(), "com.acme.active");
+    expect(
+      visitElements(
+        row,
+        (element) =>
+          element.props["data-plugin-origin"] === "local-fork" &&
+          element.props.children === "local fork",
+      ),
+    ).not.toBeNull();
+    expect(
+      visitElements(
+        row,
+        (element) => element.props["data-plugin-fork-of"] === "t3.bundled.example",
+      ),
+    ).not.toBeNull();
+    expect(
+      visitElements(
+        row,
+        (element) =>
+          element.props["data-plugin-composition-rule"] === "com.acme.active.replace-example" &&
+          element.props["data-outcome"] === "applied",
+      ),
     ).not.toBeNull();
   });
 

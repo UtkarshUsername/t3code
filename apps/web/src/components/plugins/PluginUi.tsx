@@ -37,6 +37,15 @@ import { SettingsRow, SettingsSection } from "../settings/settingsLayout";
 const EMPTY_PLUGIN_UI_CATALOG: PluginUiCatalog = Object.freeze({
   generation: 0,
   packages: Object.freeze([]),
+  order: Object.freeze({
+    settings: Object.freeze([]),
+    navigation: Object.freeze([]),
+    views: Object.freeze([]),
+    cards: Object.freeze([]),
+    statusItems: Object.freeze([]),
+    composerActions: Object.freeze([]),
+    contextualActions: Object.freeze([]),
+  }),
 });
 const EMPTY_PLUGIN_UI_ATOM = Atom.make(AsyncResult.success(EMPTY_PLUGIN_UI_CATALOG));
 const EMPTY_PLUGIN_NOTIFICATION: PluginUiNotification = {
@@ -67,6 +76,19 @@ const badgeVariant = {
   warning: "warning",
   danger: "error",
 } as const;
+
+const orderUiItems = <Item extends { readonly id: string }>(
+  catalog: PluginUiCatalog,
+  slot: keyof PluginUiCatalog["order"],
+  items: ReadonlyArray<Item>,
+): Array<Item> => {
+  const order = new Map(catalog.order[slot].map((id, index) => [id, index]));
+  return [...items].sort(
+    (left, right) =>
+      (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+        (order.get(right.id) ?? Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id),
+  );
+};
 
 export function usePluginUiCatalog(environmentId: EnvironmentId | null): PluginUiCatalog {
   const result = useAtomValue(
@@ -143,10 +165,14 @@ export function PluginUiNavigationItems({ closeMobile }: { readonly closeMobile:
   const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const currentSurface = surface();
-  const items = catalog.packages.flatMap((pluginPackage) =>
-    pluginPackage.navigation
-      .filter((item) => item.surfaces.includes(currentSurface))
-      .map((item) => ({ item, pluginId: pluginPackage.pluginId })),
+  const items = orderUiItems(
+    catalog,
+    "navigation",
+    catalog.packages.flatMap((pluginPackage) =>
+      pluginPackage.navigation
+        .filter((item) => item.surfaces.includes(currentSurface))
+        .map((item) => ({ ...item, item, pluginId: pluginPackage.pluginId })),
+    ),
   );
 
   return items.map(({ item, pluginId }) => (
@@ -464,9 +490,23 @@ export function PluginUiSettingsSections({ readOnly }: { readonly readOnly: bool
   const currentSurface = surface();
   if (environmentId === null) return null;
 
-  return catalog.packages.map((pluginPackage) => {
-    const settings = pluginPackage.settings.filter((setting) =>
-      setting.surfaces.includes(currentSurface),
+  const settingsOrder = new Map(catalog.order.settings.map((id, index) => [id, index]));
+  const firstSettingOrder = (pluginPackage: PluginUiPackageContribution) =>
+    Math.min(
+      ...pluginPackage.settings.map(
+        (setting) => settingsOrder.get(setting.id) ?? Number.MAX_SAFE_INTEGER,
+      ),
+    );
+  const orderedPackages = [...catalog.packages].sort(
+    (left, right) =>
+      firstSettingOrder(left) - firstSettingOrder(right) ||
+      left.pluginId.localeCompare(right.pluginId),
+  );
+  return orderedPackages.map((pluginPackage) => {
+    const settings = orderUiItems(
+      catalog,
+      "settings",
+      pluginPackage.settings.filter((setting) => setting.surfaces.includes(currentSurface)),
     );
     if (settings.length === 0) return null;
     return (
@@ -499,23 +539,35 @@ export function usePluginComposerContributionState(
 ): PluginComposerContributionState {
   const catalog = usePluginUiCatalog(environmentId);
   const currentSurface = surface();
-  const composer = catalog.packages.flatMap((pluginPackage) =>
-    pluginPackage.composerActions.filter((action) => action.surfaces.includes(currentSurface)),
-  );
-  const contextual = catalog.packages.flatMap((pluginPackage) =>
-    pluginPackage.contextualActions.filter(
-      (action) =>
-        action.surfaces.includes(currentSurface) &&
-        action.contexts.some(
-          (kind) =>
-            (kind === "thread" && context.threadId !== undefined) ||
-            (kind === "project" && context.projectId !== undefined) ||
-            ((kind === "file" || kind === "diff") && context.filePath !== undefined),
-        ),
+  const composer = orderUiItems(
+    catalog,
+    "composerActions",
+    catalog.packages.flatMap((pluginPackage) =>
+      pluginPackage.composerActions.filter((action) => action.surfaces.includes(currentSurface)),
     ),
   );
-  const statuses = catalog.packages.flatMap((pluginPackage) =>
-    pluginPackage.statusItems.filter((item) => item.surfaces.includes(currentSurface)),
+  const contextual = orderUiItems(
+    catalog,
+    "contextualActions",
+    catalog.packages.flatMap((pluginPackage) =>
+      pluginPackage.contextualActions.filter(
+        (action) =>
+          action.surfaces.includes(currentSurface) &&
+          action.contexts.some(
+            (kind) =>
+              (kind === "thread" && context.threadId !== undefined) ||
+              (kind === "project" && context.projectId !== undefined) ||
+              ((kind === "file" || kind === "diff") && context.filePath !== undefined),
+          ),
+      ),
+    ),
+  );
+  const statuses = orderUiItems(
+    catalog,
+    "statusItems",
+    catalog.packages.flatMap((pluginPackage) =>
+      pluginPackage.statusItems.filter((item) => item.surfaces.includes(currentSurface)),
+    ),
   );
   return {
     catalog,
@@ -589,9 +641,16 @@ export function PluginUiPage({
   if (pluginPackage === undefined || view === undefined) {
     return <div className="p-6 text-sm text-muted-foreground">Plugin page is unavailable.</div>;
   }
+  const orderedPackage = {
+    ...pluginPackage,
+    cards: orderUiItems(catalog, "cards", pluginPackage.cards),
+    statusItems: orderUiItems(catalog, "statusItems", pluginPackage.statusItems),
+    composerActions: orderUiItems(catalog, "composerActions", pluginPackage.composerActions),
+    contextualActions: orderUiItems(catalog, "contextualActions", pluginPackage.contextualActions),
+  };
   return (
     <PluginUiViewContent
-      pluginPackage={pluginPackage}
+      pluginPackage={orderedPackage}
       view={view}
       onAction={(commandId, label) => void invoke(commandId, label, { viewId })}
     />

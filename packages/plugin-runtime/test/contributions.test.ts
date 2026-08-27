@@ -41,6 +41,8 @@ describe("plugin runtime live contributions", () => {
             id: "acme.hello",
             label: "Say hello",
             data: { surfaces: ["web", "desktop", "mobile"] },
+            owner: { origin: "installed", pluginId: "acme.commands" },
+            decoratedBy: [],
           },
         ]);
         expect(Object.isFrozen(catalog.entries[0]?.data)).toBe(true);

@@ -40,6 +40,13 @@ const statePresentation = {
   error: { label: "Error", variant: "error" },
 } as const;
 
+const originLabel = {
+  core: "core",
+  bundled: "bundled",
+  installed: "installed",
+  "local-fork": "local fork",
+} as const;
+
 type PackageAction = "enable" | "disable" | "reload";
 
 function actionFailureMessage(action: PackageAction, error: unknown): string {
@@ -76,6 +83,27 @@ function PluginPackageRow({
     <div className="flex flex-wrap items-center gap-1.5">
       <Badge variant={state.variant}>{state.label}</Badge>
       <Badge variant="outline">v{pluginPackage.version}</Badge>
+      <Badge variant="secondary" data-plugin-origin={pluginPackage.origin}>
+        {originLabel[pluginPackage.origin]}
+      </Badge>
+      {pluginPackage.forkOf ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Badge
+                variant="info"
+                className="min-w-0 max-w-full"
+                data-plugin-fork-of={pluginPackage.forkOf}
+              >
+                <span className="truncate">fork of {pluginPackage.forkOf}</span>
+              </Badge>
+            }
+          />
+          <TooltipPopup side="top" className="max-w-80">
+            fork of {pluginPackage.forkOf}
+          </TooltipPopup>
+        </Tooltip>
+      ) : null}
       <Badge
         variant="outline"
         data-plugin-worker-health={pluginPackage.runtimeState}
@@ -169,6 +197,26 @@ function PluginPackageRow({
           <CircleAlertIcon />
           <AlertDescription>{pluginPackage.error}</AlertDescription>
         </Alert>
+      ) : null}
+      {pluginPackage.composition.length > 0 ? (
+        <div className="mt-3 space-y-1.5" data-plugin-composition>
+          {pluginPackage.composition.map((decision) => (
+            <div
+              key={decision.ruleId}
+              className="flex min-w-0 items-center gap-2 text-xs"
+              data-plugin-composition-rule={decision.ruleId}
+              data-outcome={decision.outcome}
+            >
+              <Badge variant={decision.outcome === "applied" ? "success" : "warning"}>
+                {decision.outcome}
+              </Badge>
+              <span className="min-w-0 truncate text-muted-foreground">
+                {decision.operation} {decision.slot}/{decision.targetId}
+                {decision.reason === "applied" ? "" : `: ${decision.reason}`}
+              </span>
+            </div>
+          ))}
+        </div>
       ) : null}
     </SettingsRow>
   );

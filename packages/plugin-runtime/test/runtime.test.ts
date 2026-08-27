@@ -207,6 +207,8 @@ describe("plugin runtime disposal", () => {
           active: [],
           blocked: {},
           contributions: {},
+          composition: [],
+          origins: {},
         });
       }),
     ),

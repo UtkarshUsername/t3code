@@ -18,7 +18,15 @@ import type {
   PluginRuntimeContributionSnapshot,
   PluginRuntimeOptions,
   PluginRuntimeSnapshot,
+  PluginOrigin,
 } from "./contract.ts";
+import type { PluginRuntimeContribution } from "./contract.ts";
+import {
+  isPluginCompositionError,
+  resolveContributionComposition,
+  type PluginCompositionError,
+  type ResolvedContributionRegistration,
+} from "./composition.ts";
 import {
   affectedPluginIds,
   isPluginPlanningError,
@@ -41,6 +49,7 @@ interface LivePlugin {
 interface LiveComposition {
   readonly generation: number;
   readonly plugins: ReadonlyArray<LivePlugin>;
+  readonly resolved: ReadonlyMap<string, ReadonlyArray<ResolvedContributionRegistration>>;
   readonly snapshot: PluginRuntimeSnapshot;
 }
 
@@ -176,6 +185,7 @@ export type PluginRuntimeReconcileError =
   | PluginPlanningError
   | PluginCallbackError
   | PluginDuplicateContributionError
+  | PluginCompositionError
   | PluginRuntimeDisposedError
   | PluginRuntimeReentrancyError
   | PluginSnapshotValidationError
@@ -298,6 +308,13 @@ const detachContribution = (contribution: Contribution): Contribution =>
     id: contribution.id,
     label: contribution.label,
     ...(contribution.data === undefined ? {} : { data: cloneContributionData(contribution.data) }),
+    ...(contribution.composition === undefined
+      ? {}
+      : {
+          composition: Object.freeze({
+            allowed: Object.freeze([...contribution.composition.allowed]),
+          }),
+        }),
   });
 
 const snapshotDefinitions = (
@@ -312,6 +329,30 @@ const snapshotDefinitions = (
       definition.provides === undefined
         ? undefined
         : Object.freeze(Object.assign(createNullPrototypeRecord<unknown>(), definition.provides));
+    const composition =
+      definition.composition === undefined
+        ? undefined
+        : Object.freeze(
+            definition.composition.map((rule) =>
+              Object.freeze({
+                ...rule,
+                ...(rule.operation === "decorate"
+                  ? {
+                      patch: Object.freeze({
+                        ...rule.patch,
+                        ...(rule.patch.data === undefined
+                          ? {}
+                          : {
+                              data: cloneContributionData(rule.patch.data) as Readonly<
+                                Record<string, ContributionData>
+                              >,
+                            }),
+                      }),
+                    }
+                  : {}),
+              }),
+            ),
+          );
     return Object.freeze({
       id: definition.id,
       version: definition.version,
@@ -319,6 +360,8 @@ const snapshotDefinitions = (
       ...(requires === undefined ? {} : { requires }),
       ...(optional === undefined ? {} : { optional }),
       ...(provides === undefined ? {} : { provides }),
+      ...(definition.origin === undefined ? {} : { origin: definition.origin }),
+      ...(composition === undefined ? {} : { composition }),
     });
   });
 
@@ -326,27 +369,41 @@ const emptySnapshot = (): PluginRuntimeSnapshot =>
   Object.freeze({
     active: Object.freeze([]),
     blocked: Object.freeze(createNullPrototypeRecord<string>()),
-    contributions: Object.freeze(createNullPrototypeRecord<ReadonlyArray<Contribution>>()),
+    contributions: Object.freeze(
+      createNullPrototypeRecord<ReadonlyArray<PluginRuntimeContribution>>(),
+    ),
+    composition: Object.freeze([]),
+    origins: Object.freeze(createNullPrototypeRecord<PluginOrigin>()),
   });
 
 const snapshotOf = (
   plugins: ReadonlyArray<LivePlugin>,
   blocked: Readonly<Record<string, string>>,
+  resolved: ReadonlyMap<string, ReadonlyArray<ResolvedContributionRegistration>>,
+  diagnostics: PluginRuntimeSnapshot["composition"],
 ): PluginRuntimeSnapshot => {
-  const contributions = createNullPrototypeRecord<ReadonlyArray<Contribution>>();
-  for (const plugin of plugins) {
-    for (const [slot, registrations] of plugin.contributions) {
-      const values = contributions[slot] ?? [];
-      contributions[slot] = Object.freeze([
-        ...values,
-        ...registrations.map((registration) => registration.contribution),
-      ]);
-    }
+  const contributions = createNullPrototypeRecord<ReadonlyArray<PluginRuntimeContribution>>();
+  for (const [slot, registrations] of resolved) {
+    contributions[slot] = Object.freeze(
+      registrations.map((registration) =>
+        Object.freeze({
+          ...registration.contribution,
+          owner: registration.owner,
+          decoratedBy: registration.decoratedBy,
+          ...(registration.replaces === undefined ? {} : { replaces: registration.replaces }),
+        }),
+      ),
+    );
   }
+  const origins = createNullPrototypeRecord<PluginOrigin>();
+  for (const plugin of plugins)
+    origins[plugin.definition.id] = plugin.definition.origin ?? "installed";
   return Object.freeze({
     active: Object.freeze(plugins.map((plugin) => plugin.definition.id)),
     blocked: Object.freeze(Object.assign(createNullPrototypeRecord<string>(), blocked)),
     contributions: Object.freeze(contributions),
+    composition: Object.freeze([...diagnostics]),
+    origins: Object.freeze(origins),
   });
 };
 
@@ -382,7 +439,12 @@ export const make = (options: PluginRuntimeOptions = {}) =>
     const transitionSemaphore = yield* Semaphore.make(1);
     const baseScheduler = yield* Scheduler.Scheduler;
     const runtimeIdentity = {};
-    let current: LiveComposition = { generation: 0, plugins: [], snapshot: emptySnapshot() };
+    let current: LiveComposition = {
+      generation: 0,
+      plugins: [],
+      resolved: new Map(),
+      snapshot: emptySnapshot(),
+    };
     let disposalStarted = false;
     let disposed = false;
     const callbackContext = new NodeAsyncHooks.AsyncLocalStorage<PluginCallbackContext>();
@@ -628,7 +690,34 @@ export const make = (options: PluginRuntimeOptions = {}) =>
                     nextPlugins.push(plugin);
                   }
                   yield* validateUniqueContributions(nextPlugins);
-                  const snapshot = snapshotOf(nextPlugins, plan.blocked);
+                  const composition = yield* Effect.try({
+                    try: () =>
+                      resolveContributionComposition(
+                        nextPlugins.map((plugin) => ({
+                          pluginId: plugin.definition.id,
+                          origin: plugin.definition.origin ?? "installed",
+                          composition: plugin.definition.composition ?? [],
+                          contributions: [...plugin.contributions].flatMap(
+                            ([slot, registrations]) =>
+                              registrations.map((registration) => ({
+                                slot,
+                                contribution: registration.contribution,
+                                value: registration.value,
+                              })),
+                          ),
+                        })),
+                      ),
+                    catch: (error) => {
+                      if (isPluginCompositionError(error)) return error;
+                      throw error;
+                    },
+                  });
+                  const snapshot = snapshotOf(
+                    nextPlugins,
+                    plan.blocked,
+                    composition.slots,
+                    composition.diagnostics,
+                  );
                   yield* Effect.try({
                     try: () => options.validateSnapshot?.(snapshot),
                     catch: (cause) => new PluginSnapshotValidationError({ cause }),
@@ -636,6 +725,7 @@ export const make = (options: PluginRuntimeOptions = {}) =>
                   return {
                     generation: current.generation + 1,
                     plugins: nextPlugins,
+                    resolved: composition.slots,
                     snapshot,
                   };
                 }),
@@ -669,6 +759,7 @@ export const make = (options: PluginRuntimeOptions = {}) =>
           current = {
             generation: current.generation + 1,
             plugins: [],
+            resolved: new Map(),
             snapshot: emptySnapshot(),
           };
           disposed = true;
@@ -731,45 +822,43 @@ export const make = (options: PluginRuntimeOptions = {}) =>
               }),
             );
           }
-          for (const plugin of current.plugins) {
-            const registration = (plugin.contributions.get(slot) ?? []).find(
-              (candidate) => candidate.contribution.id === id,
+          const registration = (current.resolved.get(slot) ?? []).find(
+            (candidate) => candidate.contribution.id === id,
+          );
+          if (registration !== undefined) {
+            const contributionState: PluginEffectCallbackContext = {
+              active: true,
+              callback: "contribution",
+              pluginId: registration.owner.pluginId,
+              runtime: runtimeIdentity,
+            };
+            const contributionScheduler: Scheduler.Scheduler = {
+              executionMode: baseScheduler.executionMode,
+              shouldYield: (fiber) => baseScheduler.shouldYield(fiber),
+              makeDispatcher: () => {
+                const dispatcher = baseScheduler.makeDispatcher();
+                return {
+                  flush: () => dispatcher.flush(),
+                  scheduleTask: (task, priority) =>
+                    dispatcher.scheduleTask(
+                      () => callbackContext.run(contributionState, task),
+                      priority,
+                    ),
+                };
+              },
+            };
+            return Effect.yieldNow.pipe(
+              Effect.andThen(Effect.suspend(() => use(registration.value as Value))),
+              Effect.provideService(PluginEffectCallback, contributionState),
+              Effect.provideService(Scheduler.Scheduler, contributionScheduler),
+              Effect.onExit((exit) =>
+                Effect.sync(() => {
+                  if (!(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause))) {
+                    contributionState.active = false;
+                  }
+                }),
+              ),
             );
-            if (registration !== undefined) {
-              const contributionState: PluginEffectCallbackContext = {
-                active: true,
-                callback: "contribution",
-                pluginId: plugin.definition.id,
-                runtime: runtimeIdentity,
-              };
-              const contributionScheduler: Scheduler.Scheduler = {
-                executionMode: baseScheduler.executionMode,
-                shouldYield: (fiber) => baseScheduler.shouldYield(fiber),
-                makeDispatcher: () => {
-                  const dispatcher = baseScheduler.makeDispatcher();
-                  return {
-                    flush: () => dispatcher.flush(),
-                    scheduleTask: (task, priority) =>
-                      dispatcher.scheduleTask(
-                        () => callbackContext.run(contributionState, task),
-                        priority,
-                      ),
-                  };
-                },
-              };
-              return Effect.yieldNow.pipe(
-                Effect.andThen(Effect.suspend(() => use(registration.value as Value))),
-                Effect.provideService(PluginEffectCallback, contributionState),
-                Effect.provideService(Scheduler.Scheduler, contributionScheduler),
-                Effect.onExit((exit) =>
-                  Effect.sync(() => {
-                    if (!(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause))) {
-                      contributionState.active = false;
-                    }
-                  }),
-                ),
-              );
-            }
           }
           return Effect.fail(new PluginContributionNotFoundError({ id, slot }));
         }),
@@ -803,13 +892,7 @@ export const make = (options: PluginRuntimeOptions = {}) =>
         Effect.sync(() =>
           Object.freeze({
             generation: current.generation,
-            entries: Object.freeze(
-              current.plugins.flatMap((plugin) =>
-                (plugin.contributions.get(slot) ?? []).map(
-                  (registration) => registration.contribution,
-                ),
-              ),
-            ),
+            entries: Object.freeze([...(current.snapshot.contributions[slot] ?? [])]),
           }),
         ),
       useContribution,

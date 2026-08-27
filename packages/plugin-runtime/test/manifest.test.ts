@@ -9,6 +9,7 @@ const validManifest = {
   manifestVersion: 1,
   id: "com.acme.linear",
   version: "1.2.0",
+  forkOf: "com.t3code.pull-requests",
   apiVersion: 1,
   entrypoints: {
     server: "./dist/server.js",
@@ -28,6 +29,22 @@ const validManifest = {
     composerActions: ["linear.create-from-composer"],
     contextualActions: ["linear.create-from-thread"],
   },
+  composition: [
+    {
+      id: "com.acme.linear.replace-status",
+      operation: "replace",
+      slot: "commands",
+      sourceId: "linear.create-issue",
+      targetId: "t3.plugin-runtime.status",
+    },
+    {
+      id: "com.acme.linear.decorate-view",
+      operation: "decorate",
+      slot: "views",
+      targetId: "com.t3code.pull-requests.view",
+      patch: { label: "Company pull requests", data: { description: "Acme workflow" } },
+    },
+  ],
 };
 
 describe("PluginManifest", () => {
@@ -60,6 +77,42 @@ describe("PluginManifest", () => {
           ...validManifest.contributes,
           commands: [`acme.${"x".repeat(196)}`],
         },
+      }),
+    ).toThrow();
+  });
+
+  it("rejects composition rules whose operation shape is incomplete", () => {
+    expect(() =>
+      decodeManifest({
+        ...validManifest,
+        composition: [
+          {
+            id: "com.acme.linear.invalid",
+            operation: "replace",
+            slot: "commands",
+            targetId: "t3.plugin-runtime.status",
+          },
+        ],
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeManifest({
+        ...validManifest,
+        composition: [
+          {
+            id: "com.acme.linear.invalid",
+            operation: "decorate",
+            slot: "commands",
+            targetId: "t3.plugin-runtime.status",
+          },
+        ],
+      }),
+    ).toThrow();
+    expect(() => decodeManifest({ ...validManifest, forkOf: validManifest.id })).toThrow();
+    expect(() =>
+      decodeManifest({
+        ...validManifest,
+        composition: [validManifest.composition[0], validManifest.composition[0]],
       }),
     ).toThrow();
   });

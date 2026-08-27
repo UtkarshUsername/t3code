@@ -103,6 +103,15 @@ describe("PluginUi", () => {
       decodeCatalog({
         generation: 7,
         packages: [{ pluginId: "com.acme.fun", ...completeContribution }],
+        order: {
+          settings: completeContribution.settings.map((item) => item.id),
+          navigation: completeContribution.navigation.map((item) => item.id),
+          views: completeContribution.views.map((item) => item.id),
+          cards: completeContribution.cards.map((item) => item.id),
+          statusItems: completeContribution.statusItems.map((item) => item.id),
+          composerActions: completeContribution.composerActions.map((item) => item.id),
+          contextualActions: completeContribution.contextualActions.map((item) => item.id),
+        },
       }),
     ).toMatchObject({ generation: 7, packages: [{ pluginId: "com.acme.fun" }] });
   });

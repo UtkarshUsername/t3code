@@ -20,6 +20,8 @@ describe("plugin package contracts", () => {
           {
             id: "com.acme.runtime-status",
             version: "1.0.0",
+            origin: "installed",
+            composition: [],
             apiVersion: 1,
             enabled: true,
             state: "active",
@@ -47,6 +49,8 @@ describe("plugin package contracts", () => {
         {
           id: "com.acme.runtime-status",
           version: "1.0.0",
+          origin: "installed",
+          composition: [],
           apiVersion: 1,
           enabled: true,
           state: "active",
@@ -114,6 +118,8 @@ describe("plugin package contracts", () => {
           {
             id: "com.acme.issues",
             version: "1.0.0",
+            origin: "installed",
+            composition: [],
             apiVersion: 1,
             enabled: true,
             state: "blocked",
@@ -192,6 +198,8 @@ describe("plugin package contracts", () => {
           {
             id: "com.acme.runtime-status",
             version: "1.0.0",
+            origin: "installed",
+            composition: [],
             apiVersion: 1,
             enabled: false,
             state: "disabled",

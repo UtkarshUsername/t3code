@@ -148,6 +148,22 @@ const makeDefinition = (
     composerActions: new Set(discovered.manifest.contributes?.composerActions ?? []),
     contextualActions: new Set(discovered.manifest.contributes?.contextualActions ?? []),
   };
+  const declaredCompositionSources = {
+    commands: declaredCommands,
+    ...declaredUi,
+  };
+  for (const rule of discovered.manifest.composition ?? []) {
+    if (
+      (rule.operation === "extend" || rule.operation === "replace") &&
+      !declaredCompositionSources[rule.slot].has(rule.sourceId)
+    ) {
+      throw new PluginPackageUiReferenceError({
+        id: discovered.manifest.id,
+        reference: rule.id,
+        detail: `composition source ${rule.slot}/${rule.sourceId} is not declared`,
+      });
+    }
+  }
   for (const [slot, entries] of [
     ["settings", ui.settings],
     ["navigation", ui.navigation],
@@ -243,6 +259,8 @@ const makeDefinition = (
 
   return {
     id: discovered.manifest.id,
+    origin: discovered.manifest.forkOf === undefined ? "installed" : "local-fork",
+    composition: [...(discovered.manifest.composition ?? [])],
     version: discovered.manifest.version,
     requires: [...(discovered.manifest.requires ?? [])],
     optional: [...(discovered.manifest.optional ?? [])],
@@ -627,6 +645,10 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
       packages.push({
         id: packageManifest.id,
         version: packageManifest.version,
+        origin:
+          composition.origins[id] ??
+          (packageManifest.forkOf === undefined ? "installed" : "local-fork"),
+        ...(packageManifest.forkOf === undefined ? {} : { forkOf: packageManifest.forkOf }),
         apiVersion: packageManifest.apiVersion,
         enabled,
         state,
@@ -650,6 +672,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
           composerActions: [...(packageManifest.contributes?.composerActions ?? [])],
           contextualActions: [...(packageManifest.contributes?.contextualActions ?? [])],
         },
+        composition: composition.composition.filter((diagnostic) => diagnostic.pluginId === id),
         ...(error === undefined ? {} : { error }),
       });
     }

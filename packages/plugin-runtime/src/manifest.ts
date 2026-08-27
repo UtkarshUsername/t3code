@@ -57,10 +57,49 @@ const ContributionCatalog = Schema.Struct({
   mobileCards: Schema.optional(Schema.Array(NamespacedId)),
 });
 
+const CompositionSlot = Schema.Literals([
+  "commands",
+  "settings",
+  "navigation",
+  "views",
+  "cards",
+  "statusItems",
+  "composerActions",
+  "contextualActions",
+]);
+const CompositionRuleBase = {
+  id: NamespacedId,
+  slot: CompositionSlot,
+  targetId: NamespacedId,
+} as const;
+const CompositionPlacementRule = Schema.Struct({
+  ...CompositionRuleBase,
+  operation: Schema.Literals(["extend", "replace"]),
+  sourceId: NamespacedId,
+}).annotate({ parseOptions: { onExcessProperty: "error" } });
+const CompositionDecorationRule = Schema.Struct({
+  ...CompositionRuleBase,
+  operation: Schema.Literal("decorate"),
+  patch: Schema.Struct({
+    label: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
+    data: Schema.optional(Schema.Record(Schema.String, Schema.Json)),
+  }).annotate({ parseOptions: { onExcessProperty: "error" } }),
+}).annotate({ parseOptions: { onExcessProperty: "error" } });
+const CompositionDisableRule = Schema.Struct({
+  ...CompositionRuleBase,
+  operation: Schema.Literal("disable"),
+}).annotate({ parseOptions: { onExcessProperty: "error" } });
+const CompositionRule = Schema.Union([
+  CompositionPlacementRule,
+  CompositionDecorationRule,
+  CompositionDisableRule,
+]);
+
 export const PluginManifest = Schema.Struct({
   manifestVersion: Schema.Literal(1),
   id: NamespacedId,
   version: SemanticVersion,
+  forkOf: Schema.optional(NamespacedId),
   apiVersion: Schema.Literal(1),
   surfaces: Schema.optional(Schema.Array(Schema.Literals(["web", "desktop", "mobile"]))),
   entrypoints: Schema.Struct({
@@ -74,6 +113,22 @@ export const PluginManifest = Schema.Struct({
   provides: Schema.optional(Schema.Array(CapabilityId)),
   permissions: Schema.optional(Schema.Array(Permission)),
   contributes: ContributionCatalog,
-}).annotate({ parseOptions: { onExcessProperty: "error" } });
+  composition: Schema.optional(Schema.Array(CompositionRule).check(Schema.isMaxLength(100))),
+})
+  .annotate({ parseOptions: { onExcessProperty: "error" } })
+  .check(
+    Schema.makeFilter(
+      (manifest) =>
+        manifest.forkOf === undefined ||
+        manifest.forkOf !== manifest.id ||
+        "plugin forkOf must name another package",
+    ),
+    Schema.makeFilter(
+      (manifest) =>
+        new Set((manifest.composition ?? []).map((rule) => rule.id)).size ===
+          (manifest.composition ?? []).length || "plugin composition rule ids must be unique",
+    ),
+  )
+  .annotate({ parseOptions: { onExcessProperty: "error" } });
 
 export type PluginManifest = typeof PluginManifest.Type;

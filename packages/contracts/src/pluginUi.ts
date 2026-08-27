@@ -247,10 +247,24 @@ export const PluginUiPackageContribution = strict(
 );
 export type PluginUiPackageContribution = typeof PluginUiPackageContribution.Type;
 
+export const PluginUiOrder = strict(
+  Schema.Struct({
+    settings: Schema.Array(PluginUiId),
+    navigation: Schema.Array(PluginUiId),
+    views: Schema.Array(PluginUiId),
+    cards: Schema.Array(PluginUiId),
+    statusItems: Schema.Array(PluginUiId),
+    composerActions: Schema.Array(PluginUiId),
+    contextualActions: Schema.Array(PluginUiId),
+  }),
+);
+export type PluginUiOrder = typeof PluginUiOrder.Type;
+
 export const PluginUiCatalog = strict(
   Schema.Struct({
     generation: NonNegativeInt,
     packages: Schema.Array(PluginUiPackageContribution).check(Schema.isMaxLength(1_000)),
+    order: PluginUiOrder,
   }),
 );
 export type PluginUiCatalog = typeof PluginUiCatalog.Type;

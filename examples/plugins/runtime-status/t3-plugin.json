@@ -2,6 +2,7 @@
   "manifestVersion": 1,
   "id": "com.t3code.runtime-status-example",
   "version": "1.1.0",
+  "forkOf": "t3.plugin-runtime.commands",
   "apiVersion": 1,
   "entrypoints": {
     "server": "./index.mjs"
@@ -17,5 +18,14 @@
     "statusItems": ["com.t3code.runtime-status-example.status"],
     "composerActions": ["com.t3code.runtime-status-example.composer"],
     "contextualActions": ["com.t3code.runtime-status-example.context"]
-  }
+  },
+  "composition": [
+    {
+      "id": "com.t3code.runtime-status-example.replace-core-status",
+      "operation": "replace",
+      "slot": "commands",
+      "sourceId": "example.runtime-status",
+      "targetId": "t3.plugin-runtime.status"
+    }
+  ]
 }
