@@ -1,7 +1,49 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { PluginUiViewContent } from "./PluginUi";
+import { PluginUiPageContent, PluginUiViewContent } from "./PluginUi";
+
+const emptyCatalog = {
+  generation: 0,
+  packages: [],
+  order: {
+    settings: [],
+    navigation: [],
+    views: [],
+    cards: [],
+    statusItems: [],
+    composerActions: [],
+    contextualActions: [],
+  },
+} as const;
+
+describe("PluginUiPageContent", () => {
+  it("distinguishes loading from a resolved missing page", () => {
+    const loading = renderToStaticMarkup(
+      <PluginUiPageContent
+        loading
+        catalog={emptyCatalog}
+        pluginPackage={undefined}
+        view={undefined}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(loading).toContain("Loading plugin page");
+    expect(loading).not.toContain("Plugin page unavailable");
+
+    const missing = renderToStaticMarkup(
+      <PluginUiPageContent
+        loading={false}
+        catalog={emptyCatalog}
+        pluginPackage={undefined}
+        view={undefined}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(missing).toContain("Plugin page unavailable");
+    expect(missing).toContain("could not be found");
+  });
+});
 
 describe("PluginUiViewContent", () => {
   it("renders cards, statuses, text, and actions with host-owned components", () => {

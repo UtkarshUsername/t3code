@@ -91,6 +91,7 @@ export interface SupervisedPluginWorker {
 export interface PluginWorkerStartInput {
   readonly pluginId: string;
   readonly entrypointPath: string;
+  readonly workingDirectory?: string;
   readonly host: PluginHostApi;
 }
 
@@ -299,7 +300,7 @@ export const make = Effect.gen(function* () {
             input.pluginId,
           ],
           {
-            cwd: path.dirname(input.entrypointPath),
+            cwd: input.workingDirectory ?? path.dirname(input.entrypointPath),
             env: { PATH: process.env.PATH, NODE_NO_WARNINGS: "1" },
             stdin: Stream.fromQueue(inputQueue),
             stdout: "pipe",

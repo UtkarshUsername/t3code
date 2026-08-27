@@ -799,6 +799,7 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
       const packageDirectory = `${baseDir}/userdata/plugins/${typescriptPackageId}`;
       const typescriptEntrypointSource = `
 import type { PluginActivate } from "t3/plugin";
+import { readFileSync } from "node:fs";
 import { message } from "./message.ts";
 
 enum Tone {
@@ -806,12 +807,13 @@ enum Tone {
 }
 
 const activate = ((api) => {
+  const relativeMessage = readFileSync("./relative.txt", "utf8").trim();
   const command = {
     id: "${typescriptCommandId}",
     label: "TypeScript status",
     surfaces: ["web", "desktop"]
   } as const;
-  api.registerCommand(command, () => ({ message, tone: Tone.Success }));
+  api.registerCommand(command, () => ({ message: message + " " + relativeMessage, tone: Tone.Success }));
 }) satisfies PluginActivate;
 
 export default activate;
@@ -830,6 +832,7 @@ export default activate;
         `${packageDirectory}/message.ts`,
         'export const message: string = "TypeScript plugin is active.";\n',
       );
+      yield* fileSystem.writeFileString(`${packageDirectory}/relative.txt`, "from package root\n");
       yield* fileSystem.writeFileString(`${packageDirectory}/index.ts`, typescriptEntrypointSource);
 
       yield* useEnvironment(
@@ -843,7 +846,10 @@ export default activate;
           const listed = yield* catalog.list;
           expect(
             yield* catalog.invoke({ generation: listed.generation, id: typescriptCommandId }),
-          ).toEqual({ message: "TypeScript plugin is active.", tone: "success" });
+          ).toEqual({
+            message: "TypeScript plugin is active. from package root",
+            tone: "success",
+          });
 
           yield* fileSystem.writeFileString(
             `${packageDirectory}/index.ts`,
@@ -869,7 +875,10 @@ export default activate;
           expect(reloaded.generation).toBeGreaterThan(listed.generation);
           expect(
             yield* catalog.invoke({ generation: reloaded.generation, id: typescriptCommandId }),
-          ).toEqual({ message: "TypeScript plugin reloaded.", tone: "success" });
+          ).toEqual({
+            message: "TypeScript plugin reloaded. from package root",
+            tone: "success",
+          });
         }),
       );
     }),

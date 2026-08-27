@@ -27,8 +27,10 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { Spinner } from "../ui/spinner";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SidebarUtilityItem } from "../sidebar/SidebarUtilityItem";
@@ -101,12 +103,16 @@ const orderUiItems = <Item extends { readonly id: string }>(
   );
 };
 
-export function usePluginUiCatalog(environmentId: EnvironmentId | null): PluginUiCatalog {
-  const result = useAtomValue(
+function usePluginUiCatalogResult(environmentId: EnvironmentId | null) {
+  return useAtomValue(
     environmentId === null
       ? EMPTY_PLUGIN_UI_ATOM
       : serverEnvironment.pluginUi({ environmentId, input: {} }),
   );
+}
+
+export function usePluginUiCatalog(environmentId: EnvironmentId | null): PluginUiCatalog {
+  const result = usePluginUiCatalogResult(environmentId);
   return Option.getOrElse(AsyncResult.value(result), () => EMPTY_PLUGIN_UI_CATALOG);
 }
 
@@ -652,6 +658,50 @@ export function PluginComposerContributions({
   );
 }
 
+export function PluginUiPageContent({
+  loading,
+  catalog,
+  pluginPackage,
+  view,
+  onAction,
+}: {
+  readonly loading: boolean;
+  readonly catalog: PluginUiCatalog;
+  readonly pluginPackage: PluginUiPackageContribution | undefined;
+  readonly view: PluginUiView | undefined;
+  readonly onAction: (commandId: string, label: string) => void;
+}) {
+  if (loading) {
+    return (
+      <Empty className="min-h-52 gap-2 text-sm text-muted-foreground">
+        <Spinner className="size-4" />
+        Loading plugin page
+      </Empty>
+    );
+  }
+  if (pluginPackage === undefined || view === undefined) {
+    return (
+      <Empty className="min-h-52">
+        <EmptyMedia variant="icon">
+          <PuzzleIcon />
+        </EmptyMedia>
+        <EmptyHeader>
+          <EmptyTitle>Plugin page unavailable</EmptyTitle>
+          <EmptyDescription>The requested plugin page could not be found.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
+  }
+  const orderedPackage = {
+    ...pluginPackage,
+    cards: orderUiItems(catalog, "cards", pluginPackage.cards),
+    statusItems: orderUiItems(catalog, "statusItems", pluginPackage.statusItems),
+    composerActions: orderUiItems(catalog, "composerActions", pluginPackage.composerActions),
+    contextualActions: orderUiItems(catalog, "contextualActions", pluginPackage.contextualActions),
+  };
+  return <PluginUiViewContent pluginPackage={orderedPackage} view={view} onAction={onAction} />;
+}
+
 export function PluginUiPage({
   pluginId,
   viewId,
@@ -660,7 +710,11 @@ export function PluginUiPage({
   readonly viewId: string;
 }) {
   const environmentId = usePrimaryEnvironmentId();
-  const catalog = usePluginUiCatalog(environmentId);
+  const catalogResult = usePluginUiCatalogResult(environmentId);
+  const catalogValue = AsyncResult.value(catalogResult);
+  const loading =
+    environmentId !== null && AsyncResult.isWaiting(catalogResult) && Option.isNone(catalogValue);
+  const catalog = Option.getOrElse(catalogValue, () => EMPTY_PLUGIN_UI_CATALOG);
   const invoke = usePluginAction(environmentId, catalog);
   const pluginPackage = useMemo(
     () => catalog.packages.find((candidate) => candidate.pluginId === pluginId),
@@ -671,19 +725,11 @@ export function PluginUiPage({
     (candidate) => candidate.id === viewId && candidate.surfaces.includes(currentSurface),
   );
 
-  if (pluginPackage === undefined || view === undefined) {
-    return <div className="p-6 text-sm text-muted-foreground">Plugin page is unavailable.</div>;
-  }
-  const orderedPackage = {
-    ...pluginPackage,
-    cards: orderUiItems(catalog, "cards", pluginPackage.cards),
-    statusItems: orderUiItems(catalog, "statusItems", pluginPackage.statusItems),
-    composerActions: orderUiItems(catalog, "composerActions", pluginPackage.composerActions),
-    contextualActions: orderUiItems(catalog, "contextualActions", pluginPackage.contextualActions),
-  };
   return (
-    <PluginUiViewContent
-      pluginPackage={orderedPackage}
+    <PluginUiPageContent
+      loading={loading}
+      catalog={catalog}
+      pluginPackage={pluginPackage}
       view={view}
       onAction={(commandId, label) => void invoke(commandId, label, { viewId })}
     />

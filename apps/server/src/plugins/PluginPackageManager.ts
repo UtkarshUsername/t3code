@@ -586,6 +586,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
         .start({
           pluginId: discovered.manifest.id,
           entrypointPath,
+          workingDirectory: cacheDirectory,
           host,
         })
         .pipe(Effect.mapError((error) => operationError(operation, error, discovered.manifest.id))),
