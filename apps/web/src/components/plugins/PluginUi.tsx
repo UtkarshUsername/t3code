@@ -57,7 +57,7 @@ const EMPTY_PLUGIN_NOTIFICATION: PluginUiNotification = {
 };
 const EMPTY_PLUGIN_NOTIFICATION_ATOM = Atom.make(AsyncResult.success(EMPTY_PLUGIN_NOTIFICATION));
 const MAX_RENDERED_PLUGIN_SETTINGS = 256;
-const MAX_RENDERED_PLUGIN_NAVIGATION = 128;
+const MAX_SIDEBAR_PLUGIN_NAVIGATION = 3;
 
 const surface = (): "web" | "desktop" => (isElectron ? "desktop" : "web");
 
@@ -184,7 +184,7 @@ export function PluginUiNavigationItems({ closeMobile }: { readonly closeMobile:
         .filter((item) => item.surfaces.includes(currentSurface))
         .map((item) => ({ ...item, item, pluginId: pluginPackage.pluginId })),
     ),
-  ).slice(0, MAX_RENDERED_PLUGIN_NAVIGATION);
+  ).slice(0, MAX_SIDEBAR_PLUGIN_NAVIGATION);
 
   return items.map(({ item, pluginId }) => (
     <SidebarUtilityItem

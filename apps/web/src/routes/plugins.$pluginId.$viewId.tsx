@@ -1,4 +1,4 @@
-import { createFileRoute, useCanGoBack, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useCanGoBack, useNavigate } from "@tanstack/react-router";
 import { ArrowLeftIcon, PuzzleIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
 
@@ -57,5 +57,13 @@ function PluginPageRoute() {
 }
 
 export const Route = createFileRoute("/plugins/$pluginId/$viewId")({
+  beforeLoad: ({ context }) => {
+    if (
+      context.authGateState.status !== "authenticated" &&
+      context.authGateState.status !== "hosted-static"
+    ) {
+      throw redirect({ to: "/pair", replace: true });
+    }
+  },
   component: PluginPageRoute,
 });
