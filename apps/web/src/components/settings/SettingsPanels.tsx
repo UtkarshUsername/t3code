@@ -1145,7 +1145,7 @@ export function AppearanceSettingsPanel() {
               onCheckedChange={(checked) =>
                 updateSettings({ interfaceAnimations: Boolean(checked) })
               }
-              aria-label="Interface animations"
+              aria-label="Panel animations"
             />
           }
         />
