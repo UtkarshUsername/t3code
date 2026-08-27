@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { isElectron } from "~/env";
+import { useInterfaceAnimationsEnabled } from "~/hooks/useInterfaceAnimations";
 import { useResizableWidth } from "~/hooks/useResizableWidth";
 import { cn } from "~/lib/utils";
 
@@ -82,9 +83,13 @@ export function PreviewPanelShell(props: {
   const hostRef = useRef<HTMLDivElement | null>(null);
   // Only inline non-maximized mode applies `width`/`maxWidth`; skip the
   // container measurement (and its re-renders) everywhere else.
+  const animationsEnabled = useInterfaceAnimationsEnabled();
+  const shouldDeferFirstMeasurement =
+    isInline && !maximized && animationsEnabled && props.animateEnter !== false;
   const { maxWidth, isViewportResizing, isContainerResizing } = useClampedMaxWidth(
     hostRef,
     isInline && !maximized,
+    shouldDeferFirstMeasurement,
   );
   const { width, isResizing, handlers } = useResizableWidth({
     storageKey: props.widthStorageKey ?? PREVIEW_PANEL_WIDTH_STORAGE_KEY,
@@ -190,6 +195,7 @@ export function PreviewPanelShell(props: {
 function useClampedMaxWidth(
   hostRef: RefObject<HTMLDivElement | null>,
   enabled: boolean,
+  deferFirstMeasurement = true,
 ): { maxWidth: number; isViewportResizing: boolean; isContainerResizing: boolean } {
   const [viewport, setViewport] = useState(() => ({
     width: typeof window === "undefined" ? 1280 : window.innerWidth,
@@ -232,30 +238,7 @@ function useClampedMaxWidth(
     if (!enabled) return;
     const parent = hostRef.current?.parentElement;
     if (!parent) return;
-    // Defer the first row measurement by a frame. We intentionally do not
-    // read parent.clientWidth synchronously in the insertion task: a sync
-    // read forces layout and makes Chrome resolve the panel's initial width
-    // immediately, so @starting-style never fires and the enter animation
-    // does not run. Until the deferred read lands, the viewport fraction
-    // cap governs, as during a window resize; the enter animation starts
-    // from 0, so the unclamped first target cannot flash over-wide.
-    let measured = false;
     let settleFrame = 0;
-    const startFrame = window.requestAnimationFrame(() => {
-      measured = true;
-      setContainer({ width: parent.clientWidth, isResizing: false });
-    });
-    if (typeof ResizeObserver === "undefined") {
-      return () => {
-        window.cancelAnimationFrame(startFrame);
-      };
-    }
-    const observer = new ResizeObserver(() => {
-      // The observer's initial callback fires in the insertion frame too;
-      // skip it so the first measurement comes from the deferred rAF.
-      if (!measured) return;
-      settleContainerWidth(parent.clientWidth);
-    });
     // A container change re-clamps the stored width; flag it so the shell can
     // snap gap and surface together instead of animating only the gap.
     const settleContainerWidth = (next: number) => {
@@ -271,13 +254,48 @@ function useClampedMaxWidth(
         );
       });
     };
+    if (!deferFirstMeasurement) {
+      // No enter animation will run, so measure synchronously before paint
+      // and clamp the first paint. Deferring would leave one frame over-wide.
+      setContainer({ width: parent.clientWidth, isResizing: false });
+      if (typeof ResizeObserver === "undefined") return;
+      const observer = new ResizeObserver(() => settleContainerWidth(parent.clientWidth));
+      observer.observe(parent);
+      return () => {
+        if (settleFrame !== 0) window.cancelAnimationFrame(settleFrame);
+        observer.disconnect();
+      };
+    }
+    // Defer the first row measurement by a frame. We intentionally do not
+    // read parent.clientWidth synchronously in the insertion task: a sync
+    // read forces layout and makes Chrome resolve the panel's initial width
+    // immediately, so @starting-style never fires and the enter animation
+    // does not run. Until the deferred read lands, the viewport fraction
+    // cap governs, as during a window resize; the enter animation starts
+    // from 0, so the unclamped first target cannot flash over-wide.
+    let measured = false;
+    const startFrame = window.requestAnimationFrame(() => {
+      measured = true;
+      setContainer({ width: parent.clientWidth, isResizing: false });
+    });
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        window.cancelAnimationFrame(startFrame);
+      };
+    }
+    const observer = new ResizeObserver(() => {
+      // The observer's initial callback fires in the insertion frame too;
+      // skip it so the first measurement comes from the deferred rAF.
+      if (!measured) return;
+      settleContainerWidth(parent.clientWidth);
+    });
     observer.observe(parent);
     return () => {
       window.cancelAnimationFrame(startFrame);
       if (settleFrame !== 0) window.cancelAnimationFrame(settleFrame);
       observer.disconnect();
     };
-  }, [hostRef, enabled]);
+  }, [hostRef, enabled, deferFirstMeasurement]);
   return {
     maxWidth: getPreviewPanelMaxWidth(viewport.width, container.width),
     isViewportResizing: viewport.isResizing,
