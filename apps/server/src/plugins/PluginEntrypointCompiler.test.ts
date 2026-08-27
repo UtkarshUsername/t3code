@@ -68,7 +68,8 @@ export const result: { tone: string } = { tone: Tone.Success };
       const packageDirectory = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "t3code-plugin-commonjs-compiler-test-",
       });
-      const entrypointPath = path.join(packageDirectory, "index.js");
+      const entrypointPath = path.join(packageDirectory, "dist", "index.js");
+      yield* fileSystem.makeDirectory(path.dirname(entrypointPath), { recursive: true });
       yield* fileSystem.writeFileString(
         entrypointPath,
         "module.exports = function activate() {};\n",

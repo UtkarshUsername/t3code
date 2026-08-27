@@ -153,7 +153,12 @@ export const compilePluginEntrypoint = Effect.fn("PluginEntrypointCompiler.compi
     (buildContext) => Effect.promise(() => buildContext.dispose()),
   );
 
-  if (extension === ".js" && result.metafile?.inputs[relativeEntrypoint]?.format === "cjs") {
+  const entrypointInput = Object.entries(result.metafile?.inputs ?? {}).find(
+    ([sourcePath]) =>
+      path.normalize(path.resolve(input.packageDirectory, sourcePath)) ===
+      path.normalize(input.entrypointPath),
+  )?.[1];
+  if (extension === ".js" && entrypointInput?.format === "cjs") {
     return yield* new PluginEntrypointModuleFormatError({
       entrypointPath: input.entrypointPath,
     });
