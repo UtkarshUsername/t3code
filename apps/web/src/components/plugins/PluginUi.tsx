@@ -66,8 +66,8 @@ const toneClass = {
   muted: "border-border/60 bg-muted/35 text-muted-foreground",
   info: "border-info/30 bg-info/10 text-info-foreground",
   success: "border-success/30 bg-success/10 text-success-foreground",
-  warning: "border-warning/30 bg-warning/10 text-warning-foreground",
-  danger: "border-destructive/30 bg-destructive/10 text-destructive-foreground",
+  warning: "border-warning/30 bg-warning-surface text-warning-foreground",
+  danger: "border-destructive/30 bg-error-surface text-destructive-foreground",
 } as const;
 
 const textToneClass = {
@@ -417,8 +417,9 @@ function PluginUiSettingControl({
     setLoading(true);
     void read({ environmentId, input: { pluginId, settingId: setting.id } }).then((result) => {
       if (cancelled || version !== readVersion.current) return;
+      if (result._tag !== "Success") return;
       setLoading(false);
-      if (result._tag !== "Success" || result.value.value === undefined) return;
+      if (result.value.value === undefined) return;
       if (typeof result.value.value === "boolean" || typeof result.value.value === "string") {
         setValue(result.value.value);
         setCommittedValue(result.value.value);
@@ -610,7 +611,7 @@ export function PluginComposerContributions({
 
   return (
     <div
-      className="chat-composer-drawer-surface chat-composer-drawer-attached chat-composer-drawer-slot flex flex-wrap gap-1.5 px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] sm:px-4"
+      className="chat-composer-drawer-surface chat-composer-drawer-attached chat-composer-drawer-slot flex flex-wrap items-center gap-1.5 px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] sm:px-4"
       data-plugin-composer-actions="true"
     >
       {statuses.map((item) => (
