@@ -42,20 +42,20 @@ const decodePermissions = Schema.decodeUnknownEffect(Schema.Array(PluginHostPerm
 export class PluginHostCapabilityError extends Schema.TaggedErrorClass<PluginHostCapabilityError>()(
   "PluginHostCapabilityError",
   {
-    pluginId: Schema.String,
+    pluginId: Schema.optional(Schema.String),
     operation: Schema.String,
     detail: Schema.String,
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
   static fromBoundary(
-    pluginId: string,
+    pluginId: string | undefined,
     operation: string,
     detail: string,
     cause?: unknown,
   ): PluginHostCapabilityError {
     return new PluginHostCapabilityError({
-      pluginId,
+      ...(pluginId === undefined ? {} : { pluginId }),
       operation,
       detail,
       ...(cause === undefined ? {} : { cause }),
@@ -63,7 +63,8 @@ export class PluginHostCapabilityError extends Schema.TaggedErrorClass<PluginHos
   }
 
   override get message(): string {
-    return `${this.operation} failed for plugin ${this.pluginId}: ${this.detail}`;
+    const plugin = this.pluginId === undefined ? "" : ` for plugin ${this.pluginId}`;
+    return `${this.operation} failed${plugin}: ${this.detail}`;
   }
 }
 
@@ -197,7 +198,7 @@ export const make = Effect.gen(function* () {
 
   const readTextIfPresent = Effect.fn("PluginHostCapabilityBroker.readTextIfPresent")(function* (
     filePath: string,
-    pluginId: string,
+    pluginId: string | undefined,
     operation: string,
   ): Effect.fn.Return<Option.Option<string>, PluginHostCapabilityError> {
     const info = yield* fileSystem.stat(filePath).pipe(
@@ -246,7 +247,7 @@ export const make = Effect.gen(function* () {
   });
 
   const readGrants = Effect.fn("PluginHostCapabilityBroker.readGrants")(function* (
-    pluginId: string,
+    pluginId: string | undefined,
     operation: string,
   ): Effect.fn.Return<Map<string, ReadonlyArray<string>>, PluginHostCapabilityError> {
     const contents = yield* readTextIfPresent(grantFilePath, pluginId, operation);
@@ -298,7 +299,7 @@ export const make = Effect.gen(function* () {
   });
 
   const snapshot: PluginHostCapabilityBroker["Service"]["snapshot"] = semaphore.withPermits(1)(
-    readGrants("<all>", "granted"),
+    readGrants(undefined, "grant snapshot"),
   );
 
   const granted: PluginHostCapabilityBroker["Service"]["granted"] = (pluginId) =>
