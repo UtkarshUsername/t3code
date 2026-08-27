@@ -31,7 +31,7 @@ function PluginPageRoute() {
   }, [canGoBack, navigate]);
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden bg-background text-foreground">
+    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <WorkspacePageHeader electron={isElectron}>
           <div className="flex min-w-0 items-center gap-2">
