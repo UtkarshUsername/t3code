@@ -7175,13 +7175,11 @@ function ChatViewContent(props: ChatViewProps) {
             }
             keybindings={keybindings}
             availableEditors={availableEditors}
-            // Deliberately the instantaneous open flag, not placement: the
-            // floating cluster overlaps the header actions zone whenever the
-            // panel is not genuinely open-inline (closed, or mid-exit with
-            // the gap still shrinking), so those states keep the full
-            // reserve; genuinely open clears it because the cluster anchors
-            // out over the panel instead.
-            rightPanelOpen={rightPanelOpen}
+            // Keep the action lane reserved until an inline enter finishes:
+            // while its gap is still growing, the row-level layout cluster
+            // remains over the header. Sheet controls live inside the sheet,
+            // so sheet mode can release the lane immediately.
+            rightPanelOpen={rightPanelOpen && (shouldUseRightPanelSheet || !inlinePanelEntering)}
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
             onRunProjectScript={runProjectScript}
