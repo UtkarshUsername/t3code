@@ -218,6 +218,11 @@ describe("PluginsSettingsPanel", () => {
     ).not.toBeNull();
   });
 
+  it("omits expanded row content when a package has no error or composition details", () => {
+    const activeRow = renderPackageRow(renderPanel(), "com.acme.active");
+    expect(activeRow.props.children).toBeUndefined();
+  });
+
   it("shows package origin, fork target, and composition decisions", () => {
     query.data = {
       errors: [],

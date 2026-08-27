@@ -154,6 +154,37 @@ function PluginPackageRow({
       })}
     </div>
   );
+  const details =
+    pluginPackage.error !== undefined || pluginPackage.composition.length > 0 ? (
+      <>
+        {pluginPackage.error ? (
+          <Alert variant="error" className="mt-3">
+            <CircleAlertIcon />
+            <AlertDescription>{pluginPackage.error}</AlertDescription>
+          </Alert>
+        ) : null}
+        {pluginPackage.composition.length > 0 ? (
+          <div className="mt-3 space-y-1.5" data-plugin-composition>
+            {pluginPackage.composition.map((decision) => (
+              <div
+                key={decision.ruleId}
+                className="flex min-w-0 items-center gap-2 text-xs"
+                data-plugin-composition-rule={decision.ruleId}
+                data-outcome={decision.outcome}
+              >
+                <Badge variant={decision.outcome === "applied" ? "success" : "warning"}>
+                  {decision.outcome}
+                </Badge>
+                <span className="min-w-0 truncate text-muted-foreground">
+                  {decision.operation} {decision.slot}/{decision.targetId}
+                  {decision.reason === "applied" ? "" : `: ${decision.reason}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </>
+    ) : undefined;
 
   return (
     <SettingsRow
@@ -192,32 +223,7 @@ function PluginPackageRow({
         </div>
       }
     >
-      {pluginPackage.error ? (
-        <Alert variant="error" className="mt-3">
-          <CircleAlertIcon />
-          <AlertDescription>{pluginPackage.error}</AlertDescription>
-        </Alert>
-      ) : null}
-      {pluginPackage.composition.length > 0 ? (
-        <div className="mt-3 space-y-1.5" data-plugin-composition>
-          {pluginPackage.composition.map((decision) => (
-            <div
-              key={decision.ruleId}
-              className="flex min-w-0 items-center gap-2 text-xs"
-              data-plugin-composition-rule={decision.ruleId}
-              data-outcome={decision.outcome}
-            >
-              <Badge variant={decision.outcome === "applied" ? "success" : "warning"}>
-                {decision.outcome}
-              </Badge>
-              <span className="min-w-0 truncate text-muted-foreground">
-                {decision.operation} {decision.slot}/{decision.targetId}
-                {decision.reason === "applied" ? "" : `: ${decision.reason}`}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      {details}
     </SettingsRow>
   );
 }
