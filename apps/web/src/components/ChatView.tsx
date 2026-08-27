@@ -1971,7 +1971,6 @@ function ChatViewContent(props: ChatViewProps) {
   const canMaximizeRightPanel = rightPanelOpen && !shouldUseRightPanelSheet;
   const rightPanelMaximized =
     canMaximizeRightPanel && maximizedRightPanelThreadKey === routeThreadKey;
-  const inlineRightPanelOwnsTitleBar = rightPanelOpen && !shouldUseRightPanelSheet;
 
   useEffect(() => {
     if (!activeThreadRef) return;
@@ -3969,8 +3968,15 @@ function ChatViewContent(props: ChatViewProps) {
       inlinePanelAnimationsEnabled,
       INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS,
     );
+  const { ridingExit: inlinePanelEntering } = usePanelControlsRidingExit(
+    !rightPanelOpen || shouldUseRightPanelSheet,
+    inlinePanelAnimationsEnabled,
+    INLINE_RIGHT_PANEL_EXIT_FALLBACK_MS,
+  );
   const showRowPanelLayoutControls =
     !shouldUseRightPanelSheet && (rightPanelOpen || inlinePanelExiting);
+  const inlineRightPanelOwnsTitleBar =
+    !shouldUseRightPanelSheet && ((rightPanelOpen && !inlinePanelEntering) || inlinePanelExiting);
   // In sheet mode the open panel supplies its own cluster via layoutControls,
   // so the header must stay empty while the sheet is up - only a closed
   // inline panel hands the cluster to the header.
