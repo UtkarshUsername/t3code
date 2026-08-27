@@ -1019,14 +1019,15 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
     );
   }
   for (const id of [...dependencyBlocked.keys()].sort()) {
-    yield* Effect.exit(transition("enable", id)).pipe(
-      Effect.flatMap((exit) =>
-        exit._tag === "Failure"
-          ? Effect.logWarning("Failed to activate startup dependency-blocked package", {
+    yield* transition("enable", id).pipe(
+      Effect.asVoid,
+      Effect.catchCause((cause) =>
+        Cause.hasInterrupts(cause)
+          ? Effect.interrupt
+          : Effect.logWarning("Failed to activate startup dependency-blocked package", {
               id,
-              error: detailFromCause(exit.cause),
-            })
-          : Effect.void,
+              error: detailFromCause(cause),
+            }),
       ),
     );
   }

@@ -186,6 +186,34 @@ describe("PluginUi", () => {
     expect(() => decode(`com.${"a".repeat(252)}`)).toThrow();
   });
 
+  it("bounds aggregate settings independently of per-package limits", () => {
+    const packages = Array.from({ length: 257 }, (_, index) => ({
+      pluginId: `com.acme.plugin-${index}`,
+      ...completeContribution,
+      settings: [
+        {
+          ...completeContribution.settings[0]!,
+          id: `com.acme.plugin-${index}.setting`,
+        },
+      ],
+    }));
+    expect(() =>
+      decodeCatalog({
+        generation: 1,
+        packages,
+        order: {
+          settings: packages.map((pluginPackage) => pluginPackage.settings[0]!.id),
+          navigation: [],
+          views: [],
+          cards: [],
+          statusItems: [],
+          composerActions: [],
+          contextualActions: [],
+        },
+      }),
+    ).toThrow();
+  });
+
   it("registers fixed ui, setting, notification, and subscription rpc methods", () => {
     for (const method of [
       WS_METHODS.pluginUiList,

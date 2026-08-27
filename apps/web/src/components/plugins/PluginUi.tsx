@@ -70,6 +70,15 @@ const toneClass = {
   danger: "border-destructive/30 bg-destructive/10 text-destructive-foreground",
 } as const;
 
+const textToneClass = {
+  neutral: "text-sm",
+  muted: "text-sm text-muted-foreground",
+  info: "text-sm text-info-foreground",
+  success: "text-sm text-success-foreground",
+  warning: "text-sm text-warning-foreground",
+  danger: "text-sm text-destructive-foreground",
+} as const;
+
 const badgeVariant = {
   neutral: "outline",
   muted: "secondary",
@@ -276,11 +285,7 @@ function RenderBlock({
 }) {
   switch (block.kind) {
     case "text":
-      return (
-        <p className={block.tone === "muted" ? "text-sm text-muted-foreground" : "text-sm"}>
-          {block.text}
-        </p>
-      );
+      return <p className={textToneClass[block.tone ?? "neutral"]}>{block.text}</p>;
     case "action":
       return <ActionButton action={block} onAction={onAction} />;
     case "card":
@@ -446,6 +451,7 @@ function PluginUiSettingControl({
   const control =
     setting.kind === "boolean" ? (
       <Switch
+        aria-label={setting.label}
         checked={value === true}
         disabled={readOnly || busy || loading}
         onCheckedChange={(checked) => void update(checked)}
@@ -458,7 +464,7 @@ function PluginUiSettingControl({
           if (next !== null) void update(next);
         }}
       >
-        <SelectTrigger size="compact" className="w-56">
+        <SelectTrigger size="compact" className="w-56" aria-label={setting.label}>
           <SelectValue>
             {setting.options.find((option) => option.value === String(value))?.label ??
               String(value)}
@@ -474,6 +480,7 @@ function PluginUiSettingControl({
       </Select>
     ) : (
       <DraftInput
+        aria-label={setting.label}
         size="sm"
         className="w-56"
         value={String(committedValue)}

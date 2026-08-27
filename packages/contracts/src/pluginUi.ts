@@ -261,11 +261,38 @@ export const PluginUiOrder = strict(
 export type PluginUiOrder = typeof PluginUiOrder.Type;
 
 export const PluginUiCatalog = strict(
-  Schema.Struct({
-    generation: NonNegativeInt,
-    packages: Schema.Array(PluginUiPackageContribution).check(Schema.isMaxLength(1_000)),
-    order: PluginUiOrder,
-  }),
+  strict(
+    Schema.Struct({
+      generation: NonNegativeInt,
+      packages: Schema.Array(PluginUiPackageContribution).check(Schema.isMaxLength(1_000)),
+      order: PluginUiOrder,
+    }),
+  ).check(
+    Schema.makeFilter(
+      (catalog) =>
+        catalog.packages.reduce(
+          (count, pluginPackage) => count + pluginPackage.settings.length,
+          0,
+        ) <= 256 || "plugin UI catalog exceeds the settings limit",
+    ),
+    Schema.makeFilter(
+      (catalog) =>
+        catalog.packages.reduce(
+          (count, pluginPackage) => count + pluginPackage.navigation.length,
+          0,
+        ) <= 128 || "plugin UI catalog exceeds the navigation limit",
+    ),
+    Schema.makeFilter(
+      (catalog) =>
+        (["views", "cards", "statusItems", "composerActions", "contextualActions"] as const).every(
+          (slot) =>
+            catalog.packages.reduce(
+              (count, pluginPackage) => count + pluginPackage[slot].length,
+              0,
+            ) <= 1_024,
+        ) || "plugin UI catalog exceeds a contribution slot limit",
+    ),
+  ),
 );
 export type PluginUiCatalog = typeof PluginUiCatalog.Type;
 
