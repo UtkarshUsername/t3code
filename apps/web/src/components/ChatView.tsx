@@ -6679,11 +6679,36 @@ function ChatViewContent(props: ChatViewProps) {
     ) {
       return;
     }
+    if (!activeThread) return;
+    if (!composerRef.current) {
+      const raf = window.requestAnimationFrame(() => {
+        if (!composerRef.current) return;
+        const latestPending = useSidebarPendingFileDropStore.getState().pending;
+        if (latestPending === null) return;
+        if (
+          typeof composerDraftTarget === "string" ||
+          scopedThreadKey(composerDraftTarget) !== scopedThreadKey(latestPending.threadRef)
+        ) {
+          return;
+        }
+        const files = consumePendingFileDrop(latestPending.threadRef);
+        if (files !== null) {
+          composerRef.current?.addDroppedFiles(files);
+        }
+      });
+      return () => window.cancelAnimationFrame(raf);
+    }
     const files = consumePendingFileDrop(pendingSidebarFileDrop.threadRef);
     if (files !== null) {
-      composerRef.current?.addDroppedFiles(files);
+      composerRef.current.addDroppedFiles(files);
     }
-  }, [composerDraftTarget, composerRef, consumePendingFileDrop, pendingSidebarFileDrop]);
+  }, [
+    activeThread,
+    composerDraftTarget,
+    composerRef,
+    consumePendingFileDrop,
+    pendingSidebarFileDrop,
+  ]);
 
   // Empty state: no active thread
   if (!activeThread) {
