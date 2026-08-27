@@ -9,7 +9,7 @@ import * as Schema from "effect/Schema";
 
 import {
   compilePluginTypeScriptEntrypoint,
-  PluginTypeScriptCompileError,
+  PluginTypeScriptImportEscapeError,
 } from "./PluginTypeScriptCompiler.ts";
 
 const encodeJsonString = Schema.encodeSync(Schema.fromJsonString(Schema.String));
@@ -63,9 +63,9 @@ export const result: { tone: string } = { tone: Tone.Success };
       expect(compiled._tag).toBe("Failure");
       if (compiled._tag === "Failure") {
         expect(Cause.squash(compiled.cause)).toEqual(
-          expect.objectContaining<Partial<PluginTypeScriptCompileError>>({
+          expect.objectContaining<Partial<PluginTypeScriptImportEscapeError>>({
             entrypointPath,
-            stage: "containment",
+            sourcePath: "../outside.ts",
           }),
         );
       }

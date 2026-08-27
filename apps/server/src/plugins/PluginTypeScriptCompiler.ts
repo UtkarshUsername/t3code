@@ -8,26 +8,43 @@ const TYPESCRIPT_EXTENSIONS = new Set([".ts", ".mts", ".cts"]);
 const GENERATED_DIRECTORY = ".t3-generated";
 const GENERATED_ENTRYPOINT = "entrypoint.mjs";
 
+export class PluginTypeScriptPrepareError extends Schema.TaggedErrorClass<PluginTypeScriptPrepareError>()(
+  "PluginTypeScriptPrepareError",
+  { entrypointPath: Schema.String, cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return `Could not prepare TypeScript plugin entrypoint ${this.entrypointPath}.`;
+  }
+}
+
 export class PluginTypeScriptCompileError extends Schema.TaggedErrorClass<PluginTypeScriptCompileError>()(
   "PluginTypeScriptCompileError",
   {
     entrypointPath: Schema.String,
-    stage: Schema.Literals(["prepare", "compile", "containment"]),
     diagnostics: Schema.optional(Schema.String.check(Schema.isMaxLength(4_000))),
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.Defect(),
   },
 ) {
   override get message(): string {
-    switch (this.stage) {
-      case "prepare":
-        return `Could not prepare TypeScript plugin entrypoint ${this.entrypointPath}.`;
-      case "compile":
-        return `TypeScript compilation failed for ${this.entrypointPath}${this.diagnostics === undefined ? "." : `:\n${this.diagnostics}`}`;
-      case "containment":
-        return `TypeScript entrypoint ${this.entrypointPath} imports outside its plugin package${this.diagnostics === undefined ? "." : `: ${this.diagnostics}`}`;
-    }
+    return `TypeScript compilation failed for ${this.entrypointPath}${this.diagnostics === undefined ? "." : `:\n${this.diagnostics}`}`;
   }
 }
+
+export class PluginTypeScriptImportEscapeError extends Schema.TaggedErrorClass<PluginTypeScriptImportEscapeError>()(
+  "PluginTypeScriptImportEscapeError",
+  { entrypointPath: Schema.String, sourcePath: Schema.String },
+) {
+  override get message(): string {
+    return `TypeScript entrypoint ${this.entrypointPath} imports outside its plugin package: ${this.sourcePath}`;
+  }
+}
+
+export const PluginTypeScriptError = Schema.Union([
+  PluginTypeScriptPrepareError,
+  PluginTypeScriptCompileError,
+  PluginTypeScriptImportEscapeError,
+]);
+export type PluginTypeScriptError = typeof PluginTypeScriptError.Type;
 
 const formatMessage = (message: Message): string => {
   const location = message.location;
@@ -55,17 +72,13 @@ const compileError =
       if (details.length > 0) {
         return new PluginTypeScriptCompileError({
           entrypointPath,
-          stage: "compile",
           diagnostics: details.slice(0, 4_000),
           cause,
         });
       }
     }
-    const detail = cause instanceof Error ? cause.message : String(cause);
     return new PluginTypeScriptCompileError({
       entrypointPath,
-      stage: "compile",
-      diagnostics: detail.slice(0, 4_000),
       cause,
     });
   };
@@ -84,7 +97,7 @@ export const compilePluginTypeScriptEntrypoint = Effect.fn(
   "PluginTypeScriptCompiler.compileEntrypoint",
 )(function* (
   input: PluginTypeScriptCompileInput,
-): Effect.fn.Return<string, PluginTypeScriptCompileError, FileSystem.FileSystem | Path.Path> {
+): Effect.fn.Return<string, PluginTypeScriptError, FileSystem.FileSystem | Path.Path> {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   if (!TYPESCRIPT_EXTENSIONS.has(path.extname(input.entrypointPath).toLowerCase())) {
@@ -96,9 +109,8 @@ export const compilePluginTypeScriptEntrypoint = Effect.fn(
   yield* fileSystem.makeDirectory(outputDirectory, { recursive: true }).pipe(
     Effect.mapError(
       (cause) =>
-        new PluginTypeScriptCompileError({
+        new PluginTypeScriptPrepareError({
           entrypointPath: input.entrypointPath,
-          stage: "prepare",
           cause,
         }),
     ),
@@ -141,10 +153,9 @@ export const compilePluginTypeScriptEntrypoint = Effect.fn(
   for (const sourcePath of Object.keys(result.metafile?.inputs ?? {})) {
     const absoluteSourcePath = path.resolve(input.packageDirectory, sourcePath);
     if (!isContained(path, input.packageDirectory, absoluteSourcePath)) {
-      return yield* new PluginTypeScriptCompileError({
+      return yield* new PluginTypeScriptImportEscapeError({
         entrypointPath: input.entrypointPath,
-        stage: "containment",
-        diagnostics: sourcePath,
+        sourcePath,
       });
     }
   }

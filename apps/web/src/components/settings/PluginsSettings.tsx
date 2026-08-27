@@ -18,7 +18,7 @@ import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
@@ -358,13 +358,12 @@ export function PluginsSettingsPanel() {
             >
               <CircleAlertIcon />
               <AlertTitle>{error.directory}</AlertTitle>
-              <AlertDescription>
-                {error.error}
-                {pluginId !== undefined ? (
+              <AlertDescription>{error.error}</AlertDescription>
+              {pluginId !== undefined ? (
+                <AlertAction>
                   <Button
                     size="compact"
                     variant="outline"
-                    className="mt-2"
                     data-plugin-missing-disable={pluginId}
                     disabled={pending !== null || readOnly}
                     onClick={() => runAction(pluginId, "disable")}
@@ -372,8 +371,8 @@ export function PluginsSettingsPanel() {
                     {disabling ? <Spinner className="size-3" /> : null}
                     Disable
                   </Button>
-                ) : null}
-              </AlertDescription>
+                </AlertAction>
+              ) : null}
             </Alert>
           );
         })}
