@@ -16,6 +16,18 @@ once enabled, the example adds a command, plugin settings, a navigation page, a 
 
 the manifest marks this package as a local fork of the core runtime command and replaces `t3.plugin-runtime.status`. disabling the package restores the core contribution automatically.
 
+## typescript authoring
+
+server entrypoints may use `.ts`, `.mts`, or `.cts`. t3 code bundles the entrypoint and its package-local imports into a generation-specific ESM file before worker activation. compilation errors abort the candidate generation, source maps remain attached, and the last working generation stays live. `.mjs` entrypoints remain supported.
+
+install `t3` as a development dependency to use the current authoring types, then import them with a type-only import:
+
+```ts
+import type { PluginActivate } from "t3/plugin";
+```
+
+the built-in compiler transpiles and bundles typescript. it does not replace `tsc` or editor type checking. imports that resolve outside the plugin package are rejected. typescript plugins still use declarative host-rendered UI and cannot inject JSX or renderer code.
+
 ## host capabilities and plugin-owned data
 
 manifest permissions are explicit, bounded grants:

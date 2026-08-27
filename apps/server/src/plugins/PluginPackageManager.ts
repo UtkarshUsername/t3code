@@ -27,6 +27,7 @@ import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as PluginCommandCatalog from "./PluginCommandCatalog.ts";
 import * as PluginHostCapabilityBroker from "./PluginHostCapabilityBroker.ts";
+import { compilePluginTypeScriptEntrypoint } from "./PluginTypeScriptCompiler.ts";
 import * as PluginWorkerSupervisor from "./PluginWorkerSupervisor.ts";
 
 const MANIFEST_FILE_NAME = "t3-plugin.json";
@@ -563,7 +564,22 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
       yield* removeCacheDirectory(cacheDirectory);
       return yield* Effect.failCause(copied.cause);
     }
-    const entrypointPath = path.resolve(cacheDirectory, serverEntrypoint);
+    const copiedEntrypointPath = path.resolve(cacheDirectory, serverEntrypoint);
+    const compilation = yield* Effect.exit(
+      compilePluginTypeScriptEntrypoint({
+        packageDirectory: cacheDirectory,
+        entrypointPath: copiedEntrypointPath,
+      }).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+        Effect.mapError((error) => operationError(operation, error, discovered.manifest.id)),
+      ),
+    );
+    if (compilation._tag === "Failure") {
+      yield* removeCacheDirectory(cacheDirectory);
+      return yield* Effect.failCause(compilation.cause);
+    }
+    const entrypointPath = compilation.value;
 
     const workerExit = yield* Effect.exit(
       workerSupervisor
@@ -957,6 +973,26 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
     ),
   );
 
+  const retryDependencyBlocked = Effect.fn("PluginPackageManager.retryDependencyBlocked")(
+    function* (enabledIds: ReadonlySet<string>, warning: string) {
+      while (true) {
+        const blockedIds = [...dependencyBlocked.keys()].filter((id) => enabledIds.has(id)).sort();
+        if (blockedIds.length === 0) return;
+        let activated = 0;
+        for (const id of blockedIds) {
+          const retried = yield* Effect.exit(transition("enable", id));
+          if (retried._tag === "Failure") {
+            if (Cause.hasInterrupts(retried.cause)) return yield* Effect.interrupt;
+            yield* Effect.logWarning(warning, { id, error: detailFromCause(retried.cause) });
+            continue;
+          }
+          if (!dependencyBlocked.has(id)) activated += 1;
+        }
+        if (activated === 0) return;
+      }
+    },
+  );
+
   yield* settings.start.pipe(Effect.mapError((error) => operationError("status", error)));
   yield* fileSystem
     .remove(pluginCacheDirectory, { recursive: true, force: true })
@@ -1018,19 +1054,10 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
       }),
     );
   }
-  for (const id of [...dependencyBlocked.keys()].sort()) {
-    yield* transition("enable", id).pipe(
-      Effect.asVoid,
-      Effect.catchCause((cause) =>
-        Cause.hasInterrupts(cause)
-          ? Effect.interrupt
-          : Effect.logWarning("Failed to activate startup dependency-blocked package", {
-              id,
-              error: detailFromCause(cause),
-            }),
-      ),
-    );
-  }
+  yield* retryDependencyBlocked(
+    startupEnabledIds,
+    "Failed to activate startup dependency-blocked package",
+  );
 
   const resolveSetting = Effect.fn("PluginPackageManager.resolveSetting")(function* (
     pluginId: string,
@@ -1143,16 +1170,7 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
     const enabledIds = yield* readEnabledIds.pipe(
       Effect.mapError((error) => operationError("enable", error, id)),
     );
-    for (const blockedId of [...dependencyBlocked.keys()].sort()) {
-      if (blockedId === id || !enabledIds.has(blockedId)) continue;
-      const retried = yield* Effect.exit(transition("enable", blockedId));
-      if (retried._tag === "Failure") {
-        yield* Effect.logWarning("Failed to activate unblocked plugin package", {
-          id: blockedId,
-          error: detailFromCause(retried.cause),
-        });
-      }
-    }
+    yield* retryDependencyBlocked(enabledIds, "Failed to activate unblocked plugin package");
     return yield* statusUnlocked("enable");
   });
 

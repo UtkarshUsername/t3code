@@ -26,6 +26,10 @@
  * enforced by a test, not by inspection.
  */
 export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
+  // The plugin TypeScript compiler invokes esbuild's platform binary at runtime.
+  // Keep the JS wrapper and its optional @esbuild binding on the real filesystem.
+  "esbuild",
+  "@esbuild/",
   "node-pty",
   "ffi-rs",
   "@yuuang/",

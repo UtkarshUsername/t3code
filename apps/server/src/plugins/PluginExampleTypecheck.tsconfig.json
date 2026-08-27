@@ -1,0 +1,11 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "erasableSyntaxOnly": false,
+    "paths": {
+      "t3/plugin": ["../../plugin.d.ts"]
+    },
+    "types": []
+  },
+  "include": ["../../../../examples/plugins/runtime-status/index.ts"]
+}

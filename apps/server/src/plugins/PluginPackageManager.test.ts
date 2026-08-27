@@ -788,6 +788,93 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
     }),
   );
 
+  it.effect("compiles and activates a TypeScript package with local TypeScript imports", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3code-plugin-package-typescript-test-",
+      });
+      const typescriptPackageId = "com.acme.typescript-plugin";
+      const typescriptCommandId = "acme.typescript.status";
+      const packageDirectory = `${baseDir}/userdata/plugins/${typescriptPackageId}`;
+      const typescriptEntrypointSource = `
+import type { PluginActivate } from "t3/plugin";
+import { message } from "./message.ts";
+
+enum Tone {
+  Success = "success",
+}
+
+const activate = ((api) => {
+  const command = {
+    id: "${typescriptCommandId}",
+    label: "TypeScript status",
+    surfaces: ["web", "desktop"]
+  } as const;
+  api.registerCommand(command, () => ({ message, tone: Tone.Success }));
+}) satisfies PluginActivate;
+
+export default activate;
+`;
+      yield* fileSystem.makeDirectory(packageDirectory, { recursive: true });
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/t3-plugin.json`,
+        encodeManifest({
+          ...manifest,
+          id: typescriptPackageId,
+          entrypoints: { server: "./index.ts" },
+          contributes: { commands: [typescriptCommandId] },
+        }),
+      );
+      yield* fileSystem.writeFileString(
+        `${packageDirectory}/message.ts`,
+        'export const message: string = "TypeScript plugin is active.";\n',
+      );
+      yield* fileSystem.writeFileString(`${packageDirectory}/index.ts`, typescriptEntrypointSource);
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+          expect(yield* manager.enable(typescriptPackageId)).toMatchObject({
+            packages: [{ id: typescriptPackageId, enabled: true, state: "active" }],
+          });
+          const listed = yield* catalog.list;
+          expect(
+            yield* catalog.invoke({ generation: listed.generation, id: typescriptCommandId }),
+          ).toEqual({ message: "TypeScript plugin is active.", tone: "success" });
+
+          yield* fileSystem.writeFileString(
+            `${packageDirectory}/index.ts`,
+            "export default function activate(: void {\n",
+          );
+          expect((yield* Effect.exit(manager.reload(typescriptPackageId)))._tag).toBe("Failure");
+          expect(yield* catalog.list).toBe(listed);
+          const status = yield* manager.status;
+          expect(status.packages.find(({ id }) => id === typescriptPackageId)?.error).toContain(
+            "index.ts",
+          );
+
+          yield* fileSystem.writeFileString(
+            `${packageDirectory}/message.ts`,
+            'export const message: string = "TypeScript plugin reloaded.";\n',
+          );
+          yield* fileSystem.writeFileString(
+            `${packageDirectory}/index.ts`,
+            typescriptEntrypointSource,
+          );
+          yield* manager.reload(typescriptPackageId);
+          const reloaded = yield* catalog.list;
+          expect(reloaded.generation).toBeGreaterThan(listed.generation);
+          expect(
+            yield* catalog.invoke({ generation: reloaded.generation, id: typescriptCommandId }),
+          ).toEqual({ message: "TypeScript plugin reloaded.", tone: "success" });
+        }),
+      );
+    }),
+  );
+
   it.effect("loads the committed external runtime-status example without rebuilding", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -921,6 +1008,90 @@ it.layer(NodeServices.layer)("plugin package lifecycle", (it) => {
       expect(decodePersistedEnabledPlugins(persisted).enabledPluginIds ?? []).toEqual([]);
       expect(yield* fileSystem.readFileString(`${packageDirectory}/disposed.log`)).toBe(
         "disposed\ndisposed\n",
+      );
+    }),
+  );
+
+  it.effect("retries dependency-blocked chains until every enabled package can activate", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3code-plugin-package-dependency-chain-test-",
+      });
+      const packages = [
+        {
+          id: "com.acme.a-consumer",
+          commandId: "acme.chain.consumer",
+          requires: ["acme.middle@1"],
+          provides: [],
+        },
+        {
+          id: "com.acme.b-middle",
+          commandId: "acme.chain.middle",
+          requires: ["acme.root@1"],
+          provides: ["acme.middle@1"],
+        },
+        {
+          id: "com.acme.c-provider",
+          commandId: "acme.chain.provider",
+          requires: [],
+          provides: ["acme.root@1"],
+        },
+      ] as const;
+      for (const pluginPackage of packages) {
+        const directory = `${baseDir}/userdata/plugins/${pluginPackage.id}`;
+        yield* fileSystem.makeDirectory(directory, { recursive: true });
+        yield* fileSystem.writeFileString(
+          `${directory}/t3-plugin.json`,
+          encodeManifest({
+            ...manifest,
+            id: pluginPackage.id,
+            requires: [...pluginPackage.requires],
+            provides: [...pluginPackage.provides],
+            contributes: { commands: [pluginPackage.commandId] },
+          }),
+        );
+        yield* fileSystem.writeFileString(
+          `${directory}/index.mjs`,
+          commandPluginSource(pluginPackage.commandId, pluginPackage.id),
+        );
+      }
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+          for (const pluginPackage of packages) yield* manager.enable(pluginPackage.id);
+          expect((yield* manager.status).packages).toEqual(
+            expect.arrayContaining(
+              packages.map((pluginPackage) =>
+                expect.objectContaining({ id: pluginPackage.id, state: "active" }),
+              ),
+            ),
+          );
+          expect((yield* catalog.list).commands.map(({ id }) => id)).toEqual(
+            expect.arrayContaining(packages.map(({ commandId }) => commandId)),
+          );
+        }),
+      );
+
+      yield* useEnvironment(
+        baseDir,
+        Effect.gen(function* () {
+          const manager = yield* PluginPackageManager.PluginPackageManager;
+          const catalog = yield* PluginCommandCatalog.PluginCommandCatalog;
+          expect((yield* manager.status).packages).toEqual(
+            expect.arrayContaining(
+              packages.map((pluginPackage) =>
+                expect.objectContaining({ id: pluginPackage.id, state: "active" }),
+              ),
+            ),
+          );
+          expect((yield* catalog.list).commands.map(({ id }) => id)).toEqual(
+            expect.arrayContaining(packages.map(({ commandId }) => commandId)),
+          );
+        }),
       );
     }),
   );
