@@ -181,7 +181,13 @@ export function PluginUiNavigationItems({ closeMobile }: { readonly closeMobile:
     "navigation",
     catalog.packages.flatMap((pluginPackage) =>
       pluginPackage.navigation
-        .filter((item) => item.surfaces.includes(currentSurface))
+        .filter(
+          (item) =>
+            item.surfaces.includes(currentSurface) &&
+            pluginPackage.views.some(
+              (view) => view.id === item.viewId && view.surfaces.includes(currentSurface),
+            ),
+        )
         .map((item) => ({ ...item, item, pluginId: pluginPackage.pluginId })),
     ),
   ).slice(0, MAX_SIDEBAR_PLUGIN_NAVIGATION);
@@ -470,7 +476,7 @@ function PluginUiSettingControl({
               String(value)}
           </SelectValue>
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent align="end" alignItemWithTrigger={false}>
           {setting.options.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
