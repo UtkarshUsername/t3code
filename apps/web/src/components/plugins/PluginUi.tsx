@@ -407,6 +407,7 @@ function PluginUiSettingControl({
   const [committedValue, setCommittedValue] = useState<boolean | string>(setting.defaultValue);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [readFailed, setReadFailed] = useState(false);
   const readVersion = useRef(0);
 
   useEffect(() => {
@@ -415,9 +416,14 @@ function PluginUiSettingControl({
     setValue(setting.defaultValue);
     setCommittedValue(setting.defaultValue);
     setLoading(true);
+    setReadFailed(false);
     void read({ environmentId, input: { pluginId, settingId: setting.id } }).then((result) => {
       if (cancelled || version !== readVersion.current) return;
-      if (result._tag !== "Success") return;
+      if (result._tag !== "Success") {
+        setLoading(false);
+        setReadFailed(true);
+        return;
+      }
       setLoading(false);
       if (result.value.value === undefined) return;
       if (typeof result.value.value === "boolean" || typeof result.value.value === "string") {
@@ -431,7 +437,7 @@ function PluginUiSettingControl({
   }, [environmentId, pluginId, read, setting.defaultValue, setting.id]);
 
   const update = async (next: boolean | string) => {
-    if (readOnly || loading || busy) return;
+    if (readOnly || loading || readFailed || busy) return;
     const previous = committedValue;
     setValue(next);
     setBusy(true);
@@ -460,18 +466,18 @@ function PluginUiSettingControl({
       <Switch
         aria-label={setting.label}
         checked={value === true}
-        disabled={readOnly || busy || loading}
+        disabled={readOnly || busy || loading || readFailed}
         onCheckedChange={(checked) => void update(checked)}
       />
     ) : setting.kind === "select" ? (
       <Select
         value={String(value)}
-        disabled={readOnly || busy || loading}
+        disabled={readOnly || busy || loading || readFailed}
         onValueChange={(next) => {
           if (next !== null) void update(next);
         }}
       >
-        <SelectTrigger size="compact" className="w-56" aria-label={setting.label}>
+        <SelectTrigger className="w-full sm:w-56" aria-label={setting.label}>
           <SelectValue>
             {setting.options.find((option) => option.value === String(value))?.label ??
               String(value)}
@@ -488,16 +494,25 @@ function PluginUiSettingControl({
     ) : (
       <DraftInput
         aria-label={setting.label}
-        size="sm"
-        className="w-56"
+        className="w-full sm:w-56"
         value={String(committedValue)}
         placeholder={setting.placeholder}
-        disabled={readOnly || busy || loading}
+        disabled={readOnly || busy || loading || readFailed}
         onCommit={(next) => void update(next)}
       />
     );
 
-  return <SettingsRow title={setting.label} description={setting.description} control={control} />;
+  return (
+    <SettingsRow
+      title={setting.label}
+      description={
+        readFailed
+          ? "This setting could not be loaded. Reload the page to try again."
+          : setting.description
+      }
+      control={control}
+    />
+  );
 }
 
 export function PluginUiSettingsSections({ readOnly }: { readonly readOnly: boolean }) {
