@@ -1,5 +1,12 @@
 import * as Schema from "effect/Schema";
-import { type PointerEvent as ReactPointerEvent, useCallback, useRef, useState } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { getLocalStorageItem, setLocalStorageItem } from "./useLocalStorage";
 
@@ -11,6 +18,7 @@ export interface UseResizableWidthOptions {
   readonly defaultWidth: number;
   readonly minWidth: number;
   readonly maxWidth: number;
+  readonly enabled?: boolean;
   /**
    * Which edge of the host element carries the drag handle:
    *   - "left"  → panel grows leftward (right-anchored panels)
@@ -40,7 +48,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
   readonly isResizing: boolean;
   readonly handlers: ResizableWidthHandlers;
 } {
-  const { storageKey, defaultWidth, minWidth, maxWidth, edge } = options;
+  const { storageKey, defaultWidth, minWidth, maxWidth, edge, enabled = true } = options;
 
   const clamp = useCallback(
     (value: number): number => {
@@ -74,7 +82,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
     target: HTMLElement;
   } | null>(null);
 
-  const releasePointer = useCallback((pointerId: number) => {
+  const releasePointer = useCallback((pointerId: number, updateState = true) => {
     const state = dragStateRef.current;
     if (!state) return;
     if (state.rafId !== null) {
@@ -90,11 +98,28 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
     document.body.style.removeProperty("cursor");
     document.body.style.removeProperty("user-select");
     dragStateRef.current = null;
-    setIsResizing(false);
+    if (updateState) setIsResizing(false);
   }, []);
+
+  useLayoutEffect(() => {
+    if (enabled) return;
+    const state = dragStateRef.current;
+    if (!state) return;
+    releasePointer(state.pointerId);
+  }, [enabled, releasePointer]);
+
+  useEffect(
+    () => () => {
+      const state = dragStateRef.current;
+      if (!state) return;
+      releasePointer(state.pointerId, false);
+    },
+    [releasePointer],
+  );
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
+      if (!enabled) return;
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
@@ -116,7 +141,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
         target,
       };
     },
-    [clampedWidth],
+    [clampedWidth, enabled],
   );
 
   const onPointerMove = useCallback(

@@ -97,6 +97,7 @@ export function PreviewPanelShell(props: {
     minWidth: PREVIEW_PANEL_MIN_WIDTH,
     maxWidth,
     edge: "left",
+    enabled: isInline && !maximized && open,
   });
 
   const panelContents = (
