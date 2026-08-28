@@ -1372,6 +1372,23 @@ export default function ThreadTerminalDrawer({
     };
   }, [onHeightPreviewChange, visible, drawerHeight]);
 
+  useEffect(
+    () => () => {
+      // Unmount while a clamp-driven resize is pending (e.g. !project || !cwd
+      // while PersistentThreadTerminalDrawer stays mounted) would otherwise
+      // leave parent isResizing true and suppress later open/close transitions.
+      if (clampResizeActiveRef.current) {
+        clampResizeActiveRef.current = false;
+        onResizeStateChangeRef.current?.(false);
+      }
+      if (clampResizeFrameRef.current !== 0) {
+        window.cancelAnimationFrame(clampResizeFrameRef.current);
+        clampResizeFrameRef.current = 0;
+      }
+    },
+    [],
+  );
+
   const syncHeight = useCallback((nextHeight: number) => {
     const clampedHeight = clampDrawerHeight(nextHeight);
     if (lastSyncedHeightRef.current === clampedHeight) return;
