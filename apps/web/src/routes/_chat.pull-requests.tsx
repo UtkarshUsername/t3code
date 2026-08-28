@@ -1536,8 +1536,6 @@ function PullRequestsRouteView() {
       pullRequestsSupported && !rightPanelOpen && !panelControlsRidingExit
         ? openPanelControls
         : null,
-    // The panel owns the titlebar once its enter lands, and through its exit.
-    rightPanelOpen: (rightPanelOpen && !panelControlsEntering) || panelControlsRidingExit,
     headerReserve: !rightPanelOpen || panelControlsEntering,
     listBody,
   };
@@ -1825,7 +1823,6 @@ function PullRequestsColumn({
   filtersMenu,
   rightPanelControl,
   titlebarControls,
-  rightPanelOpen: _rightPanelOpen,
   headerReserve,
   listBody,
 }: {
@@ -1843,7 +1840,6 @@ function PullRequestsColumn({
   filtersMenu: ReactNode;
   rightPanelControl: ReactNode;
   titlebarControls: ReactNode;
-  rightPanelOpen: boolean;
   headerReserve: boolean;
   listBody: ReactNode;
 }) {
