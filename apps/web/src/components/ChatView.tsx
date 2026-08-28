@@ -1162,6 +1162,15 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     return null;
   }
 
+  // While exiting the frozen view must be inert: its viewports still
+  // report the closed status of the old session, and reopening may reuse
+  // the same terminal id for a new session on the same viewport key.
+  const effectiveOnCloseTerminal = isDrawerExiting ? () => {} : closeTerminal;
+  const effectiveOnActiveTerminalChange = isDrawerExiting ? () => {} : activateTerminal;
+  const effectiveOnSplitTerminal = isDrawerExiting ? () => {} : splitTerminal;
+  const effectiveOnSplitTerminalVertical = isDrawerExiting ? () => {} : splitTerminalVertical;
+  const effectiveOnNewTerminal = isDrawerExiting ? () => {} : createNewTerminal;
+
   return (
     <TerminalDrawerTransitionShell
       active={active}
@@ -1188,16 +1197,16 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
         terminalGroups={effectiveUiState.terminalGroups}
         activeTerminalGroupId={effectiveUiState.activeTerminalGroupId}
         focusRequestId={focusRequestId + localFocusRequestId + (terminalOpen ? 1 : 0)}
-        onSplitTerminal={splitTerminal}
-        onSplitTerminalVertical={splitTerminalVertical}
-        onNewTerminal={createNewTerminal}
+        onSplitTerminal={effectiveOnSplitTerminal}
+        onSplitTerminalVertical={effectiveOnSplitTerminalVertical}
+        onNewTerminal={effectiveOnNewTerminal}
         splitShortcutLabel={terminalOpen ? splitShortcutLabel : undefined}
         splitVerticalShortcutLabel={terminalOpen ? splitVerticalShortcutLabel : undefined}
         newShortcutLabel={terminalOpen ? newShortcutLabel : undefined}
         closeShortcutLabel={terminalOpen ? closeShortcutLabel : undefined}
         keybindings={keybindings}
-        onActiveTerminalChange={activateTerminal}
-        onCloseTerminal={closeTerminal}
+        onActiveTerminalChange={effectiveOnActiveTerminalChange}
+        onCloseTerminal={effectiveOnCloseTerminal}
         onHeightChange={setTerminalHeight}
         onHeightPreviewChange={previewTerminalHeight}
         onResizeStateChange={setIsResizing}
