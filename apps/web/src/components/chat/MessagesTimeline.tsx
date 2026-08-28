@@ -981,15 +981,14 @@ function TimelineMinimapNavigationButton({
         render={
           <span
             className={cn(
-              "absolute left-0 z-10 inline-flex -translate-x-1/2",
-              previous ? "bottom-full" : "top-full",
+              "absolute left-1 z-10 inline-flex -translate-x-1/2",
+              previous ? "bottom-[calc(100%+2px)]" : "top-[calc(100%+2px)]",
             )}
           />
         }
       >
         <Button
           aria-label={label}
-          className="bg-background/80"
           disabled={disabled}
           onClick={onClick}
           size="icon-micro"
