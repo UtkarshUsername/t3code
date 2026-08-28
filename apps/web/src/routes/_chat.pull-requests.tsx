@@ -1538,6 +1538,7 @@ function PullRequestsRouteView() {
         : null,
     // The panel owns the titlebar once its enter lands, and through its exit.
     rightPanelOpen: (rightPanelOpen && !panelControlsEntering) || panelControlsRidingExit,
+    headerReserve: !rightPanelOpen || panelControlsEntering,
     listBody,
   };
 
@@ -1824,7 +1825,8 @@ function PullRequestsColumn({
   filtersMenu,
   rightPanelControl,
   titlebarControls,
-  rightPanelOpen,
+  rightPanelOpen: _rightPanelOpen,
+  headerReserve,
   listBody,
 }: {
   refreshing: boolean;
@@ -1842,6 +1844,7 @@ function PullRequestsColumn({
   rightPanelControl: ReactNode;
   titlebarControls: ReactNode;
   rightPanelOpen: boolean;
+  headerReserve: boolean;
   listBody: ReactNode;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -1912,7 +1915,7 @@ function PullRequestsColumn({
           fixed top-right anchor. */}
       <WorkspacePageHeader
         electron={isElectron}
-        reserveNativeControls={!rightPanelOpen}
+        reserveNativeControls={headerReserve}
         className="relative bg-background"
       >
         {titlebarControls}

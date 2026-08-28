@@ -4039,7 +4039,7 @@ function ChatViewContent(props: ChatViewProps) {
   const showRowPanelLayoutControls =
     !shouldUseRightPanelSheet && (rightPanelOpen || inlinePanelExiting);
   const inlineRightPanelOwnsTitleBar =
-    !shouldUseRightPanelSheet && ((rightPanelOpen && !inlinePanelEntering) || inlinePanelExiting);
+    !shouldUseRightPanelSheet && rightPanelOpen && !inlinePanelEntering;
   // In sheet mode the open panel supplies its own cluster via layoutControls,
   // so the header must stay empty while the sheet is up - only a closed
   // inline panel hands the cluster to the header.
