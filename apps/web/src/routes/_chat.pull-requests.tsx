@@ -1523,7 +1523,7 @@ function PullRequestsRouteView() {
       // mounted at the fixed titlebar inset in both states so it cannot move
       // on toggle, and this spacer keeps refresh from sliding underneath it
       // (sized per header padding so refresh ends a normal gap short of it).
-      !pullRequestsSupported || (rightPanelState.isOpen && !panelControlsEntering) ? null : (
+      !pullRequestsSupported || (rightPanelOpen && !panelControlsEntering) ? null : (
         <span aria-hidden className="w-7 shrink-0 sm:w-5" />
       ),
     titlebarControls:
