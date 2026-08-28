@@ -80,6 +80,7 @@ import {
   resolveAssistantMessageCopyState,
   resolveTimelineIsAtEnd,
   resolveTimelineMinimapHasPersistentGutter,
+  resolveTimelineMinimapCurrentIndex,
   resolveTimelineMinimapHeightStyle,
   resolveTimelineMinimapHitStripWidth,
   resolveTimelineMinimapIndexFromPointer,
@@ -467,13 +468,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const scrollTop = state.scroll ?? 0;
     const scrollBottom = scrollTop + (state.scrollLength ?? 0);
 
-    let visibleIndex: number | null = null;
-    let precedingIndex: number | null = null;
+    const itemBounds = minimapItems.map((item) => ({
+      top: resolveTimelineRowTop(state, item.rowIndex),
+      height: resolveTimelineRowHeight(state, item.rowIndex),
+    }));
 
     for (const [index, item] of minimapItems.entries()) {
       const strip = minimapStripMap.get(item.id);
-      const rowTop = resolveTimelineRowTop(state, item.rowIndex);
-      const rowHeight = resolveTimelineRowHeight(state, item.rowIndex);
+      const bounds = itemBounds[index];
+      const rowTop = bounds?.top ?? null;
+      const rowHeight = bounds?.height ?? null;
       const inView =
         rowTop !== null &&
         rowTop < scrollBottom &&
@@ -482,14 +486,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       if (strip) {
         strip.dataset.inView = inView ? "true" : "false";
       }
-      if (inView) {
-        visibleIndex = index;
-      }
-      if (rowTop !== null && rowTop <= scrollTop) {
-        precedingIndex = index;
-      }
     }
-    const nextCurrentIndex = visibleIndex ?? precedingIndex ?? 0;
+    const nextCurrentIndex =
+      resolveTimelineMinimapCurrentIndex({ scrollTop, scrollBottom, itemBounds }) ?? 0;
     setMinimapCurrentIndex((current) =>
       current === nextCurrentIndex ? current : nextCurrentIndex,
     );
@@ -987,7 +986,7 @@ function TimelineMinimapNavigationButton({
       >
         <Button
           aria-label={label}
-          className="size-5 border-transparent bg-background/80 p-0 text-muted-foreground shadow-none hover:bg-accent hover:text-foreground"
+          className="bg-background/80"
           disabled={disabled}
           onClick={onClick}
           size="icon-micro"
