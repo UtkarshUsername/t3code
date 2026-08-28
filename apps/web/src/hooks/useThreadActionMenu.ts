@@ -71,7 +71,7 @@ export function useThreadActionMenu(input: {
     snoozeThread,
     unsnoozeThread,
     pinThread,
-    unpinThread,
+    confirmAndUnpinThread,
     archiveThread,
     deleteThread,
   } = useThreadActions();
@@ -84,7 +84,6 @@ export function useThreadActionMenu(input: {
   const autoSettleMode = useClientSettings((s) => s.sidebarAutoSettleMode);
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
-  const confirmThreadUnpin = useClientSettings((s) => s.confirmThreadUnpin);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
   const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
     onCopy: ({ path }) => {
@@ -217,18 +216,7 @@ export function useThreadActionMenu(input: {
             await reportFailure("Failed to pin thread", () => pinThread(threadRef));
             return;
           case "unpin": {
-            if (confirmThreadUnpin) {
-              const confirmed = await settlePromise(() =>
-                api.dialogs.confirm(
-                  [
-                    `Unpin thread "${thread.title}"?`,
-                    "This will move the thread out of your pinned section.",
-                  ].join("\n"),
-                ),
-              );
-              if (confirmed._tag === "Failure" || !confirmed.value) return;
-            }
-            await reportFailure("Failed to unpin thread", () => unpinThread(threadRef));
+            await reportFailure("Failed to unpin thread", () => confirmAndUnpinThread(threadRef));
             return;
           }
           case "rename":
@@ -328,7 +316,7 @@ export function useThreadActionMenu(input: {
       changeRequest,
       confirmThreadArchive,
       confirmThreadDelete,
-      confirmThreadUnpin,
+      confirmAndUnpinThread,
       copyBranchToClipboard,
       copyPathToClipboard,
       copyThreadIdToClipboard,
@@ -342,7 +330,6 @@ export function useThreadActionMenu(input: {
       snoozeThread,
       threadRef,
       timestampFormat,
-      unpinThread,
       unsettleThread,
       unsnoozeThread,
       updateThreadMetadata,
