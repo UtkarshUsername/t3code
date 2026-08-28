@@ -487,8 +487,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         strip.dataset.inView = inView ? "true" : "false";
       }
     }
-    const nextCurrentIndex =
-      resolveTimelineMinimapCurrentIndex({ scrollTop, scrollBottom, itemBounds }) ?? 0;
+    const nextCurrentIndex = resolveTimelineMinimapCurrentIndex({
+      scrollTop,
+      scrollBottom,
+      itemBounds,
+    });
     setMinimapCurrentIndex((current) =>
       current === nextCurrentIndex ? current : nextCurrentIndex,
     );
