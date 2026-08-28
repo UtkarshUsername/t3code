@@ -875,6 +875,52 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
       terminalUiState.terminalIds,
     ],
   );
+  // Closing the last drawer terminal resets the live UI state immediately, but
+  // the drawer stays mounted for its exit animation. Freeze the last open
+  // snapshot and keep rendering it while exiting, mirroring the right-panel
+  // presence snapshot. Without this the exit would show the empty placeholder
+  // and snap height instead of the terminal that is leaving.
+  const isDrawerExiting = active && !terminalOpen;
+  const drawerExitSnapshotRef = useRef<{
+    terminalUiState: typeof terminalUiState;
+    drawerTerminalSessions: typeof drawerTerminalSessions;
+    terminalLabelsById: typeof terminalLabelsById;
+    terminalLaunchLocationsById: typeof terminalLaunchLocationsById;
+    serverOrderedTerminalIds: typeof serverOrderedTerminalIds;
+    allocatableTerminalIds: typeof allocatableTerminalIds;
+  } | null>(null);
+  useLayoutEffect(() => {
+    if (!terminalOpen) return;
+    drawerExitSnapshotRef.current = {
+      terminalUiState,
+      drawerTerminalSessions,
+      terminalLabelsById,
+      terminalLaunchLocationsById,
+      serverOrderedTerminalIds,
+      allocatableTerminalIds,
+    };
+  }, [
+    terminalUiState,
+    drawerTerminalSessions,
+    terminalLabelsById,
+    terminalLaunchLocationsById,
+    serverOrderedTerminalIds,
+    allocatableTerminalIds,
+    terminalOpen,
+  ]);
+  const effectiveUiState =
+    isDrawerExiting && drawerExitSnapshotRef.current
+      ? drawerExitSnapshotRef.current.terminalUiState
+      : terminalUiState;
+  const effectiveTerminalLabelsById =
+    isDrawerExiting && drawerExitSnapshotRef.current
+      ? drawerExitSnapshotRef.current.terminalLabelsById
+      : terminalLabelsById;
+  const effectiveTerminalLaunchLocationsById =
+    isDrawerExiting && drawerExitSnapshotRef.current
+      ? drawerExitSnapshotRef.current.terminalLaunchLocationsById
+      : terminalLaunchLocationsById;
+
   const storeSetTerminalHeight = useTerminalUiStateStore((state) => state.setTerminalHeight);
   const storeSplitTerminal = useTerminalUiStateStore((state) => state.splitTerminal);
   const storeSplitTerminalVertical = useTerminalUiStateStore(
@@ -886,6 +932,7 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
   const reconcileTerminalIds = useTerminalUiStateStore((state) => state.reconcileTerminalIds);
 
   useEffect(() => {
+    if (isDrawerExiting) return;
     if (terminalIdListsEqual(serverOrderedTerminalIds, terminalUiState.terminalIds)) {
       return;
     }
@@ -906,6 +953,7 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     terminalUiState.terminalIds,
     threadRef,
     deferredPanelTerminalIds,
+    isDrawerExiting,
   ]);
   const [localFocusRequestId, setLocalFocusRequestId] = useState(0);
   const worktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null;
@@ -1119,7 +1167,7 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
       active={active}
       open={terminalOpen}
       animateEnter={animateTerminalEnter}
-      height={terminalUiState.terminalHeight}
+      height={effectiveUiState.terminalHeight}
       resizing={terminalOpen && isResizing}
       frameRef={terminalDrawerFrameRef}
       onExitComplete={() => onExitComplete(terminalThreadKey)}
@@ -1131,12 +1179,14 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
         worktreePath={effectiveWorktreePath}
         runtimeEnv={runtimeEnv}
         visible={terminalOpen}
-        height={terminalUiState.terminalHeight}
+        height={effectiveUiState.terminalHeight}
         // Known-session order is MRU and changes on focus; persisted store order keeps sidebar labels stable.
-        terminalIds={terminalUiState.terminalIds}
-        activeTerminalId={terminalUiState.activeTerminalId}
-        terminalGroups={terminalUiState.terminalGroups}
-        activeTerminalGroupId={terminalUiState.activeTerminalGroupId}
+        // While exiting keep showing the last open snapshot so the slide-out
+        // does not flash the empty placeholder or snap height.
+        terminalIds={effectiveUiState.terminalIds}
+        activeTerminalId={effectiveUiState.activeTerminalId}
+        terminalGroups={effectiveUiState.terminalGroups}
+        activeTerminalGroupId={effectiveUiState.activeTerminalGroupId}
         focusRequestId={focusRequestId + localFocusRequestId + (terminalOpen ? 1 : 0)}
         onSplitTerminal={splitTerminal}
         onSplitTerminalVertical={splitTerminalVertical}
@@ -1152,8 +1202,8 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
         onHeightPreviewChange={previewTerminalHeight}
         onResizeStateChange={setIsResizing}
         onAddTerminalContext={handleAddTerminalContext}
-        terminalLabelsById={terminalLabelsById}
-        terminalLaunchLocationsById={terminalLaunchLocationsById}
+        terminalLabelsById={effectiveTerminalLabelsById}
+        terminalLaunchLocationsById={effectiveTerminalLaunchLocationsById}
       />
     </TerminalDrawerTransitionShell>
   );
