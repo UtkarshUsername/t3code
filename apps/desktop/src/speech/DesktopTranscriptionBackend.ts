@@ -12,7 +12,7 @@ export class DesktopTranscriptionBackend {
   async prepare(): Promise<void> {
     if (this.model) return;
     this.loading ??= import("transcribe-cpp")
-      .then(({ TranscribeModel }) => TranscribeModel.load(this.modelPath))
+      .then(({ TranscribeModel }) => TranscribeModel.load(this.modelPath, { backend: "cpu" }))
       .then((model) => {
         this.model = model;
         return model;
