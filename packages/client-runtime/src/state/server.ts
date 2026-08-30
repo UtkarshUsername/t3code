@@ -789,7 +789,7 @@ export function createServerEnvironmentAtoms<R, E>(
       concurrency: {
         mode: "singleFlight",
         key: ({ environmentId, input }) =>
-          `${environmentId}:${input.instanceId ?? "all"}:${input.cwd ?? "machine"}`,
+          JSON.stringify([environmentId, input.instanceId ?? null, input.cwd ?? null]),
       },
     }),
     updateProvider: createEnvironmentRpcCommand(runtime, {

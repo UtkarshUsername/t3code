@@ -864,7 +864,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
     );
 
   const loadOpenCodeSkills: OpenCodeRuntimeShape["loadOpenCodeSkills"] = (client) =>
-    runOpenCodeSdk("app.skills", () => client.app.skills()).pipe(
+    runOpenCodeSdk("app.skills", (signal) => client.app.skills({ signal })).pipe(
       Effect.map((result) =>
         (result.data ?? []).map((skill) => ({
           name: skill.name,

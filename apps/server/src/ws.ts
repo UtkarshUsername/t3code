@@ -1628,22 +1628,15 @@ const makeWsRpcLayer = (
         [WS_METHODS.serverRefreshProviders]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverRefreshProviders,
-            (input.instanceId !== undefined
-              ? providerRegistry.refreshInstance(input.instanceId)
-              : providerRegistry.refresh()
-            ).pipe(
-              Effect.flatMap((providers) =>
-                input.cwd !== undefined && input.instanceId !== undefined
-                  ? providerRegistry
-                      .refreshWorkspaceSnapshot({
-                        instanceId: input.instanceId,
-                        cwd: input.cwd,
-                      })
-                      .pipe(Effect.andThen(providerRegistry.getProviders))
-                  : Effect.succeed(providers),
-              ),
-              Effect.map((providers) => ({ providers })),
-            ),
+            (input.cwd !== undefined && input.instanceId !== undefined
+              ? providerRegistry.refreshWorkspaceSnapshot({
+                  instanceId: input.instanceId,
+                  cwd: input.cwd,
+                })
+              : input.instanceId !== undefined
+                ? providerRegistry.refreshInstance(input.instanceId)
+                : providerRegistry.refresh()
+            ).pipe(Effect.map((providers) => ({ providers }))),
             { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.providerUploadFeedback]: (input) =>
