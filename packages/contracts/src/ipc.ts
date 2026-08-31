@@ -1,4 +1,4 @@
-import type { DesktopSpeechEvent, DesktopSpeechStatus } from "./speech.ts";
+import type { DesktopMicrophoneSettings, DesktopSpeechEvent, DesktopSpeechStatus } from "./speech.ts";
 import * as Schema from "effect/Schema";
 
 import {
@@ -1223,6 +1223,8 @@ export interface DesktopBridge {
   /** Desktop-local speech input. Absent in older desktop shells and regular browsers. */
   speech?: {
     getStatus: () => Promise<DesktopSpeechStatus>;
+    getMicrophones: () => Promise<DesktopMicrophoneSettings>;
+    setMicrophone: (deviceName: string) => Promise<DesktopMicrophoneSettings>;
     start: () => Promise<DesktopSpeechStatus>;
     stop: () => Promise<DesktopSpeechStatus>;
     cancel: () => Promise<DesktopSpeechStatus>;

@@ -14,6 +14,7 @@ import {
 export type SettingsPath =
   | "/settings/projects"
   | "/settings/general"
+  | "/settings/voice"
   | "/settings/appearance"
   | "/settings/keybindings"
   | "/settings/snap-shot"
@@ -83,6 +84,7 @@ export interface SettingsSearchAvailability {
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/projects": "Project",
   "/settings/general": "General",
+  "/settings/voice": "Voice",
   "/settings/appearance": "Appearance",
   "/settings/keybindings": "Keybindings",
   "/settings/snap-shot": "SnapShots",
@@ -268,7 +270,13 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "local-voice-input",
     title: "Local voice input",
-    to: "/settings/general",
+    to: "/settings/voice",
+    desktopOnly: true,
+  },
+  {
+    id: "microphone",
+    title: "Microphone",
+    to: "/settings/voice",
     desktopOnly: true,
   },
   {

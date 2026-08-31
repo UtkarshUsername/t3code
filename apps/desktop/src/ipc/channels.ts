@@ -114,6 +114,8 @@ export const MAC_PERMISSION_HELPER_CHANNEL = "desktop:mac-permission-helper";
 
 export const CHECK_SYSTEM_PERMISSION_CHANNEL = "desktop:check-system-permission";
 export const SPEECH_GET_STATUS_CHANNEL = "desktop:speech-get-status";
+export const SPEECH_GET_MICROPHONES_CHANNEL = "desktop:speech-get-microphones";
+export const SPEECH_SET_MICROPHONE_CHANNEL = "desktop:speech-set-microphone";
 export const SPEECH_START_CHANNEL = "desktop:speech-start";
 export const SPEECH_STOP_CHANNEL = "desktop:speech-stop";
 export const SPEECH_CANCEL_CHANNEL = "desktop:speech-cancel";
