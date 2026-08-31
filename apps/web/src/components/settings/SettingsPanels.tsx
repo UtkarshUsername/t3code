@@ -2594,6 +2594,7 @@ export function ArchivedThreadsPanel() {
     "unarchive" | "delete-selected" | "delete-all" | null
   >(null);
   const cancelBulkActionRef = useRef(false);
+  const bulkActionRunningRef = useRef(false);
   const archiveSectionNowMs = useLocalDayBoundary();
   const environmentIds = useMemo(
     () => [...new Set(projects.map((project) => project.environmentId))],
@@ -2718,6 +2719,7 @@ export function ArchivedThreadsPanel() {
 
   const unarchiveOneThread = useCallback(
     async (threadRef: ScopedThreadRef) => {
+      if (bulkActionRunningRef.current) return;
       const result = await unarchiveThread(threadRef);
       if (result._tag === "Success") {
         const unarchivedKey = `${threadRef.environmentId}:${threadRef.threadId}`;
@@ -2763,7 +2765,7 @@ export function ArchivedThreadsPanel() {
   const deleteArchivedThreads = useCallback(
     async (entries: typeof archivedThreads, action: "delete-selected" | "delete-all") => {
       const count = entries.length;
-      if (count === 0 || pendingBulkAction !== null) return;
+      if (count === 0 || pendingBulkAction !== null || bulkActionRunningRef.current) return;
 
       const confirmed = await ensureLocalApi().dialogs.confirm(
         [
@@ -2772,8 +2774,9 @@ export function ArchivedThreadsPanel() {
         ].join("\n"),
         { variant: "destructive" },
       );
-      if (!confirmed) return;
+      if (!confirmed || bulkActionRunningRef.current) return;
 
+      bulkActionRunningRef.current = true;
       cancelBulkActionRef.current = false;
       setPendingBulkAction(action);
       const bulkResult = await runArchivedThreadBulkAction({
@@ -2784,6 +2787,7 @@ export function ArchivedThreadsPanel() {
           return result._tag === "Success";
         },
       });
+      bulkActionRunningRef.current = false;
       setPendingBulkAction(null);
       setSelectedThreadKeys(new Set());
       refreshArchivedThreads();
@@ -2815,7 +2819,14 @@ export function ArchivedThreadsPanel() {
   );
 
   const unarchiveSelectedThreads = useCallback(async () => {
-    if (selectedArchivedThreads.length === 0 || pendingBulkAction !== null) return;
+    if (
+      selectedArchivedThreads.length === 0 ||
+      pendingBulkAction !== null ||
+      bulkActionRunningRef.current
+    ) {
+      return;
+    }
+    bulkActionRunningRef.current = true;
     cancelBulkActionRef.current = false;
     setPendingBulkAction("unarchive");
     const bulkResult = await runArchivedThreadBulkAction({
@@ -2826,6 +2837,7 @@ export function ArchivedThreadsPanel() {
         return result._tag === "Success";
       },
     });
+    bulkActionRunningRef.current = false;
     const unarchivedCount = bulkResult.completedCount - bulkResult.failedCount;
     setPendingBulkAction(null);
     setSelectedThreadKeys(new Set());
@@ -2846,6 +2858,7 @@ export function ArchivedThreadsPanel() {
 
   const deleteOneThread = useCallback(
     async (threadRef: ScopedThreadRef) => {
+      if (bulkActionRunningRef.current) return;
       const result = await confirmAndDeleteThread(threadRef);
       if (result._tag === "Success") {
         refreshArchivedThreads();
@@ -2867,7 +2880,7 @@ export function ArchivedThreadsPanel() {
 
   const handleArchivedThreadContextMenu = useCallback(
     async (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
-      if (pendingBulkAction !== null) return;
+      if (pendingBulkAction !== null || bulkActionRunningRef.current) return;
       const api = readLocalApi();
       if (!api) return;
       const clicked = await api.contextMenu.show(
