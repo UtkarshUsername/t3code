@@ -2720,6 +2720,13 @@ export function ArchivedThreadsPanel() {
     async (threadRef: ScopedThreadRef) => {
       const result = await unarchiveThread(threadRef);
       if (result._tag === "Success") {
+        const unarchivedKey = `${threadRef.environmentId}:${threadRef.threadId}`;
+        setSelectedThreadKeys((current) => {
+          if (!current.has(unarchivedKey)) return current;
+          const next = new Set(current);
+          next.delete(unarchivedKey);
+          return next;
+        });
         refreshArchivedThreads();
         toastManager.add(
           stackedThreadToast({
@@ -2923,9 +2930,9 @@ export function ArchivedThreadsPanel() {
               variant="destructive-outline"
               size="xs"
               disabled={
-                (pendingBulkAction !== null && pendingBulkAction !== "delete-all") ||
-                isLoadingArchive ||
-                archiveError !== null
+                pendingBulkAction === "delete-all"
+                  ? false
+                  : pendingBulkAction !== null || isLoadingArchive || archiveError !== null
               }
               className="gap-1.5"
               onClick={() => {
@@ -3045,7 +3052,7 @@ export function ArchivedThreadsPanel() {
             />
           ) : (
             <>
-              <div className="flex min-h-10 flex-wrap items-center gap-2 px-4 py-1.5">
+              <div className="flex min-h-10 flex-wrap items-center gap-2 px-3 py-1.5 sm:px-4">
                 <Checkbox
                   checked={allVisibleSelected}
                   indeterminate={!allVisibleSelected && someVisibleSelected}
@@ -3118,7 +3125,7 @@ export function ArchivedThreadsPanel() {
               </div>
               {archivedThreadSections.map((section) => (
                 <div key={section.label} className="pt-2 first:pt-0">
-                  <h3 className="px-4 py-1.5 text-xs font-semibold tracking-[-0.005em] text-muted-foreground">
+                  <h3 className="px-3 py-1.5 text-xs font-semibold tracking-[-0.005em] text-muted-foreground sm:px-4">
                     {section.label}
                   </h3>
                   {section.entries.map(({ project, thread }) => {
@@ -3205,7 +3212,7 @@ export function ArchivedThreadsPanel() {
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="size-7 shrink-0 cursor-pointer gap-1.5 px-0 sm:w-auto sm:px-2.5"
+                              className="shrink-0 max-sm:w-8 max-sm:px-0"
                               aria-label={`Unarchive ${thread.title}`}
                               disabled={pendingBulkAction !== null}
                               onClick={() => void unarchiveOneThread(threadRef)}

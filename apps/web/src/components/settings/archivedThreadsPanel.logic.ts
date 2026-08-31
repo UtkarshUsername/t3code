@@ -121,7 +121,7 @@ export async function runArchivedThreadBulkAction<T>(input: {
         const index = nextIndex++;
         const entry = input.entries[index];
         if (entry === undefined) return;
-        const succeeded = await input.action(entry);
+        const succeeded = await input.action(entry).catch(() => false);
         completedCount += 1;
         if (!succeeded) failedCount += 1;
       }

@@ -123,6 +123,23 @@ describe("runArchivedThreadBulkAction", () => {
 
     expect(result).toEqual({ completedCount: 2, failedCount: 0, cancelled: true });
   });
+
+  it("counts rejected actions as failures and continues", async () => {
+    const visited: number[] = [];
+    const result = await runArchivedThreadBulkAction({
+      entries: [1, 2, 3],
+      concurrency: 1,
+      isCancelled: () => false,
+      action: async (entry) => {
+        visited.push(entry);
+        if (entry === 2) throw new Error("rejected");
+        return true;
+      },
+    });
+
+    expect(visited).toEqual([1, 2, 3]);
+    expect(result).toEqual({ completedCount: 3, failedCount: 1, cancelled: false });
+  });
 });
 
 describe("archivedThreadDateSectionLabel", () => {
