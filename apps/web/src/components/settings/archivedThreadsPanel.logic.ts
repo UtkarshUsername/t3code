@@ -62,3 +62,20 @@ export function filterAndSortArchivedThreads<T extends ArchivedThreadListEntry>(
       );
     });
 }
+
+export function archivedThreadDateSectionLabel(isoDate: string, now = new Date()): string {
+  const date = new Date(isoDate);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (date >= today) return "Today";
+  if (date >= yesterday) return "Yesterday";
+  if (date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()) {
+    return "Earlier this month";
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  }).format(date);
+}

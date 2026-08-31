@@ -3,6 +3,7 @@ import {
   ArchiveX,
   ChevronRightIcon,
   LoaderIcon,
+  ListFilterIcon,
   RefreshCwIcon,
   SearchIcon,
   SettingsIcon,
@@ -107,6 +108,16 @@ import {
 } from "../ui/dialog";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
+import {
+  Menu,
+  MenuGroupLabel,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "../ui/menu";
 import {
   DEFAULT_CODE_FONT_STACK,
   DEFAULT_SANS_FONT_STACK,
@@ -160,6 +171,7 @@ import { ProjectFavicon } from "../ProjectFavicon";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
   archivedProjectKey,
+  archivedThreadDateSectionLabel,
   archivedThreadKey,
   filterAndSortArchivedThreads,
   type ArchivedThreadSort,
@@ -2616,6 +2628,19 @@ export function ArchivedThreadsPanel() {
       sort,
     });
   }, [archivedThreads, environmentFilter, projectFilter, query, sort]);
+  const archivedThreadSections = useMemo(() => {
+    const sections = new Map<string, typeof visibleArchivedThreads>();
+    for (const entry of visibleArchivedThreads) {
+      const date =
+        sort === "created-desc"
+          ? entry.thread.createdAt
+          : (entry.thread.archivedAt ?? entry.thread.createdAt);
+      const label = archivedThreadDateSectionLabel(date);
+      sections.set(label, [...(sections.get(label) ?? []), entry]);
+    }
+    return [...sections.entries()].map(([label, entries]) => ({ label, entries }));
+  }, [sort, visibleArchivedThreads]);
+  const hasActiveArchiveFilters = environmentFilter !== "all" || projectFilter !== "all";
 
   const environmentLabelById = useMemo(
     () =>
@@ -2906,70 +2931,87 @@ export function ArchivedThreadsPanel() {
           }
         >
           <div className="space-y-2 px-3 pb-2 sm:px-4">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(12rem,1fr)_auto_auto_auto]">
-              <div className="relative min-w-0">
-                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
+            <div className="flex items-center gap-2">
+              <InputGroup className="min-w-0 flex-1 **:[input]:h-9 sm:**:[input]:h-8">
+                <InputGroupAddon>
+                  {isLoadingArchive ? (
+                    <LoaderIcon aria-hidden className="animate-spin" />
+                  ) : (
+                    <SearchIcon aria-hidden />
+                  )}
+                </InputGroupAddon>
+                <InputGroupInput
+                  type="search"
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(event) => setQuery(event.currentTarget.value)}
                   placeholder="Search archived threads"
                   aria-label="Search archived threads"
-                  className="pl-9"
                 />
-              </div>
-              <Select
-                value={environmentFilter}
-                onValueChange={(value) => setEnvironmentFilter(value ?? "all")}
-              >
-                <SelectTrigger size="sm" aria-label="Filter by environment" className="sm:max-w-40">
-                  <SelectValue>
-                    {environmentFilter === "all"
-                      ? "All"
-                      : (environments.find(
-                          (environment) => environment.environmentId === environmentFilter,
-                        )?.label ?? environmentFilter)}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectPopup>
-                  <SelectItem value="all">All environments</SelectItem>
-                  {environmentIds.map((environmentId) => (
-                    <SelectItem key={environmentId} value={environmentId}>
-                      {environmentLabelById.get(environmentId) ?? environmentId}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </Select>
-              <Select
-                value={projectFilter}
-                onValueChange={(value) => setProjectFilter(value ?? "all")}
-              >
-                <SelectTrigger size="sm" aria-label="Filter by project" className="sm:max-w-40">
-                  <SelectValue>
-                    {projectFilter === "all"
-                      ? "All"
-                      : (projectOptions.find((entry) => archivedProjectKey(entry) === projectFilter)
-                          ?.project.name ?? "All")}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectPopup>
-                  <SelectItem value="all">All projects</SelectItem>
-                  {projectOptions.map((entry) => (
-                    <SelectItem key={archivedProjectKey(entry)} value={archivedProjectKey(entry)}>
-                      {entry.project.name}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </Select>
-              <Select value={sort} onValueChange={(value) => setSort(value as ArchivedThreadSort)}>
-                <SelectTrigger size="sm" aria-label="Sort archived threads" className="sm:max-w-44">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectPopup>
-                  <SelectItem value="archived-desc">Recently archived</SelectItem>
-                  <SelectItem value="archived-asc">Oldest archived</SelectItem>
-                  <SelectItem value="created-desc">Recently created</SelectItem>
-                </SelectPopup>
-              </Select>
+              </InputGroup>
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      className={cn(
+                        "relative",
+                        (hasActiveArchiveFilters || sort !== "archived-desc") &&
+                          "[--control-icon-color:currentColor]",
+                      )}
+                      size="icon"
+                      variant="outline"
+                      aria-label="Filter archived threads"
+                    />
+                  }
+                >
+                  <ListFilterIcon className="size-4" />
+                  {hasActiveArchiveFilters || sort !== "archived-desc" ? (
+                    <span
+                      aria-hidden
+                      className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary"
+                    />
+                  ) : null}
+                </MenuTrigger>
+                <MenuPopup align="end" side="bottom" className="min-w-56">
+                  <MenuRadioGroup
+                    value={environmentFilter}
+                    onValueChange={(value) => setEnvironmentFilter(value)}
+                  >
+                    <MenuGroupLabel>Environment</MenuGroupLabel>
+                    <MenuRadioItem value="all">All environments</MenuRadioItem>
+                    {environmentIds.map((environmentId) => (
+                      <MenuRadioItem key={environmentId} value={environmentId}>
+                        {environmentLabelById.get(environmentId) ?? environmentId}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                  <MenuSeparator />
+                  <MenuRadioGroup
+                    value={projectFilter}
+                    onValueChange={(value) => setProjectFilter(value)}
+                  >
+                    <MenuGroupLabel>Project</MenuGroupLabel>
+                    <MenuRadioItem value="all">All projects</MenuRadioItem>
+                    {projectOptions.map((entry) => (
+                      <MenuRadioItem
+                        key={archivedProjectKey(entry)}
+                        value={archivedProjectKey(entry)}
+                      >
+                        {entry.project.name}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                  <MenuSeparator />
+                  <MenuRadioGroup
+                    value={sort}
+                    onValueChange={(value) => setSort(value as ArchivedThreadSort)}
+                  >
+                    <MenuGroupLabel>Sort</MenuGroupLabel>
+                    <MenuRadioItem value="archived-desc">Recently archived</MenuRadioItem>
+                    <MenuRadioItem value="archived-asc">Oldest archived</MenuRadioItem>
+                    <MenuRadioItem value="created-desc">Recently created</MenuRadioItem>
+                  </MenuRadioGroup>
+                </MenuPopup>
+              </Menu>
             </div>
             <div className="flex min-h-6 items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">
@@ -3046,114 +3088,121 @@ export function ArchivedThreadsPanel() {
                   </>
                 ) : null}
               </div>
-              {visibleArchivedThreads.map(({ project, thread }) => {
-                const entry = { project, thread };
-                const key = archivedThreadKey(entry);
-                const archivedAt = thread.archivedAt ?? thread.createdAt;
-                const threadRef = scopeThreadRef(thread.environmentId, thread.id);
-                return (
-                  <SettingsRow
-                    key={key}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      void (async () => {
-                        const result = await settlePromise(() =>
-                          handleArchivedThreadContextMenu(threadRef, {
-                            x: event.clientX,
-                            y: event.clientY,
-                          }),
-                        );
-                        if (result._tag === "Failure") {
-                          const error = squashAtomCommandFailure(result);
-                          toastManager.add(
-                            stackedThreadToast({
-                              type: "error",
-                              title: "Archived thread action failed",
-                              description:
-                                error instanceof Error ? error.message : "An error occurred.",
-                            }),
-                          );
+              {archivedThreadSections.map((section) => (
+                <div key={section.label} className="pt-2 first:pt-0">
+                  <h3 className="px-4 py-1.5 text-xs font-semibold tracking-[-0.005em] text-muted-foreground">
+                    {section.label}
+                  </h3>
+                  {section.entries.map(({ project, thread }) => {
+                    const entry = { project, thread };
+                    const key = archivedThreadKey(entry);
+                    const archivedAt = thread.archivedAt ?? thread.createdAt;
+                    const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+                    return (
+                      <SettingsRow
+                        key={key}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          void (async () => {
+                            const result = await settlePromise(() =>
+                              handleArchivedThreadContextMenu(threadRef, {
+                                x: event.clientX,
+                                y: event.clientY,
+                              }),
+                            );
+                            if (result._tag === "Failure") {
+                              const error = squashAtomCommandFailure(result);
+                              toastManager.add(
+                                stackedThreadToast({
+                                  type: "error",
+                                  title: "Archived thread action failed",
+                                  description:
+                                    error instanceof Error ? error.message : "An error occurred.",
+                                }),
+                              );
+                            }
+                          })();
+                        }}
+                        title={
+                          <span className="inline-flex min-w-0 items-center gap-2">
+                            <Checkbox
+                              checked={selectedThreadKeys.has(key)}
+                              aria-label={`Select ${thread.title}`}
+                              onCheckedChange={() => {
+                                setSelectedThreadKeys((current) => {
+                                  const next = new Set(current);
+                                  if (next.has(key)) next.delete(key);
+                                  else next.add(key);
+                                  return next;
+                                });
+                              }}
+                            />
+                            <ProjectFavicon
+                              environmentId={project.environmentId}
+                              cwd={project.cwd}
+                              faviconPath={project.faviconPath}
+                            />
+                            <span className="truncate">{thread.title}</span>
+                          </span>
                         }
-                      })();
-                    }}
-                    title={
-                      <span className="inline-flex min-w-0 items-center gap-2">
-                        <Checkbox
-                          checked={selectedThreadKeys.has(key)}
-                          aria-label={`Select ${thread.title}`}
-                          onCheckedChange={() => {
-                            setSelectedThreadKeys((current) => {
-                              const next = new Set(current);
-                              if (next.has(key)) next.delete(key);
-                              else next.add(key);
-                              return next;
-                            });
-                          }}
-                        />
-                        <ProjectFavicon
-                          environmentId={project.environmentId}
-                          cwd={project.cwd}
-                          faviconPath={project.faviconPath}
-                        />
-                        <span className="truncate">{thread.title}</span>
-                      </span>
-                    }
-                    description={
-                      <>
-                        {project.name}
-                        {environmentIds.length > 1
-                          ? ` · ${environmentLabelById.get(thread.environmentId) ?? thread.environmentId}`
-                          : ""}
-                        {" · Archived "}
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <span className="underline decoration-dotted underline-offset-2" />
-                            }
-                          >
-                            {formatRelativeTimeLabel(archivedAt)}
-                          </TooltipTrigger>
-                          <TooltipPopup side="top">
-                            {archivedThreadDateFormatter.format(new Date(archivedAt))}
-                          </TooltipPopup>
-                        </Tooltip>
-                      </>
-                    }
-                    control={
-                      <div className="flex items-center gap-1.5">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 shrink-0 cursor-pointer gap-1.5 px-2.5"
-                          disabled={pendingBulkAction !== null}
-                          onClick={() => void unarchiveOneThread(threadRef)}
-                        >
-                          <ArchiveX className="size-3.5" />
-                          <span>Unarchive</span>
-                        </Button>
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                type="button"
-                                variant="ghost-muted"
-                                size="icon-xs"
-                                aria-label={`Delete ${thread.title}`}
-                                disabled={pendingBulkAction !== null}
-                                onClick={() => void deleteOneThread(threadRef)}
+                        description={
+                          <>
+                            {project.name}
+                            {environmentIds.length > 1
+                              ? ` · ${environmentLabelById.get(thread.environmentId) ?? thread.environmentId}`
+                              : ""}
+                            {" · Archived "}
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <span className="underline decoration-dotted underline-offset-2" />
+                                }
                               >
-                                <Trash2Icon className="size-3.5 text-destructive" />
-                              </Button>
-                            }
-                          />
-                          <TooltipPopup side="top">Delete thread</TooltipPopup>
-                        </Tooltip>
-                      </div>
-                    }
-                  />
-                );
-              })}
+                                {formatRelativeTimeLabel(archivedAt)}
+                              </TooltipTrigger>
+                              <TooltipPopup side="top">
+                                {archivedThreadDateFormatter.format(new Date(archivedAt))}
+                              </TooltipPopup>
+                            </Tooltip>
+                          </>
+                        }
+                        control={
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 shrink-0 cursor-pointer gap-1.5 px-2.5"
+                              disabled={pendingBulkAction !== null}
+                              onClick={() => void unarchiveOneThread(threadRef)}
+                            >
+                              <ArchiveX className="size-3.5" />
+                              <span>Unarchive</span>
+                            </Button>
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    type="button"
+                                    variant="ghost-muted"
+                                    size="icon-xs"
+                                    aria-label={`Delete ${thread.title}`}
+                                    disabled={pendingBulkAction !== null}
+                                    onClick={() => void deleteOneThread(threadRef)}
+                                  >
+                                    <Trash2Icon className="size-3.5 text-destructive" />
+                                  </Button>
+                                }
+                              />
+                              <TooltipPopup side="top">Delete thread</TooltipPopup>
+                            </Tooltip>
+                          </div>
+                        }
+                      />
+                    );
+                  })}
+                </div>
+              ))}
             </>
           )}
         </SettingsSection>

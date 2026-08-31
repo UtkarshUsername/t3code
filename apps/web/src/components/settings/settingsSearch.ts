@@ -32,7 +32,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/integrations": "Integrations",
   "/settings/source-control": "Source Control",
   "/settings/connections": "Connections",
-  "/settings/archived": "Archived threads",
+  "/settings/archived": "Archive",
 };
 
 /**

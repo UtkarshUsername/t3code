@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  archivedThreadDateSectionLabel,
   archivedThreadKey,
   filterAndSortArchivedThreads,
   type ArchivedThreadListEntry,
@@ -65,5 +66,19 @@ describe("filterAndSortArchivedThreads", () => {
     expect(keysFor("archived-desc")).toEqual(["remote:newer", "local:older"]);
     expect(keysFor("archived-asc")).toEqual(["local:older", "remote:newer"]);
     expect(keysFor("created-desc")).toEqual(["local:older", "remote:newer"]);
+  });
+});
+
+describe("archivedThreadDateSectionLabel", () => {
+  const now = new Date(2026, 8, 20, 12);
+
+  it.each([
+    [new Date(2026, 8, 20, 1).toISOString(), "Today"],
+    [new Date(2026, 8, 19, 1).toISOString(), "Yesterday"],
+    [new Date(2026, 8, 2, 1).toISOString(), "Earlier this month"],
+    [new Date(2026, 7, 31, 1).toISOString(), "August"],
+    [new Date(2025, 11, 1, 1).toISOString(), "December 2025"],
+  ])("groups %s under %s", (isoDate, label) => {
+    expect(archivedThreadDateSectionLabel(isoDate, now)).toBe(label);
   });
 });
