@@ -4,6 +4,7 @@ import {
   ChevronRightIcon,
   LoaderIcon,
   ListFilterIcon,
+  MessageSquareIcon,
   SearchIcon,
   SettingsIcon,
   Trash2Icon,
@@ -3194,6 +3195,7 @@ export function ArchivedThreadsPanel() {
                               environmentId={project.environmentId}
                               cwd={project.cwd}
                               faviconPath={project.faviconPath}
+                              fallbackIcon={MessageSquareIcon}
                             />
                             <span className="truncate">{thread.title}</span>
                           </span>
