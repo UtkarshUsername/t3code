@@ -2,6 +2,7 @@ import { isElectron } from "~/env";
 
 export type SettingsPath =
   | "/settings/general"
+  | "/settings/voice"
   | "/settings/appearance"
   | "/settings/keybindings"
   | "/settings/providers"
@@ -26,6 +27,7 @@ export interface SettingsSearchItem {
  */
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/general": "General",
+  "/settings/voice": "Voice",
   "/settings/appearance": "Appearance",
   "/settings/keybindings": "Keybindings",
   "/settings/providers": "Providers",
@@ -114,7 +116,13 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "local-voice-input",
     title: "Local voice input",
-    to: "/settings/general",
+    to: "/settings/voice",
+    desktopOnly: true,
+  },
+  {
+    id: "microphone",
+    title: "Microphone",
+    to: "/settings/voice",
     desktopOnly: true,
   },
   {
