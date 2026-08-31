@@ -3190,7 +3190,7 @@ export function ArchivedThreadsPanel() {
                           />
                         }
                         title={
-                          <span className="inline-flex min-w-0 items-center gap-2">
+                          <span className="flex w-full min-w-0 items-center gap-2">
                             <ProjectFavicon
                               environmentId={project.environmentId}
                               cwd={project.cwd}
