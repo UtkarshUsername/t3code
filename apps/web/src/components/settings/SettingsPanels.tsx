@@ -4,7 +4,6 @@ import {
   ChevronRightIcon,
   LoaderIcon,
   ListFilterIcon,
-  RefreshCwIcon,
   SearchIcon,
   SettingsIcon,
   Trash2Icon,
@@ -2844,25 +2843,6 @@ export function ArchivedThreadsPanel() {
         <SettingsSection
           id={isLoadingArchive ? undefined : searchableSetting("archive").id}
           title={searchableSetting("archive").title}
-          headerAction={
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon-xs"
-                    variant="ghost-muted"
-                    aria-label="Refresh archived threads"
-                    disabled={isLoadingArchive}
-                    onClick={refreshArchivedThreads}
-                  >
-                    <RefreshCwIcon className={cn("size-3.5", isLoadingArchive && "animate-spin")} />
-                  </Button>
-                }
-              />
-              <TooltipPopup side="top">Refresh archived threads</TooltipPopup>
-            </Tooltip>
-          }
         >
           <SettingsRow
             title={
@@ -2892,42 +2872,21 @@ export function ArchivedThreadsPanel() {
           id={searchableSetting("archive").id}
           title="Archived threads"
           headerAction={
-            <div className="flex items-center gap-1.5">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      size="icon-xs"
-                      variant="ghost-muted"
-                      aria-label="Refresh archived threads"
-                      disabled={isLoadingArchive || pendingBulkAction !== null}
-                      onClick={refreshArchivedThreads}
-                    >
-                      <RefreshCwIcon
-                        className={cn("size-3.5", isLoadingArchive && "animate-spin")}
-                      />
-                    </Button>
-                  }
-                />
-                <TooltipPopup side="top">Refresh archived threads</TooltipPopup>
-              </Tooltip>
-              <Button
-                type="button"
-                variant="destructive-outline"
-                size="xs"
-                disabled={pendingBulkAction !== null || isLoadingArchive || archiveError !== null}
-                className="gap-1.5"
-                onClick={() => void deleteArchivedThreads(archivedThreads, "delete-all")}
-              >
-                {pendingBulkAction === "delete-all" ? (
-                  <LoaderIcon className="size-3.5 animate-spin" />
-                ) : (
-                  <Trash2Icon className="size-3.5" />
-                )}
-                Delete all…
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="destructive-outline"
+              size="xs"
+              disabled={pendingBulkAction !== null || isLoadingArchive || archiveError !== null}
+              className="gap-1.5"
+              onClick={() => void deleteArchivedThreads(archivedThreads, "delete-all")}
+            >
+              {pendingBulkAction === "delete-all" ? (
+                <LoaderIcon className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2Icon className="size-3.5" />
+              )}
+              Delete all
+            </Button>
           }
         >
           <div className="space-y-2 px-3 pb-2 sm:px-4">
@@ -3083,7 +3042,7 @@ export function ArchivedThreadsPanel() {
                       ) : (
                         <Trash2Icon className="size-3.5" />
                       )}
-                      Delete…
+                      Delete
                     </Button>
                   </>
                 ) : null}
