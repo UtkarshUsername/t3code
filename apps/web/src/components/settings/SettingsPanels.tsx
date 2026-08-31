@@ -3060,6 +3060,7 @@ export function ArchivedThreadsPanel() {
                     return (
                       <SettingsRow
                         key={key}
+                        className="py-2 [&>div]:!grid [&>div]:grid-cols-[minmax(0,1fr)_auto] [&>div]:items-center [&>div]:gap-2 [&>div>div:last-child]:w-auto [&_h3]:min-w-0"
                         onContextMenu={(event) => {
                           event.preventDefault();
                           void (async () => {
@@ -3131,12 +3132,13 @@ export function ArchivedThreadsPanel() {
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="h-7 shrink-0 cursor-pointer gap-1.5 px-2.5"
+                              className="size-7 shrink-0 cursor-pointer gap-1.5 px-0 sm:w-auto sm:px-2.5"
+                              aria-label={`Unarchive ${thread.title}`}
                               disabled={pendingBulkAction !== null}
                               onClick={() => void unarchiveOneThread(threadRef)}
                             >
                               <ArchiveX className="size-3.5" />
-                              <span>Unarchive</span>
+                              <span className="hidden sm:inline">Unarchive</span>
                             </Button>
                             <Tooltip>
                               <TooltipTrigger
