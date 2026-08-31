@@ -2768,7 +2768,9 @@ export function ArchivedThreadsPanel() {
       const count = entries.length;
       if (count === 0 || pendingBulkAction !== null || bulkActionRunningRef.current) return;
 
-      const confirmed = await ensureLocalApi().dialogs.confirm(
+      const api = readLocalApi();
+      if (!api) return;
+      const confirmed = await api.dialogs.confirm(
         [
           `Permanently delete ${count} archived thread${count === 1 ? "" : "s"}?`,
           "This clears their conversation history and cannot be undone.",

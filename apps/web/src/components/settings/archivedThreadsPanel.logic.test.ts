@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   archivedThreadDateSectionLabel,
   archivedThreadKey,
+  archivedProjectKey,
   filterAndSortArchivedThreads,
   runArchivedThreadBulkAction,
   type ArchivedThreadListEntry,
@@ -29,6 +30,8 @@ const entries = [
     project: { id: "mobile", environmentId: "remote", name: "Mobile", cwd: "/dev/mobile" },
   },
 ] satisfies ArchivedThreadListEntry[];
+const olderEntry = entries[0]!;
+const newerEntry = entries[1]!;
 
 describe("filterAndSortArchivedThreads", () => {
   it("searches thread, project, and workspace text", () => {
@@ -40,7 +43,7 @@ describe("filterAndSortArchivedThreads", () => {
           projectKey: "all",
           sort: "archived-desc",
         }).map(archivedThreadKey),
-      ).toEqual(["local:older"]);
+      ).toEqual([archivedThreadKey(olderEntry)]);
     }
   });
 
@@ -49,10 +52,10 @@ describe("filterAndSortArchivedThreads", () => {
       filterAndSortArchivedThreads(entries, {
         query: "",
         environmentId: "remote",
-        projectKey: "remote:mobile",
+        projectKey: archivedProjectKey(newerEntry),
         sort: "archived-desc",
       }).map(archivedThreadKey),
-    ).toEqual(["remote:newer"]);
+    ).toEqual([archivedThreadKey(newerEntry)]);
   });
 
   it("supports archive and creation date ordering", () => {
@@ -64,9 +67,18 @@ describe("filterAndSortArchivedThreads", () => {
         sort,
       }).map(archivedThreadKey);
 
-    expect(keysFor("archived-desc")).toEqual(["remote:newer", "local:older"]);
-    expect(keysFor("archived-asc")).toEqual(["local:older", "remote:newer"]);
-    expect(keysFor("created-desc")).toEqual(["local:older", "remote:newer"]);
+    expect(keysFor("archived-desc")).toEqual([
+      archivedThreadKey(newerEntry),
+      archivedThreadKey(olderEntry),
+    ]);
+    expect(keysFor("archived-asc")).toEqual([
+      archivedThreadKey(olderEntry),
+      archivedThreadKey(newerEntry),
+    ]);
+    expect(keysFor("created-desc")).toEqual([
+      archivedThreadKey(olderEntry),
+      archivedThreadKey(newerEntry),
+    ]);
   });
 
   it("orders timestamps by instant when offsets differ", () => {
@@ -84,7 +96,31 @@ describe("filterAndSortArchivedThreads", () => {
         projectKey: "all",
         sort: "archived-desc",
       }).map(archivedThreadKey),
-    ).toEqual(["remote:newer", "local:older"]);
+    ).toEqual([archivedThreadKey(newerEntry), archivedThreadKey(olderEntry)]);
+  });
+
+  it("keeps environment-scoped thread and project keys collision-free", () => {
+    const left = {
+      ...olderEntry,
+      thread: { ...olderEntry.thread, environmentId: "a", id: "b:c" },
+      project: { ...olderEntry.project, environmentId: "a", id: "b:c" },
+    };
+    const right = {
+      ...newerEntry,
+      thread: { ...newerEntry.thread, environmentId: "a:b", id: "c" },
+      project: { ...newerEntry.project, environmentId: "a:b", id: "c" },
+    };
+
+    expect(archivedThreadKey(left)).not.toBe(archivedThreadKey(right));
+    expect(archivedProjectKey(left)).not.toBe(archivedProjectKey(right));
+    expect(
+      filterAndSortArchivedThreads([left, right], {
+        query: "",
+        environmentId: "all",
+        projectKey: archivedProjectKey(left),
+        sort: "archived-desc",
+      }),
+    ).toEqual([left]);
   });
 });
 

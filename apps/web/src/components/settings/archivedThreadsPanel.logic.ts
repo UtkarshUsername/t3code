@@ -31,12 +31,12 @@ export interface ArchivedThreadBulkResult {
 
 /** Build the environment-scoped key used by archived-thread selection state. */
 export function archivedThreadKey(entry: ArchivedThreadListEntry): string {
-  return `${entry.thread.environmentId}:${entry.thread.id}`;
+  return JSON.stringify([entry.thread.environmentId, entry.thread.id]);
 }
 
 /** Build the environment-scoped key used by the project filter. */
 export function archivedProjectKey(entry: ArchivedThreadListEntry): string {
-  return `${entry.project.environmentId}:${entry.project.id}`;
+  return JSON.stringify([entry.project.environmentId, entry.project.id]);
 }
 
 /** Apply archive-browser search, scope filters, and date ordering. */
