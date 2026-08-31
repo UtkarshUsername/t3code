@@ -99,9 +99,13 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(SpeechIpc.getSpeechStatus);
   yield* ipc.handle(SpeechIpc.getSpeechMicrophones);
   yield* ipc.handle(SpeechIpc.setSpeechMicrophone);
-  yield* ipc.handle(SpeechIpc.startSpeech);
-  yield* ipc.handle(SpeechIpc.stopSpeech);
-  yield* ipc.handle(SpeechIpc.cancelSpeech);
+  yield* ipc.handle(SpeechIpc.prepareSpeech);
+  yield* ipc.handle(SpeechIpc.cancelSpeechPreparation);
+  yield* ipc.handle(SpeechIpc.startSpeechRecording);
+  yield* ipc.handle(SpeechIpc.stopSpeechRecording);
+  yield* ipc.handle(SpeechIpc.cancelSpeechRecording);
+  yield* ipc.handle(SpeechIpc.transcribeSpeech);
+  yield* ipc.handle(SpeechIpc.deleteSpeechRecording);
   yield* ipc.handle(SpeechIpc.removeSpeechModelMethod);
   for (const previewMethod of PreviewIpc.methods) {
     yield* ipc.handle(previewMethod);

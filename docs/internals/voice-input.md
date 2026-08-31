@@ -2,9 +2,10 @@
 
 > For maintainers. Using T3 Code? See [voice input on iPhone](../user/composer.md#voice-input-on-iphone).
 
-Voice input produces editable composer text. The current implementation records on the client and
-transcribes locally with Apple's `SpeechAnalyzer` and `SpeechTranscriber` on supported iOS 26+
-devices. Environment-provided transcription and transcription on web and desktop are not implemented.
+Voice input produces editable composer text. Clients record locally and provide a platform
+transcriber through one shared controller. Supported iOS 26+ devices use Apple's `SpeechAnalyzer`
+and `SpeechTranscriber`; desktop uses transcribe.cpp with an on-device Moonshine model.
+Environment-provided transcription and transcription in regular web browsers are not implemented.
 
 ## Current boundaries
 
@@ -27,6 +28,13 @@ management, waveform samples, and app and navigation lifecycle handling. It norm
 and binding the prepared transcriber to Apple's resolved locale. The other-platform binding returns
 no local transcriber. That result describes the local implementation, not whether a client could use
 an environment's transcription service.
+
+[Desktop][desktop] supplies the same recorder and transcriber contracts from its web hook. Electron keeps PCM
+in the desktop process and returns an opaque recording URI to the shared controller. The recorder
+adapter controls native microphone capture through IPC, while the transcriber adapter prepares the
+local model and resolves the URI through transcribe.cpp. PCM does not cross IPC and no recording is
+written to disk. The duplicate desktop orchestration state machine was removed; Electron now owns
+only platform resources and their lifecycle.
 
 Mobile's [`voiceInputPresentation.ts`][presentation] maps shared state to toolbar labels and actions.
 Waveform and toolbar rendering stay in mobile. The composer edits draft text without selecting a
@@ -94,6 +102,7 @@ credentials, provider SDKs, or transport selection.
 [hook]: ../../apps/mobile/src/features/voice-input/useVoiceInputController.ts
 [presentation]: ../../apps/mobile/src/features/voice-input/voiceInputPresentation.ts
 [ios]: ../../apps/mobile/src/native/voiceTranscription.ios.ts
+[desktop]: ../../apps/web/src/speech/useDesktopSpeechInput.ts
 [settings]: ../../apps/server/src/serverSettings.ts
 [secrets]: ../../apps/server/src/auth/ServerSecretStore.ts
 [capabilities]: ../../packages/contracts/src/environment.ts

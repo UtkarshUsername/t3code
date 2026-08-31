@@ -29,6 +29,7 @@ import type { AssetCreateUrlInput, AssetCreateUrlResult } from "./assets.ts";
 import type {
   DesktopMicrophoneSettings,
   DesktopSpeechEvent,
+  DesktopSpeechPreparation,
   DesktopSpeechStatus,
 } from "./speech.ts";
 import type {
@@ -1176,9 +1177,13 @@ export interface DesktopBridge {
     getStatus: () => Promise<DesktopSpeechStatus>;
     getMicrophones: () => Promise<DesktopMicrophoneSettings>;
     setMicrophone: (deviceName: string) => Promise<DesktopMicrophoneSettings>;
-    start: () => Promise<DesktopSpeechStatus>;
-    stop: () => Promise<DesktopSpeechStatus>;
-    cancel: () => Promise<DesktopSpeechStatus>;
+    prepare: () => Promise<DesktopSpeechPreparation>;
+    cancelPreparation: () => Promise<void>;
+    startRecording: () => Promise<void>;
+    stopRecording: () => Promise<string>;
+    cancelRecording: () => Promise<void>;
+    transcribe: (uri: string) => Promise<string>;
+    deleteRecording: (uri: string) => Promise<void>;
     removeModel: () => Promise<DesktopSpeechStatus>;
     onEvent: (listener: (event: DesktopSpeechEvent) => void) => () => void;
   };
