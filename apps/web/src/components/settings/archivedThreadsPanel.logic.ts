@@ -23,14 +23,23 @@ export interface ArchivedThreadListFilters {
   readonly sort: ArchivedThreadSort;
 }
 
+export interface ArchivedThreadBulkResult {
+  readonly completedCount: number;
+  readonly failedCount: number;
+  readonly cancelled: boolean;
+}
+
+/** Build the environment-scoped key used by archived-thread selection state. */
 export function archivedThreadKey(entry: ArchivedThreadListEntry): string {
   return `${entry.thread.environmentId}:${entry.thread.id}`;
 }
 
+/** Build the environment-scoped key used by the project filter. */
 export function archivedProjectKey(entry: ArchivedThreadListEntry): string {
   return `${entry.project.environmentId}:${entry.project.id}`;
 }
 
+/** Apply archive-browser search, scope filters, and date ordering. */
 export function filterAndSortArchivedThreads<T extends ArchivedThreadListEntry>(
   entries: readonly T[],
   filters: ArchivedThreadListFilters,
@@ -57,25 +66,71 @@ export function filterAndSortArchivedThreads<T extends ArchivedThreadListEntry>(
           : (right.thread.archivedAt ?? right.thread.createdAt);
       const direction = filters.sort === "archived-asc" ? 1 : -1;
       return (
-        direction * leftDate.localeCompare(rightDate) ||
+        direction * Math.sign(Date.parse(leftDate) - Date.parse(rightDate)) ||
         right.thread.id.localeCompare(left.thread.id)
       );
     });
 }
 
-export function archivedThreadDateSectionLabel(isoDate: string, now = new Date()): string {
+/** Return the local-calendar section label for one archived-thread timestamp. */
+export function archivedThreadDateSectionLabel(
+  isoDate: string,
+  now = new Date(),
+  locales?: Intl.LocalesArgument,
+): string {
   const date = new Date(isoDate);
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
 
-  if (date >= today) return "Today";
+  if (date >= today && date < tomorrow) return "Today";
+  if (date >= tomorrow) {
+    return new Intl.DateTimeFormat(locales, {
+      month: "long",
+      day: "numeric",
+      year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+    }).format(date);
+  }
   if (date >= yesterday) return "Yesterday";
   if (date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()) {
     return "Earlier this month";
   }
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locales, {
     month: "long",
     year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
   }).format(date);
+}
+
+/** Run per-thread mutations with bounded concurrency and stop scheduling work after cancellation. */
+export async function runArchivedThreadBulkAction<T>(input: {
+  readonly entries: readonly T[];
+  readonly action: (entry: T) => Promise<boolean>;
+  readonly isCancelled: () => boolean;
+  readonly concurrency?: number;
+}): Promise<ArchivedThreadBulkResult> {
+  const concurrency = Math.max(1, Math.min(input.concurrency ?? 4, input.entries.length));
+  let nextIndex = 0;
+  let completedCount = 0;
+  let failedCount = 0;
+
+  await Promise.all(
+    Array.from({ length: concurrency }, async () => {
+      while (!input.isCancelled()) {
+        const index = nextIndex++;
+        const entry = input.entries[index];
+        if (entry === undefined) return;
+        const succeeded = await input.action(entry);
+        completedCount += 1;
+        if (!succeeded) failedCount += 1;
+      }
+    }),
+  );
+
+  return {
+    completedCount,
+    failedCount,
+    cancelled: nextIndex < input.entries.length,
+  };
 }

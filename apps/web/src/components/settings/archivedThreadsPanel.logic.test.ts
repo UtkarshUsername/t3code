@@ -3,6 +3,7 @@ import {
   archivedThreadDateSectionLabel,
   archivedThreadKey,
   filterAndSortArchivedThreads,
+  runArchivedThreadBulkAction,
   type ArchivedThreadListEntry,
 } from "./archivedThreadsPanel.logic";
 
@@ -67,6 +68,61 @@ describe("filterAndSortArchivedThreads", () => {
     expect(keysFor("archived-asc")).toEqual(["local:older", "remote:newer"]);
     expect(keysFor("created-desc")).toEqual(["local:older", "remote:newer"]);
   });
+
+  it("orders timestamps by instant when offsets differ", () => {
+    const withOffsets = entries.map((entry, index) => ({
+      ...entry,
+      thread: {
+        ...entry.thread,
+        archivedAt: index === 0 ? "2026-08-20T01:00:00+02:00" : "2026-08-20T00:00:00.000Z",
+      },
+    }));
+    expect(
+      filterAndSortArchivedThreads(withOffsets, {
+        query: "",
+        environmentId: "all",
+        projectKey: "all",
+        sort: "archived-desc",
+      }).map(archivedThreadKey),
+    ).toEqual(["remote:newer", "local:older"]);
+  });
+});
+
+describe("runArchivedThreadBulkAction", () => {
+  it("bounds concurrency and reports failures", async () => {
+    let active = 0;
+    let peak = 0;
+    const result = await runArchivedThreadBulkAction({
+      entries: [1, 2, 3, 4, 5],
+      concurrency: 2,
+      isCancelled: () => false,
+      action: async (entry) => {
+        active += 1;
+        peak = Math.max(peak, active);
+        await Promise.resolve();
+        active -= 1;
+        return entry !== 3;
+      },
+    });
+
+    expect(peak).toBe(2);
+    expect(result).toEqual({ completedCount: 5, failedCount: 1, cancelled: false });
+  });
+
+  it("stops scheduling work after cancellation", async () => {
+    let completed = 0;
+    const result = await runArchivedThreadBulkAction({
+      entries: [1, 2, 3, 4],
+      concurrency: 1,
+      isCancelled: () => completed === 2,
+      action: async () => {
+        completed += 1;
+        return true;
+      },
+    });
+
+    expect(result).toEqual({ completedCount: 2, failedCount: 0, cancelled: true });
+  });
 });
 
 describe("archivedThreadDateSectionLabel", () => {
@@ -79,6 +135,12 @@ describe("archivedThreadDateSectionLabel", () => {
     [new Date(2026, 7, 31, 1).toISOString(), "August"],
     [new Date(2025, 11, 1, 1).toISOString(), "December 2025"],
   ])("groups %s under %s", (isoDate, label) => {
-    expect(archivedThreadDateSectionLabel(isoDate, now)).toBe(label);
+    expect(archivedThreadDateSectionLabel(isoDate, now, "en-US")).toBe(label);
+  });
+
+  it("does not group future timestamps under Today", () => {
+    expect(
+      archivedThreadDateSectionLabel(new Date(2026, 8, 21, 1).toISOString(), now, "en-US"),
+    ).toBe("September 21");
   });
 });

@@ -173,6 +173,7 @@ import {
   archivedThreadDateSectionLabel,
   archivedThreadKey,
   filterAndSortArchivedThreads,
+  runArchivedThreadBulkAction,
   type ArchivedThreadSort,
 } from "./archivedThreadsPanel.logic";
 
@@ -2564,6 +2565,21 @@ const archivedThreadDateFormatter = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 
+/** Return a timestamp that advances at each local midnight for calendar section labels. */
+function useLocalDayBoundary(): number {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const now = new Date();
+    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const timeout = window.setTimeout(
+      () => setNowMs(Date.now()),
+      nextMidnight.getTime() - now.getTime(),
+    );
+    return () => window.clearTimeout(timeout);
+  }, [nowMs]);
+  return nowMs;
+}
+
 export function ArchivedThreadsPanel() {
   const projects = useProjects();
   const { environments } = useEnvironments();
@@ -2577,6 +2593,8 @@ export function ArchivedThreadsPanel() {
   const [pendingBulkAction, setPendingBulkAction] = useState<
     "unarchive" | "delete-selected" | "delete-all" | null
   >(null);
+  const cancelBulkActionRef = useRef(false);
+  const archiveSectionNowMs = useLocalDayBoundary();
   const environmentIds = useMemo(
     () => [...new Set(projects.map((project) => project.environmentId))],
     [projects],
@@ -2634,11 +2652,11 @@ export function ArchivedThreadsPanel() {
         sort === "created-desc"
           ? entry.thread.createdAt
           : (entry.thread.archivedAt ?? entry.thread.createdAt);
-      const label = archivedThreadDateSectionLabel(date);
+      const label = archivedThreadDateSectionLabel(date, new Date(archiveSectionNowMs));
       sections.set(label, [...(sections.get(label) ?? []), entry]);
     }
     return [...sections.entries()].map(([label, entries]) => ({ label, entries }));
-  }, [sort, visibleArchivedThreads]);
+  }, [archiveSectionNowMs, sort, visibleArchivedThreads]);
   const hasActiveArchiveFilters = environmentFilter !== "all" || projectFilter !== "all";
 
   const environmentLabelById = useMemo(
@@ -2646,21 +2664,21 @@ export function ArchivedThreadsPanel() {
       new Map(environments.map((environment) => [environment.environmentId, environment.label])),
     [environments],
   );
-  const projectOptions = useMemo(
-    () =>
-      archivedThreads
-        .filter(
-          ({ thread }) => environmentFilter === "all" || thread.environmentId === environmentFilter,
-        )
-        .filter(
-          (entry, index, entries) =>
-            entries.findIndex(
-              (candidate) => archivedProjectKey(candidate) === archivedProjectKey(entry),
-            ) === index,
-        )
-        .toSorted((left, right) => left.project.name.localeCompare(right.project.name)),
-    [archivedThreads, environmentFilter],
+  const archivedEnvironmentIds = useMemo(
+    () => [...new Set(archivedThreads.map(({ thread }) => thread.environmentId))],
+    [archivedThreads],
   );
+  const projectOptions = useMemo(() => {
+    const byKey = new Map<string, (typeof archivedThreads)[number]>();
+    for (const entry of archivedThreads) {
+      if (environmentFilter !== "all" && entry.thread.environmentId !== environmentFilter) continue;
+      const key = archivedProjectKey(entry);
+      if (!byKey.has(key)) byKey.set(key, entry);
+    }
+    return [...byKey.values()].toSorted((left, right) =>
+      left.project.name.localeCompare(right.project.name),
+    );
+  }, [archivedThreads, environmentFilter]);
   const selectedArchivedThreads = useMemo(
     () => archivedThreads.filter((entry) => selectedThreadKeys.has(archivedThreadKey(entry))),
     [archivedThreads, selectedThreadKeys],
@@ -2671,6 +2689,15 @@ export function ArchivedThreadsPanel() {
   const someVisibleSelected = visibleArchivedThreads.some((entry) =>
     selectedThreadKeys.has(archivedThreadKey(entry)),
   );
+
+  useEffect(() => {
+    if (
+      environmentFilter !== "all" &&
+      !archivedEnvironmentIds.some((environmentId) => environmentId === environmentFilter)
+    ) {
+      setEnvironmentFilter("all");
+    }
+  }, [archivedEnvironmentIds, environmentFilter]);
 
   useEffect(() => {
     if (
@@ -2740,17 +2767,29 @@ export function ArchivedThreadsPanel() {
       );
       if (!confirmed) return;
 
+      cancelBulkActionRef.current = false;
       setPendingBulkAction(action);
-      let failedCount = 0;
-      for (const { thread } of entries) {
-        const result = await deleteThread(scopeThreadRef(thread.environmentId, thread.id));
-        if (result._tag !== "Success") failedCount += 1;
-      }
+      const bulkResult = await runArchivedThreadBulkAction({
+        entries,
+        isCancelled: () => cancelBulkActionRef.current,
+        action: async ({ thread }) => {
+          const result = await deleteThread(scopeThreadRef(thread.environmentId, thread.id));
+          return result._tag === "Success";
+        },
+      });
       setPendingBulkAction(null);
       setSelectedThreadKeys(new Set());
       refreshArchivedThreads();
 
-      if (failedCount === 0) {
+      const deletedCount = bulkResult.completedCount - bulkResult.failedCount;
+      if (bulkResult.cancelled) {
+        toastManager.add({
+          type: "info",
+          title: `Stopped after deleting ${deletedCount} thread${deletedCount === 1 ? "" : "s"}`,
+        });
+        return;
+      }
+      if (bulkResult.failedCount === 0) {
         toastManager.add({
           type: "success",
           title: `Deleted ${count} archived thread${count === 1 ? "" : "s"}`,
@@ -2760,8 +2799,8 @@ export function ArchivedThreadsPanel() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: `Could not delete ${failedCount} archived thread${failedCount === 1 ? "" : "s"}`,
-          description: `${count - failedCount} deleted successfully. Try the remaining threads again.`,
+          title: `Could not delete ${bulkResult.failedCount} archived thread${bulkResult.failedCount === 1 ? "" : "s"}`,
+          description: `${deletedCount} deleted successfully. Try the remaining threads again.`,
         }),
       );
     },
@@ -2770,24 +2809,30 @@ export function ArchivedThreadsPanel() {
 
   const unarchiveSelectedThreads = useCallback(async () => {
     if (selectedArchivedThreads.length === 0 || pendingBulkAction !== null) return;
+    cancelBulkActionRef.current = false;
     setPendingBulkAction("unarchive");
-    let failedCount = 0;
-    for (const { thread } of selectedArchivedThreads) {
-      const result = await unarchiveThread(scopeThreadRef(thread.environmentId, thread.id));
-      if (result._tag !== "Success") failedCount += 1;
-    }
-    const unarchivedCount = selectedArchivedThreads.length - failedCount;
+    const bulkResult = await runArchivedThreadBulkAction({
+      entries: selectedArchivedThreads,
+      isCancelled: () => cancelBulkActionRef.current,
+      action: async ({ thread }) => {
+        const result = await unarchiveThread(scopeThreadRef(thread.environmentId, thread.id));
+        return result._tag === "Success";
+      },
+    });
+    const unarchivedCount = bulkResult.completedCount - bulkResult.failedCount;
     setPendingBulkAction(null);
     setSelectedThreadKeys(new Set());
     refreshArchivedThreads();
     toastManager.add(
       stackedThreadToast({
-        type: failedCount === 0 ? "success" : "error",
-        title:
-          failedCount === 0
+        type: bulkResult.cancelled ? "info" : bulkResult.failedCount === 0 ? "success" : "error",
+        title: bulkResult.cancelled
+          ? `Stopped after unarchiving ${unarchivedCount} thread${unarchivedCount === 1 ? "" : "s"}`
+          : bulkResult.failedCount === 0
             ? `Unarchived ${unarchivedCount} thread${unarchivedCount === 1 ? "" : "s"}`
-            : `Could not unarchive ${failedCount} thread${failedCount === 1 ? "" : "s"}`,
-        description: failedCount > 0 ? `${unarchivedCount} unarchived successfully.` : undefined,
+            : `Could not unarchive ${bulkResult.failedCount} thread${bulkResult.failedCount === 1 ? "" : "s"}`,
+        description:
+          bulkResult.failedCount > 0 ? `${unarchivedCount} unarchived successfully.` : undefined,
       }),
     );
   }, [pendingBulkAction, refreshArchivedThreads, selectedArchivedThreads, unarchiveThread]);
@@ -2815,6 +2860,7 @@ export function ArchivedThreadsPanel() {
 
   const handleArchivedThreadContextMenu = useCallback(
     async (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
+      if (pendingBulkAction !== null) return;
       const api = readLocalApi();
       if (!api) return;
       const clicked = await api.contextMenu.show(
@@ -2834,7 +2880,7 @@ export function ArchivedThreadsPanel() {
         await deleteOneThread(threadRef);
       }
     },
-    [deleteOneThread, unarchiveOneThread],
+    [deleteOneThread, pendingBulkAction, unarchiveOneThread],
   );
 
   return (
@@ -2870,28 +2916,38 @@ export function ArchivedThreadsPanel() {
       ) : (
         <SettingsSection
           id={searchableSetting("archive").id}
-          title="Archived threads"
+          title={searchableSetting("archive").title}
           headerAction={
             <Button
               type="button"
               variant="destructive-outline"
               size="xs"
-              disabled={pendingBulkAction !== null || isLoadingArchive || archiveError !== null}
+              disabled={
+                (pendingBulkAction !== null && pendingBulkAction !== "delete-all") ||
+                isLoadingArchive ||
+                archiveError !== null
+              }
               className="gap-1.5"
-              onClick={() => void deleteArchivedThreads(archivedThreads, "delete-all")}
+              onClick={() => {
+                if (pendingBulkAction === "delete-all") {
+                  cancelBulkActionRef.current = true;
+                  return;
+                }
+                void deleteArchivedThreads(archivedThreads, "delete-all");
+              }}
             >
               {pendingBulkAction === "delete-all" ? (
                 <LoaderIcon className="size-3.5 animate-spin" />
               ) : (
                 <Trash2Icon className="size-3.5" />
               )}
-              Delete all
+              {pendingBulkAction === "delete-all" ? "Stop" : "Delete all"}
             </Button>
           }
         >
           <div className="space-y-2 px-3 pb-2 sm:px-4">
             <div className="flex items-center gap-2">
-              <InputGroup className="min-w-0 flex-1 **:[input]:h-9 sm:**:[input]:h-8">
+              <InputGroup size="compact" className="min-w-0 flex-1">
                 <InputGroupAddon>
                   {isLoadingArchive ? (
                     <LoaderIcon aria-hidden className="animate-spin" />
@@ -2937,7 +2993,7 @@ export function ArchivedThreadsPanel() {
                   >
                     <MenuGroupLabel>Environment</MenuGroupLabel>
                     <MenuRadioItem value="all">All environments</MenuRadioItem>
-                    {environmentIds.map((environmentId) => (
+                    {archivedEnvironmentIds.map((environmentId) => (
                       <MenuRadioItem key={environmentId} value={environmentId}>
                         {environmentLabelById.get(environmentId) ?? environmentId}
                       </MenuRadioItem>
@@ -3013,38 +3069,51 @@ export function ArchivedThreadsPanel() {
                     : "Select all"}
                 </span>
                 {selectedArchivedThreads.length > 0 ? (
-                  <>
+                  pendingBulkAction !== null ? (
                     <Button
                       type="button"
                       size="xs"
                       variant="outline"
-                      disabled={pendingBulkAction !== null}
-                      onClick={() => void unarchiveSelectedThreads()}
+                      onClick={() => {
+                        cancelBulkActionRef.current = true;
+                      }}
                     >
-                      {pendingBulkAction === "unarchive" ? (
-                        <LoaderIcon className="size-3.5 animate-spin" />
-                      ) : (
-                        <ArchiveX className="size-3.5" />
-                      )}
-                      Unarchive
+                      Stop
                     </Button>
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="destructive-outline"
-                      disabled={pendingBulkAction !== null}
-                      onClick={() =>
-                        void deleteArchivedThreads(selectedArchivedThreads, "delete-selected")
-                      }
-                    >
-                      {pendingBulkAction === "delete-selected" ? (
-                        <LoaderIcon className="size-3.5 animate-spin" />
-                      ) : (
-                        <Trash2Icon className="size-3.5" />
-                      )}
-                      Delete
-                    </Button>
-                  </>
+                  ) : (
+                    <>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        disabled={pendingBulkAction !== null}
+                        onClick={() => void unarchiveSelectedThreads()}
+                      >
+                        {pendingBulkAction === "unarchive" ? (
+                          <LoaderIcon className="size-3.5 animate-spin" />
+                        ) : (
+                          <ArchiveX className="size-3.5" />
+                        )}
+                        Unarchive
+                      </Button>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="destructive-outline"
+                        disabled={pendingBulkAction !== null}
+                        onClick={() =>
+                          void deleteArchivedThreads(selectedArchivedThreads, "delete-selected")
+                        }
+                      >
+                        {pendingBulkAction === "delete-selected" ? (
+                          <LoaderIcon className="size-3.5 animate-spin" />
+                        ) : (
+                          <Trash2Icon className="size-3.5" />
+                        )}
+                        Delete
+                      </Button>
+                    </>
+                  )
                 ) : null}
               </div>
               {archivedThreadSections.map((section) => (
@@ -3060,8 +3129,10 @@ export function ArchivedThreadsPanel() {
                     return (
                       <SettingsRow
                         key={key}
-                        className="py-2 [&>div]:!grid [&>div]:grid-cols-[minmax(0,1fr)_auto] [&>div]:items-center [&>div]:gap-2 [&>div>div:last-child]:w-auto [&_h3]:min-w-0"
+                        layout="inline"
+                        className="py-2"
                         onContextMenu={(event) => {
+                          if (pendingBulkAction !== null) return;
                           event.preventDefault();
                           void (async () => {
                             const result = await settlePromise(() =>
@@ -3083,20 +3154,22 @@ export function ArchivedThreadsPanel() {
                             }
                           })();
                         }}
+                        leading={
+                          <Checkbox
+                            checked={selectedThreadKeys.has(key)}
+                            aria-label={`Select ${thread.title}`}
+                            onCheckedChange={() => {
+                              setSelectedThreadKeys((current) => {
+                                const next = new Set(current);
+                                if (next.has(key)) next.delete(key);
+                                else next.add(key);
+                                return next;
+                              });
+                            }}
+                          />
+                        }
                         title={
                           <span className="inline-flex min-w-0 items-center gap-2">
-                            <Checkbox
-                              checked={selectedThreadKeys.has(key)}
-                              aria-label={`Select ${thread.title}`}
-                              onCheckedChange={() => {
-                                setSelectedThreadKeys((current) => {
-                                  const next = new Set(current);
-                                  if (next.has(key)) next.delete(key);
-                                  else next.add(key);
-                                  return next;
-                                });
-                              }}
-                            />
                             <ProjectFavicon
                               environmentId={project.environmentId}
                               cwd={project.cwd}
@@ -3108,7 +3181,7 @@ export function ArchivedThreadsPanel() {
                         description={
                           <>
                             {project.name}
-                            {environmentIds.length > 1
+                            {archivedEnvironmentIds.length > 1
                               ? ` · ${environmentLabelById.get(thread.environmentId) ?? thread.environmentId}`
                               : ""}
                             {" · Archived "}
