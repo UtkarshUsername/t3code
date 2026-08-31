@@ -2906,23 +2906,29 @@ export function ArchivedThreadsPanel() {
           }
         >
           <div className="space-y-2 px-3 pb-2 sm:px-4">
-            <div className="relative min-w-0">
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search archived threads"
-                aria-label="Search archived threads"
-                className="pl-9"
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(12rem,1fr)_auto_auto_auto]">
+              <div className="relative min-w-0">
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search archived threads"
+                  aria-label="Search archived threads"
+                  className="pl-9"
+                />
+              </div>
               <Select
                 value={environmentFilter}
                 onValueChange={(value) => setEnvironmentFilter(value ?? "all")}
               >
-                <SelectTrigger size="sm" aria-label="Filter by environment">
-                  <SelectValue />
+                <SelectTrigger size="sm" aria-label="Filter by environment" className="sm:max-w-40">
+                  <SelectValue>
+                    {environmentFilter === "all"
+                      ? "All"
+                      : (environments.find(
+                          (environment) => environment.environmentId === environmentFilter,
+                        )?.label ?? environmentFilter)}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
                   <SelectItem value="all">All environments</SelectItem>
@@ -2937,8 +2943,13 @@ export function ArchivedThreadsPanel() {
                 value={projectFilter}
                 onValueChange={(value) => setProjectFilter(value ?? "all")}
               >
-                <SelectTrigger size="sm" aria-label="Filter by project">
-                  <SelectValue />
+                <SelectTrigger size="sm" aria-label="Filter by project" className="sm:max-w-40">
+                  <SelectValue>
+                    {projectFilter === "all"
+                      ? "All"
+                      : (projectOptions.find((entry) => archivedProjectKey(entry) === projectFilter)
+                          ?.project.name ?? "All")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
                   <SelectItem value="all">All projects</SelectItem>
@@ -2950,7 +2961,7 @@ export function ArchivedThreadsPanel() {
                 </SelectPopup>
               </Select>
               <Select value={sort} onValueChange={(value) => setSort(value as ArchivedThreadSort)}>
-                <SelectTrigger size="sm" aria-label="Sort archived threads">
+                <SelectTrigger size="sm" aria-label="Sort archived threads" className="sm:max-w-44">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectPopup>
@@ -2969,43 +2980,6 @@ export function ArchivedThreadsPanel() {
               </p>
               {archiveError ? <p className="text-xs text-destructive">{archiveError}</p> : null}
             </div>
-            {selectedArchivedThreads.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/35 p-2">
-                <span className="mr-auto pl-1 text-xs font-medium">
-                  {selectedArchivedThreads.length} selected
-                </span>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  disabled={pendingBulkAction !== null}
-                  onClick={() => void unarchiveSelectedThreads()}
-                >
-                  {pendingBulkAction === "unarchive" ? (
-                    <LoaderIcon className="size-3.5 animate-spin" />
-                  ) : (
-                    <ArchiveX className="size-3.5" />
-                  )}
-                  Unarchive
-                </Button>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="destructive-outline"
-                  disabled={pendingBulkAction !== null}
-                  onClick={() =>
-                    void deleteArchivedThreads(selectedArchivedThreads, "delete-selected")
-                  }
-                >
-                  {pendingBulkAction === "delete-selected" ? (
-                    <LoaderIcon className="size-3.5 animate-spin" />
-                  ) : (
-                    <Trash2Icon className="size-3.5" />
-                  )}
-                  Delete…
-                </Button>
-              </div>
-            ) : null}
           </div>
           {visibleArchivedThreads.length === 0 ? (
             <SettingsRow
@@ -3014,7 +2988,7 @@ export function ArchivedThreadsPanel() {
             />
           ) : (
             <>
-              <div className="flex items-center gap-2 px-4 py-2">
+              <div className="flex min-h-10 flex-wrap items-center gap-2 px-4 py-1.5">
                 <Checkbox
                   checked={allVisibleSelected}
                   indeterminate={!allVisibleSelected && someVisibleSelected}
@@ -3032,7 +3006,45 @@ export function ArchivedThreadsPanel() {
                     });
                   }}
                 />
-                <span className="text-xs text-muted-foreground">Select visible</span>
+                <span className="mr-auto text-xs text-muted-foreground">
+                  {selectedArchivedThreads.length > 0
+                    ? `${selectedArchivedThreads.length} selected`
+                    : "Select all"}
+                </span>
+                {selectedArchivedThreads.length > 0 ? (
+                  <>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      disabled={pendingBulkAction !== null}
+                      onClick={() => void unarchiveSelectedThreads()}
+                    >
+                      {pendingBulkAction === "unarchive" ? (
+                        <LoaderIcon className="size-3.5 animate-spin" />
+                      ) : (
+                        <ArchiveX className="size-3.5" />
+                      )}
+                      Unarchive
+                    </Button>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="destructive-outline"
+                      disabled={pendingBulkAction !== null}
+                      onClick={() =>
+                        void deleteArchivedThreads(selectedArchivedThreads, "delete-selected")
+                      }
+                    >
+                      {pendingBulkAction === "delete-selected" ? (
+                        <LoaderIcon className="size-3.5 animate-spin" />
+                      ) : (
+                        <Trash2Icon className="size-3.5" />
+                      )}
+                      Delete…
+                    </Button>
+                  </>
+                ) : null}
               </div>
               {visibleArchivedThreads.map(({ project, thread }) => {
                 const entry = { project, thread };
