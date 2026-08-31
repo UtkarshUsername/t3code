@@ -320,7 +320,6 @@ import {
 } from "./composerScrollGesture";
 import { prepareVideoFirstFrame } from "../../lib/videoFirstFrame";
 import { ComposerSpeechButton } from "./ComposerSpeechButton";
-import { formatSpeechInsertion } from "../../speech/speechInsertion";
 import { useDesktopSpeechInput } from "../../speech/useDesktopSpeechInput";
 
 function ComposerVideoThumbnail({ file }: { file: File }) {
@@ -3530,19 +3529,28 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     };
   }, [composerCursor, promptRef]);
 
-  const insertSpeechTranscript = useCallback(
-    (text: string) => {
+  const speechInput = useDesktopSpeechInput({
+    ownerKey: JSON.stringify(composerDraftTarget),
+    draftText: prompt,
+    readDraft: () => {
       const snapshot = readComposerSnapshot();
-      const replacement = formatSpeechInsertion(snapshot.value, snapshot.expandedCursor, text);
-      if (!replacement) return;
-      applyPromptReplacement(snapshot.expandedCursor, snapshot.expandedCursor, replacement);
+      return {
+        text: snapshot.value,
+        selection: { start: snapshot.expandedCursor, end: snapshot.expandedCursor },
+      };
     },
-    [applyPromptReplacement, readComposerSnapshot],
-  );
-  const speechInput = useDesktopSpeechInput(
-    insertSpeechTranscript,
-    JSON.stringify(composerDraftTarget),
-  );
+    commitDraft: (text, selection) => {
+      const snapshot = readComposerSnapshot();
+      const applied = applyPromptReplacement(0, snapshot.value.length, text, {
+        expectedText: snapshot.value,
+        focusEditorAfterReplace: false,
+      });
+      if (!applied) return;
+      const cursor = collapseExpandedComposerCursor(text, selection.start);
+      setComposerCursor(cursor);
+      window.requestAnimationFrame(() => composerEditorRef.current?.focusAt(cursor));
+    },
+  });
 
   const resolveActiveComposerTrigger = useCallback((): {
     snapshot: { value: string; cursor: number; expandedCursor: number };
@@ -6986,7 +6994,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   ) : null}
                   {speechInput.available ? (
                     <ComposerSpeechButton
-                      status={speechInput.status}
+                      state={speechInput.state}
                       progress={speechInput.progress}
                       level={speechInput.level}
                       disabled={
