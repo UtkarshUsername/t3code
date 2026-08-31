@@ -174,6 +174,7 @@ import {
   archivedThreadDateSectionLabel,
   archivedThreadKey,
   archivedThreadRefKey,
+  archivedThreadSortDate,
   filterAndSortArchivedThreads,
   runArchivedThreadBulkAction,
   type ArchivedThreadSort,
@@ -2651,10 +2652,7 @@ export function ArchivedThreadsPanel() {
   const archivedThreadSections = useMemo(() => {
     const sections = new Map<string, typeof visibleArchivedThreads>();
     for (const entry of visibleArchivedThreads) {
-      const date =
-        sort === "created-desc"
-          ? entry.thread.createdAt
-          : (entry.thread.archivedAt ?? entry.thread.createdAt);
+      const date = archivedThreadSortDate(entry.thread, sort);
       const label = archivedThreadDateSectionLabel(date, new Date(archiveSectionNowMs));
       sections.set(label, [...(sections.get(label) ?? []), entry]);
     }
@@ -3149,6 +3147,16 @@ export function ArchivedThreadsPanel() {
                     const entry = { project, thread };
                     const key = archivedThreadKey(entry);
                     const archivedAt = thread.archivedAt ?? thread.createdAt;
+                    const dates =
+                      sort === "created-desc"
+                        ? [
+                            { label: "Created", value: thread.createdAt },
+                            { label: "Archived", value: archivedAt },
+                          ]
+                        : [
+                            { label: "Archived", value: archivedAt },
+                            { label: "Created", value: thread.createdAt },
+                          ];
                     const threadRef = scopeThreadRef(thread.environmentId, thread.id);
                     return (
                       <SettingsRow
@@ -3209,15 +3217,20 @@ export function ArchivedThreadsPanel() {
                             {archivedEnvironmentIds.length > 1
                               ? ` · ${environmentLabelById.get(thread.environmentId) ?? thread.environmentId}`
                               : ""}
-                            {" · "}
-                            <Tooltip>
-                              <TooltipTrigger render={<span />}>
-                                {formatRelativeTimeLabel(archivedAt)}
-                              </TooltipTrigger>
-                              <TooltipPopup side="top">
-                                {archivedThreadDateFormatter.format(new Date(archivedAt))}
-                              </TooltipPopup>
-                            </Tooltip>
+                            {dates.map(({ label, value }) => (
+                              <span key={label}>
+                                {" · "}
+                                {label}{" "}
+                                <Tooltip>
+                                  <TooltipTrigger render={<span />}>
+                                    {formatRelativeTimeLabel(value)}
+                                  </TooltipTrigger>
+                                  <TooltipPopup side="top">
+                                    {archivedThreadDateFormatter.format(new Date(value))}
+                                  </TooltipPopup>
+                                </Tooltip>
+                              </span>
+                            ))}
                           </>
                         }
                         control={

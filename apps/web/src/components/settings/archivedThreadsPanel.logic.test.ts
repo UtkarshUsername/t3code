@@ -3,6 +3,7 @@ import {
   archivedThreadDateSectionLabel,
   archivedThreadKey,
   archivedThreadRefKey,
+  archivedThreadSortDate,
   archivedProjectKey,
   filterAndSortArchivedThreads,
   runArchivedThreadBulkAction,
@@ -35,6 +36,15 @@ const olderEntry = entries[0]!;
 const newerEntry = entries[1]!;
 
 describe("filterAndSortArchivedThreads", () => {
+  it("uses the date represented by the active sort", () => {
+    expect(archivedThreadSortDate(olderEntry.thread, "archived-desc")).toBe(
+      olderEntry.thread.archivedAt,
+    );
+    expect(archivedThreadSortDate(olderEntry.thread, "created-desc")).toBe(
+      olderEntry.thread.createdAt,
+    );
+  });
+
   it("searches thread, project, and workspace text", () => {
     for (const query of ["reconnect", "t3", "/dev/t3"]) {
       expect(
