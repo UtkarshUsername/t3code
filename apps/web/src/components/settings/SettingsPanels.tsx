@@ -8,7 +8,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type BackgroundActivityProfile,
   type DesktopUpdateChannel,
-  type DesktopSpeechStatus,
   ProviderDriverKind,
   type ProviderInstanceId,
   type ScopedThreadRef,
@@ -2165,15 +2164,6 @@ export function GeneralSettingsPanel() {
   const hasServerTargets = connectedEnvironments.length > 0;
   const [backgroundActivityDialogOpen, setBackgroundActivityDialogOpen] = useState(false);
   const mixedResponseStreamingMode = useScopedSettingsMixed(["responseStreamingMode"]);
-  const [speechStatus, setSpeechStatus] = useState<DesktopSpeechStatus | null>(null);
-  useEffect(() => {
-    const speech = window.desktopBridge?.speech;
-    if (!speech) return;
-    void speech.getStatus().then(setSpeechStatus);
-    return speech.onEvent((event) => {
-      if (event.type === "status") setSpeechStatus(event.status);
-    });
-  }, []);
   const lastEnabledProjectGroupingMode = useRef<SidebarProjectGroupingMode>(
     readLastEnabledProjectGroupingMode(),
   );
@@ -2245,36 +2235,6 @@ export function GeneralSettingsPanel() {
     <SettingsPageContainer>
       <ProjectDefaultsSettings category="general" />
       <SettingsSection id="organization" title="Organization">
-        {window.desktopBridge?.speech && speechStatus?.supported ? (
-          <SettingsRow
-            {...searchableSetting("local-voice-input")}
-            description={
-              speechStatus.state === "missing-model"
-                ? "Downloads a 48 MiB English model on first use. Audio stays on this device."
-                : "Moonshine Streaming Tiny is stored locally. Microphone audio is not saved."
-            }
-            control={
-              speechStatus.state === "missing-model" ? (
-                <span className="text-xs text-muted-foreground">Download on first use</span>
-              ) : (
-                <Button
-                  variant="destructive-outline"
-                  size="sm"
-                  disabled={
-                    speechStatus.state === "recording" ||
-                    speechStatus.state === "transcribing" ||
-                    speechStatus.state === "downloading"
-                  }
-                  onClick={() =>
-                    void window.desktopBridge?.speech?.removeModel().then(setSpeechStatus)
-                  }
-                >
-                  Remove model
-                </Button>
-              )
-            }
-          />
-        ) : null}
         <SettingsRow
           {...searchableSetting("project-grouping")}
           description="Combine matching repositories across environments."
