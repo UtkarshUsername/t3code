@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   archivedThreadDateSectionLabel,
   archivedThreadKey,
+  archivedThreadRefKey,
   archivedProjectKey,
   filterAndSortArchivedThreads,
   runArchivedThreadBulkAction,
@@ -112,6 +113,9 @@ describe("filterAndSortArchivedThreads", () => {
     };
 
     expect(archivedThreadKey(left)).not.toBe(archivedThreadKey(right));
+    expect(
+      archivedThreadRefKey({ environmentId: left.thread.environmentId, threadId: left.thread.id }),
+    ).toBe(archivedThreadKey(left));
     expect(archivedProjectKey(left)).not.toBe(archivedProjectKey(right));
     expect(
       filterAndSortArchivedThreads([left, right], {

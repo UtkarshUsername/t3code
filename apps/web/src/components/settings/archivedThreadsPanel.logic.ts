@@ -31,7 +31,17 @@ export interface ArchivedThreadBulkResult {
 
 /** Build the environment-scoped key used by archived-thread selection state. */
 export function archivedThreadKey(entry: ArchivedThreadListEntry): string {
-  return JSON.stringify([entry.thread.environmentId, entry.thread.id]);
+  return archivedThreadRefKey({
+    environmentId: entry.thread.environmentId,
+    threadId: entry.thread.id,
+  });
+}
+
+export function archivedThreadRefKey(ref: {
+  readonly environmentId: string;
+  readonly threadId: string;
+}): string {
+  return JSON.stringify([ref.environmentId, ref.threadId]);
 }
 
 /** Build the environment-scoped key used by the project filter. */

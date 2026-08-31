@@ -173,6 +173,7 @@ import {
   archivedProjectKey,
   archivedThreadDateSectionLabel,
   archivedThreadKey,
+  archivedThreadRefKey,
   filterAndSortArchivedThreads,
   runArchivedThreadBulkAction,
   type ArchivedThreadSort,
@@ -2723,7 +2724,7 @@ export function ArchivedThreadsPanel() {
       if (bulkActionRunningRef.current) return;
       const result = await unarchiveThread(threadRef);
       if (result._tag === "Success") {
-        const unarchivedKey = `${threadRef.environmentId}:${threadRef.threadId}`;
+        const unarchivedKey = archivedThreadRefKey(threadRef);
         setSelectedThreadKeys((current) => {
           if (!current.has(unarchivedKey)) return current;
           const next = new Set(current);
