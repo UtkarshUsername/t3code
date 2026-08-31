@@ -43,6 +43,9 @@ describe("filterAndSortArchivedThreads", () => {
     expect(archivedThreadSortDate(olderEntry.thread, "created-desc")).toBe(
       olderEntry.thread.createdAt,
     );
+    expect(archivedThreadSortDate(olderEntry.thread, "created-asc")).toBe(
+      olderEntry.thread.createdAt,
+    );
   });
 
   it("searches thread, project, and workspace text", () => {
@@ -70,7 +73,7 @@ describe("filterAndSortArchivedThreads", () => {
   });
 
   it("supports archive and creation date ordering", () => {
-    const keysFor = (sort: "archived-desc" | "archived-asc" | "created-desc") =>
+    const keysFor = (sort: "archived-desc" | "archived-asc" | "created-desc" | "created-asc") =>
       filterAndSortArchivedThreads(entries, {
         query: "",
         environmentId: "all",
@@ -89,6 +92,10 @@ describe("filterAndSortArchivedThreads", () => {
     expect(keysFor("created-desc")).toEqual([
       archivedThreadKey(olderEntry),
       archivedThreadKey(newerEntry),
+    ]);
+    expect(keysFor("created-asc")).toEqual([
+      archivedThreadKey(newerEntry),
+      archivedThreadKey(olderEntry),
     ]);
   });
 

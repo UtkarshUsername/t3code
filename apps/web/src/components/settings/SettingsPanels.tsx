@@ -3043,9 +3043,10 @@ export function ArchivedThreadsPanel() {
                     onValueChange={(value) => setSort(value as ArchivedThreadSort)}
                   >
                     <MenuGroupLabel>Sort</MenuGroupLabel>
-                    <MenuRadioItem value="archived-desc">Recently archived</MenuRadioItem>
+                    <MenuRadioItem value="archived-desc">Newest archived</MenuRadioItem>
                     <MenuRadioItem value="archived-asc">Oldest archived</MenuRadioItem>
-                    <MenuRadioItem value="created-desc">Recently created</MenuRadioItem>
+                    <MenuRadioItem value="created-desc">Newest created</MenuRadioItem>
+                    <MenuRadioItem value="created-asc">Oldest created</MenuRadioItem>
                   </MenuRadioGroup>
                 </MenuPopup>
               </Menu>
@@ -3147,16 +3148,15 @@ export function ArchivedThreadsPanel() {
                     const entry = { project, thread };
                     const key = archivedThreadKey(entry);
                     const archivedAt = thread.archivedAt ?? thread.createdAt;
-                    const dates =
-                      sort === "created-desc"
-                        ? [
-                            { label: "Created", value: thread.createdAt },
-                            { label: "Archived", value: archivedAt },
-                          ]
-                        : [
-                            { label: "Archived", value: archivedAt },
-                            { label: "Created", value: thread.createdAt },
-                          ];
+                    const dates = sort.startsWith("created-")
+                      ? [
+                          { label: "Created", value: thread.createdAt },
+                          { label: "Archived", value: archivedAt },
+                        ]
+                      : [
+                          { label: "Archived", value: archivedAt },
+                          { label: "Created", value: thread.createdAt },
+                        ];
                     const threadRef = scopeThreadRef(thread.environmentId, thread.id);
                     return (
                       <SettingsRow

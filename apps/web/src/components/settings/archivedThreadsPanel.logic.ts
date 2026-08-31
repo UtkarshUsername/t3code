@@ -1,4 +1,4 @@
-export type ArchivedThreadSort = "archived-desc" | "archived-asc" | "created-desc";
+export type ArchivedThreadSort = "archived-desc" | "archived-asc" | "created-desc" | "created-asc";
 
 export interface ArchivedThreadListEntry {
   readonly thread: {
@@ -33,7 +33,7 @@ export function archivedThreadSortDate(
   thread: ArchivedThreadListEntry["thread"],
   sort: ArchivedThreadSort,
 ): string {
-  return sort === "created-desc" ? thread.createdAt : (thread.archivedAt ?? thread.createdAt);
+  return sort.startsWith("created-") ? thread.createdAt : (thread.archivedAt ?? thread.createdAt);
 }
 
 /** Build the environment-scoped key used by archived-thread selection state. */
@@ -75,7 +75,7 @@ export function filterAndSortArchivedThreads<T extends ArchivedThreadListEntry>(
     .toSorted((left, right) => {
       const leftDate = archivedThreadSortDate(left.thread, filters.sort);
       const rightDate = archivedThreadSortDate(right.thread, filters.sort);
-      const direction = filters.sort === "archived-asc" ? 1 : -1;
+      const direction = filters.sort.endsWith("-asc") ? 1 : -1;
       return (
         direction * Math.sign(Date.parse(leftDate) - Date.parse(rightDate)) ||
         right.thread.id.localeCompare(left.thread.id)
