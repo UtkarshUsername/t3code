@@ -3204,13 +3204,9 @@ export function ArchivedThreadsPanel() {
                             {archivedEnvironmentIds.length > 1
                               ? ` · ${environmentLabelById.get(thread.environmentId) ?? thread.environmentId}`
                               : ""}
-                            {" · Archived "}
+                            {" · "}
                             <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <span className="underline decoration-dotted underline-offset-2" />
-                                }
-                              >
+                              <TooltipTrigger render={<span />}>
                                 {formatRelativeTimeLabel(archivedAt)}
                               </TooltipTrigger>
                               <TooltipPopup side="top">
