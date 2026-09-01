@@ -97,7 +97,7 @@ import {
 import { useProjects } from "../../state/entities";
 import { useEnvironments } from "../../state/environments";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
-import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { formatRelativeTimeLabel, parseTimestampDate } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
@@ -2602,7 +2602,8 @@ export function ArchivedThreadsPanel() {
   const projects = useProjects();
   const { environments } = useEnvironments();
   const navigate = useNavigate();
-  const { unarchiveThread, deleteThread, confirmAndDeleteThread } = useThreadActions();
+  const { unarchiveThread, deleteArchivedThread, confirmAndDeleteArchivedThread } =
+    useThreadActions();
   const [query, setQuery] = useState("");
   const [environmentFilter, setEnvironmentFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
@@ -2805,7 +2806,9 @@ export function ArchivedThreadsPanel() {
         entries,
         isCancelled: () => cancelBulkActionRef.current,
         action: async ({ thread }) => {
-          const result = await deleteThread(scopeThreadRef(thread.environmentId, thread.id));
+          const result = await deleteArchivedThread(
+            scopeThreadRef(thread.environmentId, thread.id),
+          );
           return result._tag === "Success";
         },
       });
@@ -2837,7 +2840,7 @@ export function ArchivedThreadsPanel() {
         }),
       );
     },
-    [deleteThread, pendingBulkAction, refreshArchivedThreads],
+    [deleteArchivedThread, pendingBulkAction, refreshArchivedThreads],
   );
 
   const unarchiveSelectedThreads = useCallback(async () => {
@@ -2881,7 +2884,7 @@ export function ArchivedThreadsPanel() {
   const deleteOneThread = useCallback(
     async (threadRef: ScopedThreadRef) => {
       if (bulkActionRunningRef.current) return;
-      const result = await confirmAndDeleteThread(threadRef);
+      const result = await confirmAndDeleteArchivedThread(threadRef);
       if (result._tag === "Success") {
         refreshArchivedThreads();
         return;
@@ -2897,7 +2900,7 @@ export function ArchivedThreadsPanel() {
         );
       }
     },
-    [confirmAndDeleteThread, refreshArchivedThreads],
+    [confirmAndDeleteArchivedThread, refreshArchivedThreads],
   );
 
   const handleArchivedThreadContextMenu = useCallback(
@@ -2989,7 +2992,7 @@ export function ArchivedThreadsPanel() {
         >
           <div className="space-y-2 px-3 pb-2 sm:px-4">
             <div className="flex items-center gap-2">
-              <InputGroup size="compact" className="min-w-0 flex-1">
+              <InputGroup size="control" className="min-w-0 flex-1">
                 <InputGroupAddon>
                   {isLoadingArchive ? (
                     <LoaderIcon aria-hidden className="animate-spin" />
@@ -3096,6 +3099,7 @@ export function ArchivedThreadsPanel() {
                   checked={allVisibleSelected}
                   indeterminate={!allVisibleSelected && someVisibleSelected}
                   aria-label="Select all visible archived threads"
+                  disabled={pendingBulkAction !== null}
                   onCheckedChange={() => {
                     const visibleKeys = visibleArchivedThreads.map(archivedThreadKey);
                     setSelectedThreadKeys((current) => {
@@ -3213,6 +3217,7 @@ export function ArchivedThreadsPanel() {
                           <Checkbox
                             checked={selectedThreadKeys.has(key)}
                             aria-label={`Select ${thread.title}`}
+                            disabled={pendingBulkAction !== null}
                             onCheckedChange={() => {
                               setSelectedThreadKeys((current) => {
                                 const next = new Set(current);
@@ -3240,20 +3245,28 @@ export function ArchivedThreadsPanel() {
                             {archivedEnvironmentIds.length > 1
                               ? ` · ${environmentLabelById.get(thread.environmentId) ?? thread.environmentId}`
                               : ""}
-                            {dates.map(({ label, value }) => (
-                              <span key={label}>
-                                {" · "}
-                                {label}{" "}
-                                <Tooltip>
-                                  <TooltipTrigger render={<span />}>
-                                    {formatRelativeTimeLabel(value)}
-                                  </TooltipTrigger>
-                                  <TooltipPopup side="top">
-                                    {archivedThreadDateFormatter.format(new Date(value))}
-                                  </TooltipPopup>
-                                </Tooltip>
-                              </span>
-                            ))}
+                            {dates.map(({ label, value }) => {
+                              const date = parseTimestampDate(value);
+                              const relativeTime = formatRelativeTimeLabel(value) || "Unknown date";
+                              return (
+                                <span key={label}>
+                                  {" · "}
+                                  {label}{" "}
+                                  {date === null ? (
+                                    relativeTime
+                                  ) : (
+                                    <Tooltip>
+                                      <TooltipTrigger render={<span />}>
+                                        {relativeTime}
+                                      </TooltipTrigger>
+                                      <TooltipPopup side="top">
+                                        {archivedThreadDateFormatter.format(date)}
+                                      </TooltipPopup>
+                                    </Tooltip>
+                                  )}
+                                </span>
+                              );
+                            })}
                           </>
                         }
                         control={

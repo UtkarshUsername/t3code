@@ -1,3 +1,5 @@
+import { parseTimestampDate } from "../../timestampFormat";
+
 export type ArchivedThreadSort = "archived-desc" | "archived-asc" | "created-desc" | "created-asc";
 
 export interface ArchivedThreadListEntry {
@@ -99,7 +101,8 @@ export function archivedThreadDateSectionLabel(
   now = new Date(),
   locales?: Intl.LocalesArgument,
 ): string {
-  const date = new Date(isoDate);
+  const date = parseTimestampDate(isoDate);
+  if (date === null) return "Unknown date";
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);

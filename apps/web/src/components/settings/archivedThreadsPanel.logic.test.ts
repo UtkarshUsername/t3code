@@ -224,4 +224,8 @@ describe("archivedThreadDateSectionLabel", () => {
       archivedThreadDateSectionLabel(new Date(2026, 8, 21, 1).toISOString(), now, "en-US"),
     ).toBe("September 21");
   });
+
+  it("groups invalid timestamps without throwing", () => {
+    expect(archivedThreadDateSectionLabel("not-a-date", now, "en-US")).toBe("Unknown date");
+  });
 });

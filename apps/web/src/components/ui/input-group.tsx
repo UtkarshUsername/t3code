@@ -17,7 +17,7 @@ const inputGroupVariants = cva(
     variants: {
       size: {
         default: "",
-        compact: "**:[input]:h-9 sm:**:[input]:h-8",
+        control: "**:[[data-size=default]_input]:h-9 sm:**:[[data-size=default]_input]:h-8",
       },
       variant: {
         default:
