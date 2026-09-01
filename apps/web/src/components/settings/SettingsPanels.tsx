@@ -2880,9 +2880,9 @@ export function ArchivedThreadsPanel() {
   }, [pendingBulkAction, refreshArchivedThreads, selectedArchivedThreads, unarchiveThread]);
 
   const deleteOneThread = useCallback(
-    async (threadRef: ScopedThreadRef) => {
+    async (threadRef: ScopedThreadRef, title: string) => {
       if (bulkActionRunningRef.current) return;
-      const result = await confirmAndDeleteThread(threadRef);
+      const result = await confirmAndDeleteThread(threadRef, { title });
       if (result._tag === "Success") {
         refreshArchivedThreads();
         return;
@@ -2902,7 +2902,7 @@ export function ArchivedThreadsPanel() {
   );
 
   const handleArchivedThreadContextMenu = useCallback(
-    async (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
+    async (threadRef: ScopedThreadRef, title: string, position: { x: number; y: number }) => {
       if (pendingBulkAction !== null || bulkActionRunningRef.current) return;
       const api = readLocalApi();
       if (!api) return;
@@ -2920,7 +2920,7 @@ export function ArchivedThreadsPanel() {
       }
 
       if (clicked === "delete") {
-        await deleteOneThread(threadRef);
+        await deleteOneThread(threadRef, title);
       }
     },
     [deleteOneThread, pendingBulkAction, unarchiveOneThread],
@@ -3193,7 +3193,7 @@ export function ArchivedThreadsPanel() {
                           event.preventDefault();
                           void (async () => {
                             const result = await settlePromise(() =>
-                              handleArchivedThreadContextMenu(threadRef, {
+                              handleArchivedThreadContextMenu(threadRef, thread.title, {
                                 x: event.clientX,
                                 y: event.clientY,
                               }),
@@ -3291,7 +3291,7 @@ export function ArchivedThreadsPanel() {
                                     size="icon-xs"
                                     aria-label={`Delete ${thread.title}`}
                                     disabled={pendingBulkAction !== null}
-                                    onClick={() => void deleteOneThread(threadRef)}
+                                    onClick={() => void deleteOneThread(threadRef, thread.title)}
                                   >
                                     <Trash2Icon className="size-3.5" />
                                   </Button>
