@@ -171,6 +171,7 @@ import { ProjectFavicon } from "../ProjectFavicon";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
   archivedProjectKey,
+  archivedProjectRefKey,
   archivedThreadDateSectionLabel,
   archivedThreadKey,
   archivedThreadRefKey,
@@ -2616,7 +2617,7 @@ export function ArchivedThreadsPanel() {
         snapshot.projects.map(
           (project) =>
             [
-              `${environmentId}:${project.id}`,
+              archivedProjectRefKey({ environmentId, projectId: project.id }),
               {
                 id: project.id,
                 environmentId,
@@ -2636,7 +2637,12 @@ export function ArchivedThreadsPanel() {
     );
 
     return threads.flatMap((thread) => {
-      const project = projectsByEnvironmentAndId.get(`${thread.environmentId}:${thread.projectId}`);
+      const project = projectsByEnvironmentAndId.get(
+        archivedProjectRefKey({
+          environmentId: thread.environmentId,
+          projectId: thread.projectId,
+        }),
+      );
       return project ? [{ thread, project }] : [];
     });
   }, [archivedSnapshots]);
@@ -3034,6 +3040,9 @@ export function ArchivedThreadsPanel() {
                         value={archivedProjectKey(entry)}
                       >
                         {entry.project.name}
+                        {environmentFilter === "all" && archivedEnvironmentIds.length > 1
+                          ? ` · ${environmentLabelById.get(entry.project.environmentId) ?? entry.project.environmentId}`
+                          : ""}
                       </MenuRadioItem>
                     ))}
                   </MenuRadioGroup>

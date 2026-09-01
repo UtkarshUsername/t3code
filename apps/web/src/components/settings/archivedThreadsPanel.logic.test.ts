@@ -5,6 +5,7 @@ import {
   archivedThreadRefKey,
   archivedThreadSortDate,
   archivedProjectKey,
+  archivedProjectRefKey,
   filterAndSortArchivedThreads,
   runArchivedThreadBulkAction,
   type ArchivedThreadListEntry,
@@ -134,6 +135,12 @@ describe("filterAndSortArchivedThreads", () => {
       archivedThreadRefKey({ environmentId: left.thread.environmentId, threadId: left.thread.id }),
     ).toBe(archivedThreadKey(left));
     expect(archivedProjectKey(left)).not.toBe(archivedProjectKey(right));
+    expect(
+      archivedProjectRefKey({
+        environmentId: left.project.environmentId,
+        projectId: left.project.id,
+      }),
+    ).toBe(archivedProjectKey(left));
     expect(
       filterAndSortArchivedThreads([left, right], {
         query: "",

@@ -53,7 +53,17 @@ export function archivedThreadRefKey(ref: {
 
 /** Build the environment-scoped key used by the project filter. */
 export function archivedProjectKey(entry: ArchivedThreadListEntry): string {
-  return JSON.stringify([entry.project.environmentId, entry.project.id]);
+  return archivedProjectRefKey({
+    environmentId: entry.project.environmentId,
+    projectId: entry.project.id,
+  });
+}
+
+export function archivedProjectRefKey(ref: {
+  readonly environmentId: string;
+  readonly projectId: string;
+}): string {
+  return JSON.stringify([ref.environmentId, ref.projectId]);
 }
 
 /** Apply archive-browser search, scope filters, and date ordering. */
