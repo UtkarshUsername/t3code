@@ -287,10 +287,13 @@ export function useThreadActions() {
       });
       if (result._tag === "Success") {
         refreshArchivedThreadsForEnvironment(target.environmentId);
+        releaseComposerDraftUploads(target);
+        clearComposerDraftForThread(target);
+        clearTerminalUiState(target);
       }
       return result;
     },
-    [deleteThreadMutation],
+    [clearComposerDraftForThread, clearTerminalUiState, deleteThreadMutation],
   );
 
   const deleteThread = useCallback(
