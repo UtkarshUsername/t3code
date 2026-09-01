@@ -2602,8 +2602,7 @@ export function ArchivedThreadsPanel() {
   const projects = useProjects();
   const { environments } = useEnvironments();
   const navigate = useNavigate();
-  const { unarchiveThread, deleteArchivedThread, confirmAndDeleteArchivedThread } =
-    useThreadActions();
+  const { unarchiveThread, deleteThread, confirmAndDeleteThread } = useThreadActions();
   const [query, setQuery] = useState("");
   const [environmentFilter, setEnvironmentFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
@@ -2804,11 +2803,10 @@ export function ArchivedThreadsPanel() {
       setPendingBulkAction(action);
       const bulkResult = await runArchivedThreadBulkAction({
         entries,
+        concurrency: 1,
         isCancelled: () => cancelBulkActionRef.current,
         action: async ({ thread }) => {
-          const result = await deleteArchivedThread(
-            scopeThreadRef(thread.environmentId, thread.id),
-          );
+          const result = await deleteThread(scopeThreadRef(thread.environmentId, thread.id));
           return result._tag === "Success";
         },
       });
@@ -2840,7 +2838,7 @@ export function ArchivedThreadsPanel() {
         }),
       );
     },
-    [deleteArchivedThread, pendingBulkAction, refreshArchivedThreads],
+    [deleteThread, pendingBulkAction, refreshArchivedThreads],
   );
 
   const unarchiveSelectedThreads = useCallback(async () => {
@@ -2884,7 +2882,7 @@ export function ArchivedThreadsPanel() {
   const deleteOneThread = useCallback(
     async (threadRef: ScopedThreadRef) => {
       if (bulkActionRunningRef.current) return;
-      const result = await confirmAndDeleteArchivedThread(threadRef);
+      const result = await confirmAndDeleteThread(threadRef);
       if (result._tag === "Success") {
         refreshArchivedThreads();
         return;
@@ -2900,7 +2898,7 @@ export function ArchivedThreadsPanel() {
         );
       }
     },
-    [confirmAndDeleteArchivedThread, refreshArchivedThreads],
+    [confirmAndDeleteThread, refreshArchivedThreads],
   );
 
   const handleArchivedThreadContextMenu = useCallback(

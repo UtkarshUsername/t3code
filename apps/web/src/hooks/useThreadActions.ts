@@ -279,23 +279,6 @@ export function useThreadActions() {
     [unarchiveThreadMutation],
   );
 
-  const deleteArchivedThread = useCallback(
-    async (target: ScopedThreadRef) => {
-      const result = await deleteThreadMutation({
-        environmentId: target.environmentId,
-        input: { threadId: target.threadId },
-      });
-      if (result._tag === "Success") {
-        refreshArchivedThreadsForEnvironment(target.environmentId);
-        releaseComposerDraftUploads(target);
-        clearComposerDraftForThread(target);
-        clearTerminalUiState(target);
-      }
-      return result;
-    },
-    [clearComposerDraftForThread, clearTerminalUiState, deleteThreadMutation],
-  );
-
   const deleteThread = useCallback(
     async (target: ScopedThreadRef, opts: { deletedThreadKeys?: ReadonlySet<string> } = {}) => {
       const resolved = resolveThreadTarget(target);
@@ -730,43 +713,12 @@ export function useThreadActions() {
     [confirmThreadDelete, deleteThread, resolveThreadTarget],
   );
 
-  const confirmAndDeleteArchivedThread = useCallback(
-    async (target: ScopedThreadRef) => {
-      const localApi = readLocalApi();
-      const resolved = resolveThreadTarget(target);
-
-      if (confirmThreadDelete && localApi) {
-        const title = resolved?.thread.title ?? "this thread";
-        const confirmationResult = await settlePromise(() =>
-          localApi.dialogs.confirm(
-            [
-              `Delete thread "${title}"?`,
-              "This permanently clears conversation history for this thread.",
-            ].join("\n"),
-            { variant: "destructive" },
-          ),
-        );
-        if (confirmationResult._tag === "Failure") {
-          return confirmationResult;
-        }
-        if (!confirmationResult.value) {
-          return AsyncResult.success(undefined);
-        }
-      }
-
-      return deleteArchivedThread(target);
-    },
-    [confirmThreadDelete, deleteArchivedThread, resolveThreadTarget],
-  );
-
   return useMemo(
     () => ({
       archiveThread,
       unarchiveThread,
-      deleteArchivedThread,
       deleteThread,
       confirmAndDeleteThread,
-      confirmAndDeleteArchivedThread,
       settleThread,
       unsettleThread,
       snoozeThread,
@@ -778,10 +730,8 @@ export function useThreadActions() {
     }),
     [
       archiveThread,
-      confirmAndDeleteArchivedThread,
       confirmAndDeleteThread,
       confirmAndUnpinThread,
-      deleteArchivedThread,
       deleteThread,
       pinThread,
       reorderPinnedThread,
