@@ -3289,12 +3289,13 @@ export function ArchivedThreadsPanel() {
                                   <Button
                                     type="button"
                                     variant="ghost-muted"
+                                    className="[--control-icon-color:var(--destructive-foreground)]"
                                     size="icon-xs"
                                     aria-label={`Delete ${thread.title}`}
                                     disabled={pendingBulkAction !== null}
                                     onClick={() => void deleteOneThread(threadRef)}
                                   >
-                                    <Trash2Icon className="size-3.5 text-destructive" />
+                                    <Trash2Icon className="size-3.5" />
                                   </Button>
                                 }
                               />
