@@ -48,9 +48,6 @@
     "effect-codex-app-server": "workspace:*",
     "vite-plus": "catalog:"
   },
-  "optionalDependencies": {
-    "@vscode/windows-process-tree": "0.8.0"
-  },
   "engines": {
     "node": "^22.16 || ^23.11 || >=24.10"
   }

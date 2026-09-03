@@ -80,10 +80,12 @@ line on stdout:
 - `setSampleInterval`
 - `setStreaming`
 - `sampleNow`
+- `processTable`
 - `readHistory`
 - `shutdown`
 - `hello`
 - `snapshot`
+- `processTable`
 - `historyChunk`
 - `error`
 

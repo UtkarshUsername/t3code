@@ -26,6 +26,7 @@ import {
   type TerminalMetadataStreamEvent,
   type TerminalOpenInput,
   type TerminalResizeInput,
+  type ResourceMonitorProcessTableEntry,
   type TerminalRestartInput,
   type TerminalSessionSnapshot,
   type TerminalSessionStatus,
@@ -46,7 +47,6 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -60,6 +60,7 @@ import {
 } from "../observability/Metrics.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
+import * as NativeTelemetryClient from "../resourceTelemetry/NativeTelemetryClient.ts";
 import * as PtyAdapter from "./PtyAdapter.ts";
 
 export {
@@ -91,7 +92,7 @@ class TerminalSubprocessCheckError extends Schema.TaggedErrorClass<TerminalSubpr
   "TerminalSubprocessCheckError",
   {
     cause: Schema.optional(Schema.Defect()),
-    command: Schema.Literals(["windows-process-tree", "ps"]),
+    command: Schema.Literals(["powershell", "ps", "resource-monitor"]),
     exitCode: Schema.optional(Schema.NullOr(Schema.Number)),
     timedOut: Schema.optional(Schema.Boolean),
     stdoutTruncated: Schema.optional(Schema.Boolean),
@@ -626,33 +627,12 @@ interface TerminalProcessTableSnapshot {
   readonly commandById: ReadonlyMap<number, string>;
 }
 
-interface WindowsProcessInfo {
-  readonly pid: number;
-  readonly ppid: number;
-  readonly name: string;
-}
-
-type GetAllWindowsProcesses = (
-  callback: (processes: ReadonlyArray<WindowsProcessInfo>) => void,
-) => void;
-
-const WINDOWS_PROCESS_SNAPSHOT_LIMIT = 1_024;
-
-type WindowsProcessTreeModuleLoader = () => Promise<unknown>;
-
 export function subprocessSnapshotPollDelayMs(
   pollIntervalMs: number,
   failureCount: number,
 ): number {
   return Math.min(pollIntervalMs * 2 ** failureCount, MAX_SUBPROCESS_POLL_INTERVAL_MS);
 }
-
-const loadWindowsProcessTreeModule: WindowsProcessTreeModuleLoader = () => {
-  // This optional native dependency is installed only on Windows. Keeping the
-  // specifier widened lets other platforms typecheck and bundle without it.
-  const packageName: string = "@vscode/windows-process-tree";
-  return import(packageName);
-};
 
 function parsePosixProcessTable(stdout: string): TerminalProcessTableSnapshot {
   const childrenByParent = new Map<number, number[]>();
@@ -673,8 +653,8 @@ function parsePosixProcessTable(stdout: string): TerminalProcessTableSnapshot {
   return { childrenByParent, commandById };
 }
 
-function windowsProcessTableSnapshotFromProcesses(
-  processes: ReadonlyArray<WindowsProcessInfo>,
+function processTableSnapshotFromProcesses(
+  processes: ReadonlyArray<ResourceMonitorProcessTableEntry>,
 ): TerminalProcessTableSnapshot {
   const childrenByParent = new Map<number, number[]>();
   const commandById = new Map<number, string>();
@@ -770,36 +750,48 @@ const posixProcessTableSnapshot = Effect.fn("terminal.posixProcessTableSnapshot"
   return parsePosixProcessTable(result.stdout);
 });
 
-const windowsProcessTableSnapshot = Effect.fn("terminal.windowsProcessTableSnapshot")(function* (
-  loadModule: WindowsProcessTreeModuleLoader = loadWindowsProcessTreeModule,
-): Effect.fn.Return<TerminalProcessTableSnapshot, TerminalSubprocessCheckError> {
-  const processes = yield* Effect.tryPromise({
-    try: async () => {
-      const loaded = await loadModule();
-      if (!Predicate.isObject(loaded) || !Predicate.isFunction(loaded.getAllProcesses)) {
-        throw new TypeError("@vscode/windows-process-tree does not export getAllProcesses");
-      }
-      const getAllProcesses = loaded.getAllProcesses as GetAllWindowsProcesses;
-      const processes = await new Promise<ReadonlyArray<WindowsProcessInfo>>((resolve) =>
-        getAllProcesses(resolve),
+const windowsProcessTableSnapshot = Effect.fn("terminal.windowsProcessTableSnapshot")(
+  function* (): Effect.fn.Return<
+    TerminalProcessTableSnapshot,
+    TerminalSubprocessCheckError,
+    ProcessRunner.ProcessRunner
+  > {
+    const processRunner = yield* ProcessRunner.ProcessRunner;
+    const command =
+      'Get-CimInstance Win32_Process -ErrorAction Stop | ForEach-Object { Write-Output "$($_.ProcessId)|$($_.ParentProcessId)|$($_.Name)" }';
+    const result = yield* processRunner
+      .run({
+        command: "powershell.exe",
+        args: ["-NoProfile", "-NonInteractive", "-Command", command],
+        timeout: "1500 millis",
+        maxOutputBytes: 262_144,
+        outputMode: "truncate",
+        timeoutBehavior: "timedOutResult",
+      })
+      .pipe(
+        Effect.mapError(
+          (cause) => new TerminalSubprocessCheckError({ cause, command: "powershell" }),
+        ),
       );
-      return processes;
-    },
-    catch: (cause) =>
-      new TerminalSubprocessCheckError({
-        cause,
-        command: "windows-process-tree",
-      }),
-  });
-  if (processes.length >= WINDOWS_PROCESS_SNAPSHOT_LIMIT) {
-    // Not authoritative: a capped table would mark live terminals idle.
-    return yield* new TerminalSubprocessCheckError({
-      command: "windows-process-tree",
-      stdoutTruncated: true,
+    if (result.code !== 0 || result.timedOut || result.stdoutTruncated) {
+      return yield* new TerminalSubprocessCheckError({
+        command: "powershell",
+        exitCode: result.code,
+        timedOut: result.timedOut,
+        stdoutTruncated: result.stdoutTruncated,
+      });
+    }
+    const processes = result.stdout.split(/\r?\n/g).flatMap((line) => {
+      const [pidRaw, ppidRaw, name = ""] = line.trim().split("|", 3);
+      const pid = Number(pidRaw);
+      const ppid = Number(ppidRaw);
+      return Number.isInteger(pid) && pid > 0 && Number.isInteger(ppid)
+        ? [{ pid, ppid, name }]
+        : [];
     });
-  }
-  return windowsProcessTableSnapshotFromProcesses(processes);
-});
+    return processTableSnapshotFromProcesses(processes);
+  },
+);
 
 function capHistory(history: string, maxLines: number): string {
   if (history.length === 0) return history;
@@ -1132,7 +1124,10 @@ interface TerminalManagerOptions {
   shellResolver?: () => string;
   env?: NodeJS.ProcessEnv;
   subprocessInspector?: TerminalSubprocessInspector;
-  windowsProcessTreeModuleLoader?: WindowsProcessTreeModuleLoader;
+  processTable?: Effect.Effect<
+    ReadonlyArray<ResourceMonitorProcessTableEntry>,
+    TerminalSubprocessCheckError
+  >;
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
   maxRetainedInactiveSessions?: number;
@@ -1151,9 +1146,15 @@ export const make = Effect.fn("TerminalManager.make")(function* () {
   const { terminalLogsDir } = yield* ServerConfig.ServerConfig;
   const ptyAdapter = yield* PtyAdapter.PtyAdapter;
   const portDiscovery = yield* PortScanner.PortDiscovery;
+  const nativeTelemetry = yield* NativeTelemetryClient.NativeTelemetryClient;
   return yield* makeWithOptions({
     logsDir: terminalLogsDir,
     ptyAdapter,
+    processTable: nativeTelemetry.processTable.pipe(
+      Effect.mapError(
+        (cause) => new TerminalSubprocessCheckError({ cause, command: "resource-monitor" }),
+      ),
+    ),
     registerTerminalProcesses: portDiscovery.registerTerminalProcesses,
     unregisterTerminal: portDiscovery.unregisterTerminal,
   });
@@ -1180,11 +1181,17 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   // One process-table snapshot per poll tick, shared across every terminal.
   // Per-terminal `pgrep`/`ps` calls multiply spawn load by terminal count and
   // can exhaust the PID space on hosts with many sessions (#6332).
-  const fetchProcessTableSnapshot = (
+  const fallbackProcessTableSnapshot = (
     platform === "win32"
-      ? windowsProcessTableSnapshot(options.windowsProcessTreeModuleLoader)
+      ? windowsProcessTableSnapshot()
       : posixProcessTableSnapshot(yield* resolvePosixPsCommand())
   ).pipe(Effect.provideService(ProcessRunner.ProcessRunner, processRunner));
+  const fetchProcessTableSnapshot = options.processTable
+    ? options.processTable.pipe(
+        Effect.map(processTableSnapshotFromProcesses),
+        Effect.catch(() => fallbackProcessTableSnapshot),
+      )
+    : fallbackProcessTableSnapshot;
   const customSubprocessInspector = options.subprocessInspector;
   const acquireSubprocessInspector: Effect.Effect<
     TerminalSubprocessInspector,

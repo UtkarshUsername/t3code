@@ -210,7 +210,10 @@ interface CreateManagerOptions {
     readonly childCommand: string | null;
     readonly processIds: ReadonlyArray<number>;
   }>;
-  windowsProcessTreeModuleLoader?: () => Promise<unknown>;
+  processTable?: Effect.Effect<
+    ReadonlyArray<{ readonly pid: number; readonly ppid: number; readonly name: string }>,
+    never
+  >;
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
   maxRetainedInactiveSessions?: number;
@@ -249,9 +252,7 @@ const createManager = (
         ...(options.subprocessInspector !== undefined
           ? { subprocessInspector: options.subprocessInspector }
           : {}),
-        ...(options.windowsProcessTreeModuleLoader !== undefined
-          ? { windowsProcessTreeModuleLoader: options.windowsProcessTreeModuleLoader }
-          : {}),
+        ...(options.processTable !== undefined ? { processTable: options.processTable } : {}),
         ...(options.subprocessPollIntervalMs !== undefined
           ? { subprocessPollIntervalMs: options.subprocessPollIntervalMs }
           : {}),
@@ -1084,31 +1085,15 @@ it.layer(
     assert.equal(TerminalManager.subprocessSnapshotPollDelayMs(1_000, 30), 60_000);
   });
 
-  it.effect("loads Windows process snapshots through the injectable module boundary", () =>
+  it.effect("uses process snapshots from the resource monitor", () =>
     Effect.gen(function* () {
-      let loadCalls = 0;
-      let returnCappedSnapshot = false;
+      let snapshotCalls = 0;
       const { manager, getEvents } = yield* createManager(5, {
         subprocessPollIntervalMs: 20,
-        windowsProcessTreeModuleLoader: async () => {
-          loadCalls += 1;
-          return {
-            getAllProcesses: (
-              callback: (
-                processes: ReadonlyArray<{ pid: number; ppid: number; name: string }>,
-              ) => void,
-            ) =>
-              callback(
-                returnCappedSnapshot
-                  ? Array.from({ length: 1_024 }, (_, pid) => ({
-                      pid,
-                      ppid: 0,
-                      name: "process.exe",
-                    }))
-                  : [{ pid: 100, ppid: 9000, name: "ping.exe" }],
-              ),
-          };
-        },
+        processTable: Effect.sync(() => {
+          snapshotCalls += 1;
+          return [{ pid: 100, ppid: 9000, name: "ping.exe" }];
+        }),
       }).pipe(Effect.provide(withHostPlatform("win32")));
 
       yield* manager.open(openInput());
@@ -1121,18 +1106,7 @@ it.layer(
         ),
         "1200 millis",
       );
-      expect(loadCalls).toBeGreaterThan(0);
-
-      const successfulLoadCalls = loadCalls;
-      returnCappedSnapshot = true;
-      yield* waitFor(
-        Effect.sync(() => loadCalls >= successfulLoadCalls + 3),
-        "1200 millis",
-      );
-
-      const activityEvents = (yield* getEvents).filter((event) => event.type === "activity");
-      expect(activityEvents.length).toBeGreaterThan(0);
-      expect(activityEvents.every((event) => event.hasRunningSubprocess === true)).toBe(true);
+      expect(snapshotCalls).toBeGreaterThan(0);
     }),
   );
 

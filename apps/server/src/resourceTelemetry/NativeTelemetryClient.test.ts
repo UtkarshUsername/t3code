@@ -83,13 +83,17 @@ describe("canCommandNativeTelemetrySidecar", () => {
 });
 
 describe("NativeTelemetryRequestTimedOut", () => {
-  it("models history and sample request deadlines without a fabricated cause", () => {
+  it("models request deadlines without a fabricated cause", () => {
     const historyTimeout = new NativeTelemetryRequestTimedOut({
       operation: "readHistory",
       timeoutMs: 15_000,
     });
     const sampleTimeout = new NativeTelemetryRequestTimedOut({
       operation: "sampleNow",
+      timeoutMs: 5_000,
+    });
+    const processTableTimeout = new NativeTelemetryRequestTimedOut({
+      operation: "processTable",
       timeoutMs: 5_000,
     });
 
@@ -99,8 +103,12 @@ describe("NativeTelemetryRequestTimedOut", () => {
     expect(sampleTimeout.message).toBe(
       "Resource monitor 'sampleNow' request timed out after 5000ms.",
     );
+    expect(processTableTimeout.message).toBe(
+      "Resource monitor 'processTable' request timed out after 5000ms.",
+    );
     expect("cause" in historyTimeout).toBe(false);
     expect("cause" in sampleTimeout).toBe(false);
+    expect("cause" in processTableTimeout).toBe(false);
   });
 });
 

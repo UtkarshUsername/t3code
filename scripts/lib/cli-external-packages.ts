@@ -27,7 +27,6 @@
  */
 export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   "node-pty",
-  "@vscode/windows-process-tree",
   "ffi-rs",
   "@yuuang/",
   "@ff-labs/",
