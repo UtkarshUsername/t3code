@@ -636,6 +636,22 @@ type GetAllWindowsProcesses = (
   callback: (processes: ReadonlyArray<WindowsProcessInfo>) => void,
 ) => void;
 
+type WindowsProcessTreeModuleLoader = () => Promise<unknown>;
+
+export function subprocessSnapshotPollDelayMs(
+  pollIntervalMs: number,
+  failureCount: number,
+): number {
+  return Math.min(pollIntervalMs * 2 ** failureCount, MAX_SUBPROCESS_POLL_INTERVAL_MS);
+}
+
+const loadWindowsProcessTreeModule: WindowsProcessTreeModuleLoader = () => {
+  // This optional native dependency is installed only on Windows. Keeping the
+  // specifier widened lets other platforms typecheck and bundle without it.
+  const packageName: string = "@vscode/windows-process-tree";
+  return import(packageName);
+};
+
 function parsePosixProcessTable(stdout: string): TerminalProcessTableSnapshot {
   const childrenByParent = new Map<number, number[]>();
   const commandById = new Map<number, string>();
@@ -752,29 +768,26 @@ const posixProcessTableSnapshot = Effect.fn("terminal.posixProcessTableSnapshot"
   return parsePosixProcessTable(result.stdout);
 });
 
-const windowsProcessTableSnapshot = Effect.fn("terminal.windowsProcessTableSnapshot")(
-  function* (): Effect.fn.Return<TerminalProcessTableSnapshot, TerminalSubprocessCheckError> {
-    const processes = yield* Effect.tryPromise({
-      try: async () => {
-        const packageName: string = "@vscode/windows-process-tree";
-        const loaded: unknown = await import(packageName);
-        if (!Predicate.isObject(loaded) || !Predicate.isFunction(loaded.getAllProcesses)) {
-          throw new TypeError(`${packageName} does not export getAllProcesses`);
-        }
-        const getAllProcesses = loaded.getAllProcesses as GetAllWindowsProcesses;
-        return new Promise<ReadonlyArray<WindowsProcessInfo>>((resolve) =>
-          getAllProcesses(resolve),
-        );
-      },
-      catch: (cause) =>
-        new TerminalSubprocessCheckError({
-          cause,
-          command: "windows-process-tree",
-        }),
-    });
-    return windowsProcessTableSnapshotFromProcesses(processes);
-  },
-);
+const windowsProcessTableSnapshot = Effect.fn("terminal.windowsProcessTableSnapshot")(function* (
+  loadModule: WindowsProcessTreeModuleLoader = loadWindowsProcessTreeModule,
+): Effect.fn.Return<TerminalProcessTableSnapshot, TerminalSubprocessCheckError> {
+  const processes = yield* Effect.tryPromise({
+    try: async () => {
+      const loaded = await loadModule();
+      if (!Predicate.isObject(loaded) || !Predicate.isFunction(loaded.getAllProcesses)) {
+        throw new TypeError("@vscode/windows-process-tree does not export getAllProcesses");
+      }
+      const getAllProcesses = loaded.getAllProcesses as GetAllWindowsProcesses;
+      return new Promise<ReadonlyArray<WindowsProcessInfo>>((resolve) => getAllProcesses(resolve));
+    },
+    catch: (cause) =>
+      new TerminalSubprocessCheckError({
+        cause,
+        command: "windows-process-tree",
+      }),
+  });
+  return windowsProcessTableSnapshotFromProcesses(processes);
+});
 
 function capHistory(history: string, maxLines: number): string {
   if (history.length === 0) return history;
@@ -1107,6 +1120,7 @@ interface TerminalManagerOptions {
   shellResolver?: () => string;
   env?: NodeJS.ProcessEnv;
   subprocessInspector?: TerminalSubprocessInspector;
+  windowsProcessTreeModuleLoader?: WindowsProcessTreeModuleLoader;
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
   maxRetainedInactiveSessions?: number;
@@ -1156,7 +1170,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   // can exhaust the PID space on hosts with many sessions (#6332).
   const fetchProcessTableSnapshot = (
     platform === "win32"
-      ? windowsProcessTableSnapshot()
+      ? windowsProcessTableSnapshot(options.windowsProcessTreeModuleLoader)
       : posixProcessTableSnapshot(yield* resolvePosixPsCommand())
   ).pipe(Effect.provideService(ProcessRunner.ProcessRunner, processRunner));
   const customSubprocessInspector = options.subprocessInspector;
@@ -2104,9 +2118,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
                 subprocessSnapshotFailureCount = snapshotSucceeded
                   ? 0
                   : Math.min(subprocessSnapshotFailureCount + 1, 30);
-                const delayMs = Math.min(
-                  subprocessPollIntervalMs * 2 ** subprocessSnapshotFailureCount,
-                  MAX_SUBPROCESS_POLL_INTERVAL_MS,
+                const delayMs = subprocessSnapshotPollDelayMs(
+                  subprocessPollIntervalMs,
+                  subprocessSnapshotFailureCount,
                 );
                 return Effect.sleep(delayMs);
               }),

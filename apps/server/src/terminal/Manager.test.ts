@@ -210,6 +210,7 @@ interface CreateManagerOptions {
     readonly childCommand: string | null;
     readonly processIds: ReadonlyArray<number>;
   }>;
+  windowsProcessTreeModuleLoader?: () => Promise<unknown>;
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
   maxRetainedInactiveSessions?: number;
@@ -247,6 +248,9 @@ const createManager = (
         ...(options.env !== undefined ? { env: options.env } : {}),
         ...(options.subprocessInspector !== undefined
           ? { subprocessInspector: options.subprocessInspector }
+          : {}),
+        ...(options.windowsProcessTreeModuleLoader !== undefined
+          ? { windowsProcessTreeModuleLoader: options.windowsProcessTreeModuleLoader }
           : {}),
         ...(options.subprocessPollIntervalMs !== undefined
           ? { subprocessPollIntervalMs: options.subprocessPollIntervalMs }
@@ -1070,6 +1074,44 @@ it.layer(
       const activityEvents = (yield* getEvents).filter((event) => event.type === "activity");
       expect(activityEvents.length).toBeGreaterThan(0);
       expect(activityEvents.every((event) => event.hasRunningSubprocess === true)).toBe(true);
+    }),
+  );
+
+  it("calculates snapshot failure backoff and success reset delays", () => {
+    assert.equal(TerminalManager.subprocessSnapshotPollDelayMs(1_000, 0), 1_000);
+    assert.equal(TerminalManager.subprocessSnapshotPollDelayMs(1_000, 1), 2_000);
+    assert.equal(TerminalManager.subprocessSnapshotPollDelayMs(1_000, 2), 4_000);
+    assert.equal(TerminalManager.subprocessSnapshotPollDelayMs(1_000, 30), 60_000);
+  });
+
+  it.effect("loads Windows process snapshots through the injectable module boundary", () =>
+    Effect.gen(function* () {
+      let loadCalls = 0;
+      const { manager, getEvents } = yield* createManager(5, {
+        subprocessPollIntervalMs: 20,
+        windowsProcessTreeModuleLoader: async () => {
+          loadCalls += 1;
+          return {
+            getAllProcesses: (
+              callback: (
+                processes: ReadonlyArray<{ pid: number; ppid: number; name: string }>,
+              ) => void,
+            ) => callback([{ pid: 100, ppid: 9000, name: "ping.exe" }]),
+          };
+        },
+      }).pipe(Effect.provide(withHostPlatform("win32")));
+
+      yield* manager.open(openInput());
+      yield* waitFor(
+        Effect.map(getEvents, (events) =>
+          events.some(
+            (event) =>
+              event.type === "activity" && event.hasRunningSubprocess && event.label === "ping",
+          ),
+        ),
+        "1200 millis",
+      );
+      expect(loadCalls).toBeGreaterThan(0);
     }),
   );
 
