@@ -6,7 +6,6 @@
  *
  * @module TerminalManager
  */
-import type { IProcessInfo } from "@vscode/windows-process-tree";
 import {
   DEFAULT_TERMINAL_ID,
   TerminalCwdError,
@@ -47,6 +46,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -626,6 +626,16 @@ interface TerminalProcessTableSnapshot {
   readonly commandById: ReadonlyMap<number, string>;
 }
 
+interface WindowsProcessInfo {
+  readonly pid: number;
+  readonly ppid: number;
+  readonly name: string;
+}
+
+type GetAllWindowsProcesses = (
+  callback: (processes: ReadonlyArray<WindowsProcessInfo>) => void,
+) => void;
+
 function parsePosixProcessTable(stdout: string): TerminalProcessTableSnapshot {
   const childrenByParent = new Map<number, number[]>();
   const commandById = new Map<number, string>();
@@ -646,7 +656,7 @@ function parsePosixProcessTable(stdout: string): TerminalProcessTableSnapshot {
 }
 
 function windowsProcessTableSnapshotFromProcesses(
-  processes: ReadonlyArray<IProcessInfo>,
+  processes: ReadonlyArray<WindowsProcessInfo>,
 ): TerminalProcessTableSnapshot {
   const childrenByParent = new Map<number, number[]>();
   const commandById = new Map<number, string>();
@@ -746,8 +756,15 @@ const windowsProcessTableSnapshot = Effect.fn("terminal.windowsProcessTableSnaps
   function* (): Effect.fn.Return<TerminalProcessTableSnapshot, TerminalSubprocessCheckError> {
     const processes = yield* Effect.tryPromise({
       try: async () => {
-        const { getAllProcesses } = await import("@vscode/windows-process-tree");
-        return new Promise<ReadonlyArray<IProcessInfo>>((resolve) => getAllProcesses(resolve));
+        const packageName: string = "@vscode/windows-process-tree";
+        const loaded: unknown = await import(packageName);
+        if (!Predicate.isObject(loaded) || !Predicate.isFunction(loaded.getAllProcesses)) {
+          throw new TypeError(`${packageName} does not export getAllProcesses`);
+        }
+        const getAllProcesses = loaded.getAllProcesses as GetAllWindowsProcesses;
+        return new Promise<ReadonlyArray<WindowsProcessInfo>>((resolve) =>
+          getAllProcesses(resolve),
+        );
       },
       catch: (cause) =>
         new TerminalSubprocessCheckError({
