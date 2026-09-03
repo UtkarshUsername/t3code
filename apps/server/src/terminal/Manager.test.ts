@@ -1087,6 +1087,7 @@ it.layer(
   it.effect("loads Windows process snapshots through the injectable module boundary", () =>
     Effect.gen(function* () {
       let loadCalls = 0;
+      let returnCappedSnapshot = false;
       const { manager, getEvents } = yield* createManager(5, {
         subprocessPollIntervalMs: 20,
         windowsProcessTreeModuleLoader: async () => {
@@ -1096,7 +1097,16 @@ it.layer(
               callback: (
                 processes: ReadonlyArray<{ pid: number; ppid: number; name: string }>,
               ) => void,
-            ) => callback([{ pid: 100, ppid: 9000, name: "ping.exe" }]),
+            ) =>
+              callback(
+                returnCappedSnapshot
+                  ? Array.from({ length: 1_024 }, (_, pid) => ({
+                      pid,
+                      ppid: 0,
+                      name: "process.exe",
+                    }))
+                  : [{ pid: 100, ppid: 9000, name: "ping.exe" }],
+              ),
           };
         },
       }).pipe(Effect.provide(withHostPlatform("win32")));
@@ -1112,6 +1122,17 @@ it.layer(
         "1200 millis",
       );
       expect(loadCalls).toBeGreaterThan(0);
+
+      const successfulLoadCalls = loadCalls;
+      returnCappedSnapshot = true;
+      yield* waitFor(
+        Effect.sync(() => loadCalls >= successfulLoadCalls + 3),
+        "1200 millis",
+      );
+
+      const activityEvents = (yield* getEvents).filter((event) => event.type === "activity");
+      expect(activityEvents.length).toBeGreaterThan(0);
+      expect(activityEvents.every((event) => event.hasRunningSubprocess === true)).toBe(true);
     }),
   );
 

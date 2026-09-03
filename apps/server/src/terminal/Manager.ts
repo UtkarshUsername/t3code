@@ -636,6 +636,8 @@ type GetAllWindowsProcesses = (
   callback: (processes: ReadonlyArray<WindowsProcessInfo>) => void,
 ) => void;
 
+const WINDOWS_PROCESS_SNAPSHOT_LIMIT = 1_024;
+
 type WindowsProcessTreeModuleLoader = () => Promise<unknown>;
 
 export function subprocessSnapshotPollDelayMs(
@@ -778,7 +780,13 @@ const windowsProcessTableSnapshot = Effect.fn("terminal.windowsProcessTableSnaps
         throw new TypeError("@vscode/windows-process-tree does not export getAllProcesses");
       }
       const getAllProcesses = loaded.getAllProcesses as GetAllWindowsProcesses;
-      return new Promise<ReadonlyArray<WindowsProcessInfo>>((resolve) => getAllProcesses(resolve));
+      const processes = await new Promise<ReadonlyArray<WindowsProcessInfo>>((resolve) =>
+        getAllProcesses(resolve),
+      );
+      if (processes.length >= WINDOWS_PROCESS_SNAPSHOT_LIMIT) {
+        throw new Error("Windows process snapshot reached the native enumeration limit");
+      }
+      return processes;
     },
     catch: (cause) =>
       new TerminalSubprocessCheckError({
