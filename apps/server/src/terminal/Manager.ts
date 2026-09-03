@@ -783,9 +783,6 @@ const windowsProcessTableSnapshot = Effect.fn("terminal.windowsProcessTableSnaps
       const processes = await new Promise<ReadonlyArray<WindowsProcessInfo>>((resolve) =>
         getAllProcesses(resolve),
       );
-      if (processes.length >= WINDOWS_PROCESS_SNAPSHOT_LIMIT) {
-        throw new Error("Windows process snapshot reached the native enumeration limit");
-      }
       return processes;
     },
     catch: (cause) =>
@@ -794,6 +791,13 @@ const windowsProcessTableSnapshot = Effect.fn("terminal.windowsProcessTableSnaps
         command: "windows-process-tree",
       }),
   });
+  if (processes.length >= WINDOWS_PROCESS_SNAPSHOT_LIMIT) {
+    // Not authoritative: a capped table would mark live terminals idle.
+    return yield* new TerminalSubprocessCheckError({
+      command: "windows-process-tree",
+      stdoutTruncated: true,
+    });
+  }
   return windowsProcessTableSnapshotFromProcesses(processes);
 });
 
