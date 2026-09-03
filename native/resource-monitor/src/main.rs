@@ -384,13 +384,23 @@ impl Collector {
             .system
             .processes()
             .iter()
-            .map(|(pid, process)| ProcessTableEntry {
-                pid: pid.as_u32(),
-                ppid: process.parent().map(Pid::as_u32).unwrap_or(0),
-                name: truncate_utf8(
-                    process.name().to_string_lossy().into_owned(),
-                    MAX_PROCESS_NAME_BYTES,
-                ),
+            .filter_map(|(pid, process)| {
+                let pid = pid.as_u32();
+                // Pid 0 is the kernel idle process on some platforms. The
+                // processTable contract requires positive pids, and one zero
+                // would fail the whole event decode on the server, so drop it
+                // here. It can never be a terminal descendant.
+                if pid == 0 {
+                    return None;
+                }
+                Some(ProcessTableEntry {
+                    pid,
+                    ppid: process.parent().map(Pid::as_u32).unwrap_or(0),
+                    name: truncate_utf8(
+                        process.name().to_string_lossy().into_owned(),
+                        MAX_PROCESS_NAME_BYTES,
+                    ),
+                })
             })
             .collect::<Vec<_>>();
         processes.sort_by_key(|process| process.pid);

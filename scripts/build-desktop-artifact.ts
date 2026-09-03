@@ -3259,24 +3259,8 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
         cause,
       }),
   });
-  const resolvedServerOptionalDependencies = yield* Effect.try({
-    try: () =>
-      resolveCatalogDependencies(
-        serverPackageJson.optionalDependencies ?? {},
-        workspaceCatalog,
-        "apps/server",
-      ),
-    catch: (cause) =>
-      new DesktopBuildDependencyResolutionError({
-        kind: "server-production",
-        manifestPath: "apps/server/package.json",
-        cause,
-      }),
-  });
   const resolvedServerRuntimeExternalDependencies = selectCliRuntimeExternalDependencies(
-    options.platform === "win"
-      ? { ...resolvedServerDependencies, ...resolvedServerOptionalDependencies }
-      : resolvedServerDependencies,
+    resolvedServerDependencies,
   );
   const resolvedDesktopRuntimeDependencies = yield* Effect.try({
     try: () => resolveDesktopRuntimeDependencies(desktopPackageJson.dependencies, workspaceCatalog),
