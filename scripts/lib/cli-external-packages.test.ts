@@ -44,6 +44,7 @@ describe("shouldBundleCliDependency", () => {
   it("leaves native addons and their dlopen wrappers external", () => {
     for (const id of [
       "node-pty",
+      "@vscode/windows-process-tree",
       "ffi-rs",
       "@yuuang/ffi-rs-win32-x64-msvc",
       "@ff-labs/fff-node",
@@ -76,18 +77,25 @@ describe("selectCliRuntimeExternalDependencies", () => {
         "@ff-labs/fff-node": "2.0.0",
         effect: "3.0.0",
         "node-pty": "4.0.0",
+        "@vscode/windows-process-tree": "0.8.0",
       }),
       {
         "@ff-labs/fff-node": "2.0.0",
         "node-pty": "4.0.0",
+        "@vscode/windows-process-tree": "0.8.0",
       },
     );
   });
 
   it("selects every external root declared by the server", () => {
     assert.deepStrictEqual(
-      Object.keys(selectCliRuntimeExternalDependencies(serverPackageJson.dependencies)).sort(),
-      ["@ff-labs/fff-node", "msgpackr-extract", "node-pty"],
+      Object.keys(
+        selectCliRuntimeExternalDependencies({
+          ...serverPackageJson.dependencies,
+          ...serverPackageJson.optionalDependencies,
+        }),
+      ).sort(),
+      ["@ff-labs/fff-node", "@vscode/windows-process-tree", "msgpackr-extract", "node-pty"],
     );
   });
 });

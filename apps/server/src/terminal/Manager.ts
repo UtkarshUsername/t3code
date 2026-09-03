@@ -6,6 +6,7 @@
  *
  * @module TerminalManager
  */
+import type { IProcessInfo } from "@vscode/windows-process-tree";
 import {
   DEFAULT_TERMINAL_ID,
   TerminalCwdError,
@@ -77,6 +78,7 @@ export {
 const DEFAULT_HISTORY_LINE_LIMIT = 5_000;
 const DEFAULT_PERSIST_DEBOUNCE_MS = 40;
 const DEFAULT_SUBPROCESS_POLL_INTERVAL_MS = 1_000;
+const MAX_SUBPROCESS_POLL_INTERVAL_MS = 60_000;
 const DEFAULT_PROCESS_KILL_GRACE_MS = 1_000;
 const DEFAULT_MAX_RETAINED_INACTIVE_SESSIONS = 128;
 const DEFAULT_OPEN_COLS = 120;
@@ -89,7 +91,7 @@ class TerminalSubprocessCheckError extends Schema.TaggedErrorClass<TerminalSubpr
   "TerminalSubprocessCheckError",
   {
     cause: Schema.optional(Schema.Defect()),
-    command: Schema.Literals(["powershell", "ps"]),
+    command: Schema.Literals(["windows-process-tree", "ps"]),
     exitCode: Schema.optional(Schema.NullOr(Schema.Number)),
     timedOut: Schema.optional(Schema.Boolean),
     stdoutTruncated: Schema.optional(Schema.Boolean),
@@ -643,15 +645,15 @@ function parsePosixProcessTable(stdout: string): TerminalProcessTableSnapshot {
   return { childrenByParent, commandById };
 }
 
-function parseWindowsProcessTable(stdout: string): TerminalProcessTableSnapshot {
+function windowsProcessTableSnapshotFromProcesses(
+  processes: ReadonlyArray<IProcessInfo>,
+): TerminalProcessTableSnapshot {
   const childrenByParent = new Map<number, number[]>();
   const commandById = new Map<number, string>();
-  for (const line of stdout.split(/\r?\n/g)) {
-    const [pidRaw, parentPidRaw, nameRaw] = line.trim().split("|", 3);
-    const pid = Number(pidRaw);
-    const parentPid = Number(parentPidRaw);
+  for (const process of processes) {
+    const { pid, ppid: parentPid, name } = process;
     if (!Number.isInteger(pid) || !Number.isInteger(parentPid)) continue;
-    commandById.set(pid, nameRaw?.trim() ?? "");
+    commandById.set(pid, name.trim());
     const children = childrenByParent.get(parentPid) ?? [];
     children.push(pid);
     childrenByParent.set(parentPid, children);
@@ -741,46 +743,19 @@ const posixProcessTableSnapshot = Effect.fn("terminal.posixProcessTableSnapshot"
 });
 
 const windowsProcessTableSnapshot = Effect.fn("terminal.windowsProcessTableSnapshot")(
-  function* (): Effect.fn.Return<
-    TerminalProcessTableSnapshot,
-    TerminalSubprocessCheckError,
-    ProcessRunner.ProcessRunner
-  > {
-    const command =
-      'Get-CimInstance Win32_Process -ErrorAction Stop | ForEach-Object { Write-Output "$($_.ProcessId)|$($_.ParentProcessId)|$($_.Name)" }';
-    const processRunner = yield* ProcessRunner.ProcessRunner;
-    const result = yield* processRunner
-      .run({
-        // powershell.exe is a real executable — never spawn it through cmd.exe
-        // shell mode, which would re-tokenize the `-Command` payload (pipes,
-        // semicolons) before PowerShell ever sees it.
-        command: "powershell.exe",
-        args: ["-NoProfile", "-NonInteractive", "-Command", command],
-        timeout: "1500 millis",
-        maxOutputBytes: 262_144,
-        outputMode: "truncate",
-        timeoutBehavior: "timedOutResult",
-      })
-      .pipe(
-        Effect.mapError(
-          (cause) =>
-            new TerminalSubprocessCheckError({
-              cause,
-              command: "powershell",
-            }),
-        ),
-      );
-    if (result.code !== 0 || result.timedOut || result.stdoutTruncated) {
-      // Not authoritative: an empty or partial table would mark every terminal
-      // idle and clear its registered process ids. Failing skips the tick.
-      return yield* new TerminalSubprocessCheckError({
-        command: "powershell",
-        exitCode: result.code,
-        timedOut: result.timedOut,
-        stdoutTruncated: result.stdoutTruncated,
-      });
-    }
-    return parseWindowsProcessTable(result.stdout);
+  function* (): Effect.fn.Return<TerminalProcessTableSnapshot, TerminalSubprocessCheckError> {
+    const processes = yield* Effect.tryPromise({
+      try: async () => {
+        const { getAllProcesses } = await import("@vscode/windows-process-tree");
+        return new Promise<ReadonlyArray<IProcessInfo>>((resolve) => getAllProcesses(resolve));
+      },
+      catch: (cause) =>
+        new TerminalSubprocessCheckError({
+          cause,
+          command: "windows-process-tree",
+        }),
+    });
+    return windowsProcessTableSnapshotFromProcesses(processes);
   },
 );
 
@@ -2008,7 +1983,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     );
 
     if (runningSessions.length === 0) {
-      return;
+      return true;
     }
 
     const inspectorOption = yield* acquireSubprocessInspector.pipe(
@@ -2021,7 +1996,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     );
 
     if (Option.isNone(inspectorOption)) {
-      return;
+      return false;
     }
 
     const subprocessInspector = inspectorOption.value;
@@ -2093,6 +2068,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       concurrency: "unbounded",
       discard: true,
     });
+    return true;
   });
 
   const hasRunningSessions = readManagerState.pipe(
@@ -2101,14 +2077,26 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     ),
   );
 
+  let subprocessSnapshotFailureCount = 0;
   yield* Effect.forever(
     hasRunningSessions.pipe(
       Effect.flatMap((active) =>
         active
           ? pollSubprocessActivity().pipe(
-              Effect.flatMap(() => Effect.sleep(subprocessPollIntervalMs)),
+              Effect.flatMap((snapshotSucceeded) => {
+                subprocessSnapshotFailureCount = snapshotSucceeded
+                  ? 0
+                  : Math.min(subprocessSnapshotFailureCount + 1, 30);
+                const delayMs = Math.min(
+                  subprocessPollIntervalMs * 2 ** subprocessSnapshotFailureCount,
+                  MAX_SUBPROCESS_POLL_INTERVAL_MS,
+                );
+                return Effect.sleep(delayMs);
+              }),
             )
-          : Effect.sleep(subprocessPollIntervalMs),
+          : Effect.sync(() => {
+              subprocessSnapshotFailureCount = 0;
+            }).pipe(Effect.flatMap(() => Effect.sleep(subprocessPollIntervalMs))),
       ),
     ),
   ).pipe(Effect.forkIn(workerScope));
