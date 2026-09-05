@@ -591,6 +591,7 @@ export class GhosttyTerminalSurface {
   private mouseReportingPointerId: number | null = null;
   private mouseReportingButton: number | null = null;
   private linkActivationPointerId: number | null = null;
+  private linkActivationOrigin: { x: number; y: number; time: number } | null = null;
   private hoveredLink: TerminalLinkWithRange | null = null;
   private hoverPointer: { x: number; y: number } | null = null;
   private selectionClickSequence: TerminalSelectionClickSequence | null = null;
@@ -1263,10 +1264,20 @@ export class GhosttyTerminalSurface {
       event.preventDefault();
       event.stopPropagation();
       this.linkActivationPointerId = event.pointerId;
+      this.linkActivationOrigin = {
+        x: event.clientX,
+        y: event.clientY,
+        time: event.timeStamp,
+      };
       this.canvas.setPointerCapture(event.pointerId);
       return;
     }
     this.clearHoveredLink();
+    this.beginSelection(event);
+    this.canvas.setPointerCapture(event.pointerId);
+  };
+
+  private beginSelection(event: { clientX: number; clientY: number; timeStamp: number }): void {
     const cell = this.cellAt(event.clientX, event.clientY);
     this.selectionMoved = false;
     this.selectionClickSequence = advanceTerminalSelectionClickSequence(
@@ -1301,12 +1312,22 @@ export class GhosttyTerminalSurface {
       }
     }
     this.forceFullRender = true;
-    this.canvas.setPointerCapture(event.pointerId);
     this.requestRender();
-  };
+  }
 
   private readonly onPointerMove = (event: PointerEvent) => {
-    if (this.linkActivationPointerId === event.pointerId) return;
+    if (this.linkActivationPointerId === event.pointerId) {
+      const origin = this.linkActivationOrigin;
+      if (origin === null || (event.clientX === origin.x && event.clientY === origin.y)) return;
+      this.linkActivationPointerId = null;
+      this.linkActivationOrigin = null;
+      this.clearHoveredLink();
+      this.beginSelection({
+        clientX: origin.x,
+        clientY: origin.y,
+        timeStamp: origin.time,
+      });
+    }
     // Hover motion is only reportable in any-event tracking (DEC 1003); normal and
     // button-event tracking never report motion without a captured pressed button.
     const anyEventTracking = this.synchronizeMouseTrackingState();
@@ -1431,6 +1452,7 @@ export class GhosttyTerminalSurface {
       event.preventDefault();
       event.stopPropagation();
       this.linkActivationPointerId = null;
+      this.linkActivationOrigin = null;
       if (this.canvas.hasPointerCapture(event.pointerId)) {
         this.canvas.releasePointerCapture(event.pointerId);
       }
