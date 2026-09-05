@@ -475,15 +475,6 @@ export function terminalWheelArrowData(rows: number, applicationCursorKeys: bool
   return sequence.repeat(Math.abs(rows));
 }
 
-export function isTerminalLinkPointerGesture(
-  event: Pick<MouseEvent, "ctrlKey" | "metaKey">,
-  platform = navigator.platform,
-): boolean {
-  return isMacPlatform(platform)
-    ? event.metaKey && !event.ctrlKey
-    : event.ctrlKey && !event.metaKey;
-}
-
 export function ghosttyMouseButton(button: number): number | null {
   switch (button) {
     case 0:
@@ -602,7 +593,6 @@ export class GhosttyTerminalSurface {
   private linkActivationPointerId: number | null = null;
   private hoveredLink: TerminalLinkWithRange | null = null;
   private hoverPointer: { x: number; y: number } | null = null;
-  private linkModifierActive = false;
   private selectionClickSequence: TerminalSelectionClickSequence | null = null;
   private selectionMoved = false;
   private composing = false;
@@ -1026,7 +1016,6 @@ export class GhosttyTerminalSurface {
   }
 
   private readonly onKeyDown = (event: KeyboardEvent) => {
-    this.updateLinkModifier(event);
     // Presses handled outside the terminal must also swallow their release:
     // beforeKey runs side effects (keybindings, navigation sends), so it cannot
     // be consulted again on keyup, and Kitty report-event-types sessions would
@@ -1129,7 +1118,6 @@ export class GhosttyTerminalSurface {
   };
 
   private readonly onKeyUp = (event: KeyboardEvent) => {
-    this.updateLinkModifier(event);
     if (this.suppressedKeyCodes.delete(event.code)) return;
     if (isTerminalCompositionKey(event, this.composing)) {
       return;
@@ -1151,7 +1139,6 @@ export class GhosttyTerminalSurface {
 
   private readonly onBlur = () => {
     this.focused = false;
-    this.linkModifierActive = false;
     this.refreshHoveredLink();
     // Suppressions survive blur deliberately: a shortcut that moves focus (for
     // example terminal-toggle) must still swallow its own keyup if focus comes
@@ -1272,7 +1259,7 @@ export class GhosttyTerminalSurface {
       return;
     }
     if (event.button !== 0) return;
-    if (isTerminalLinkPointerGesture(event)) {
+    if (this.linkAt(event.clientX, event.clientY)) {
       event.preventDefault();
       event.stopPropagation();
       this.linkActivationPointerId = event.pointerId;
@@ -1329,7 +1316,6 @@ export class GhosttyTerminalSurface {
     ) {
       event.preventDefault();
       this.hoverPointer = { x: event.clientX, y: event.clientY };
-      this.linkModifierActive = isTerminalLinkPointerGesture(event);
       // A drag whose press was already sent to the terminal application cannot
       // turn into link activation midway through, so link feedback would lie.
       this.setHoveredLink(null);
@@ -1404,14 +1390,6 @@ export class GhosttyTerminalSurface {
 
   private updateHoverCursor(event: PointerEvent): void {
     this.hoverPointer = { x: event.clientX, y: event.clientY };
-    this.linkModifierActive = isTerminalLinkPointerGesture(event);
-    this.refreshHoveredLink();
-  }
-
-  private updateLinkModifier(event: Pick<KeyboardEvent, "ctrlKey" | "metaKey">): void {
-    const active = isTerminalLinkPointerGesture(event);
-    if (active === this.linkModifierActive) return;
-    this.linkModifierActive = active;
     this.refreshHoveredLink();
   }
 
@@ -1428,7 +1406,7 @@ export class GhosttyTerminalSurface {
 
   private refreshHoveredLink(): void {
     const pointer = this.hoverPointer;
-    const link = pointer && this.linkModifierActive ? this.linkAt(pointer.x, pointer.y) : null;
+    const link = pointer ? this.linkAt(pointer.x, pointer.y) : null;
     this.setHoveredLink(link);
   }
 
@@ -1475,7 +1453,6 @@ export class GhosttyTerminalSurface {
         this.clearHoveredLink();
       } else {
         this.hoverPointer = { x: event.clientX, y: event.clientY };
-        this.linkModifierActive = isTerminalLinkPointerGesture(event);
         this.refreshHoveredLink();
       }
       return;
