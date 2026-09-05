@@ -5,6 +5,7 @@ import * as HttpApi from "effect/unstable/httpapi/HttpApi";
 import * as HttpApiEndpoint from "effect/unstable/httpapi/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/unstable/httpapi/HttpApiGroup";
 import * as HttpApiMiddleware from "effect/unstable/httpapi/HttpApiMiddleware";
+import * as HttpApiSchema from "effect/unstable/httpapi/HttpApiSchema";
 import * as HttpServerRespondable from "effect/unstable/http/HttpServerRespondable";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
@@ -35,6 +36,8 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { ExecutionEnvironmentDescriptor } from "./environment.ts";
+import { EnvironmentSpeechStatus, EnvironmentSpeechTranscriptionResult } from "./speech.ts";
 import {
   OrchestrationV2ShellSnapshot,
   OrchestrationV2ThreadBoundedSnapshot,
@@ -590,6 +593,30 @@ class EnvironmentPullRequestsHttpApi extends HttpApiGroup.make("pullRequests").a
   }).middleware(EnvironmentAuthenticatedAuth),
 ) {}
 
+export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
+  .add(
+    HttpApiEndpoint.get("status", "/api/voice/status", {
+      headers: OptionalBearerHeaders,
+      success: EnvironmentSpeechStatus,
+      error: EnvironmentScopedOperationErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("transcribe", "/api/voice/transcribe", {
+      headers: OptionalBearerHeaders,
+      payload: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
+      success: EnvironmentSpeechTranscriptionResult,
+      error: EnvironmentScopedOperationErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.delete("removeModel", "/api/voice/model", {
+      headers: OptionalBearerHeaders,
+      success: EnvironmentSpeechStatus,
+      error: EnvironmentScopedOperationErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  ) {}
+
 class EnvironmentConnectHttpApi extends HttpApiGroup.make("connect")
   .add(
     HttpApiEndpoint.post("linkProof", "/api/connect/link-proof", {
@@ -657,4 +684,5 @@ export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentOrchestrationHttpApi)
   .add(EnvironmentPullRequestsHttpApi)
   .add(EnvironmentProjectsHttpApi)
+  .add(EnvironmentVoiceHttpApi)
   .add(EnvironmentConnectHttpApi) {}

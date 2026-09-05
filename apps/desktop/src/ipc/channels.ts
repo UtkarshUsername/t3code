@@ -119,15 +119,3 @@ export const PREVIEW_RECORDING_INPUT_CHANNEL = "desktop:preview-recording-input"
 
 export const RECEIVE_PROVIDER_AUTH_CALLBACK_CHANNEL = "desktop:receive-provider-auth-callback";
 export const CANCEL_PROVIDER_AUTH_CALLBACK_CHANNEL = "desktop:cancel-provider-auth-callback";
-export const SPEECH_GET_STATUS_CHANNEL = "desktop:speech-get-status";
-export const SPEECH_GET_MICROPHONES_CHANNEL = "desktop:speech-get-microphones";
-export const SPEECH_SET_MICROPHONE_CHANNEL = "desktop:speech-set-microphone";
-export const SPEECH_PREPARE_CHANNEL = "desktop:speech-prepare";
-export const SPEECH_CANCEL_PREPARATION_CHANNEL = "desktop:speech-cancel-preparation";
-export const SPEECH_START_RECORDING_CHANNEL = "desktop:speech-start-recording";
-export const SPEECH_STOP_RECORDING_CHANNEL = "desktop:speech-stop-recording";
-export const SPEECH_CANCEL_RECORDING_CHANNEL = "desktop:speech-cancel-recording";
-export const SPEECH_TRANSCRIBE_CHANNEL = "desktop:speech-transcribe";
-export const SPEECH_DELETE_RECORDING_CHANNEL = "desktop:speech-delete-recording";
-export const SPEECH_REMOVE_MODEL_CHANNEL = "desktop:speech-remove-model";
-export const SPEECH_EVENT_CHANNEL = "desktop:speech-event";
