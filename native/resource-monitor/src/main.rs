@@ -276,7 +276,8 @@ mod windows_listeners {
                 return Err(io::Error::from_raw_os_error(result as i32));
             }
             let count = unsafe { ptr::read_unaligned(buffer.as_ptr()) } as usize;
-            let available_bytes = (buffer.len() * size_of::<u32>()).saturating_sub(size_of::<u32>());
+            let available_bytes =
+                (buffer.len() * size_of::<u32>()).saturating_sub(size_of::<u32>());
             if count > available_bytes / size_of::<T>() {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -306,12 +307,10 @@ mod windows_listeners {
             })
             .map(|row| (port(row.local_port), row.owning_pid))
             .chain(
-                ipv6
-                    .into_iter()
+                ipv6.into_iter()
                     .filter(|row| {
                         row.local_address.iter().all(|byte| *byte == 0)
-                            || row.local_address
-                                == [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+                            || row.local_address == [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
                     })
                     .map(|row| (port(row.local_port), row.owning_pid)),
             )
