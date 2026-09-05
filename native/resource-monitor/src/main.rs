@@ -374,14 +374,16 @@ impl Collector {
         self.cpu_baseline_refreshed_at = Some(Instant::now());
     }
 
-    fn process_table(&mut self) -> Vec<ProcessTableEntry> {
-        self.system.refresh_processes_specifics(
+    fn process_table(&self) -> Vec<ProcessTableEntry> {
+        // Use a dedicated System so this refresh cannot reset the CPU
+        // baseline tracked by self.system for snapshots.
+        let mut process_table_system = System::new();
+        process_table_system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
             ProcessRefreshKind::nothing().without_tasks(),
         );
-        let mut processes = self
-            .system
+        let mut processes = process_table_system
             .processes()
             .iter()
             .filter_map(|(pid, process)| {
