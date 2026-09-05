@@ -203,6 +203,7 @@ mod windows_listeners {
     const AF_INET: u32 = 2;
     const AF_INET6: u32 = 23;
     const ERROR_INSUFFICIENT_BUFFER: u32 = 122;
+    const MAX_TABLE_READ_ATTEMPTS: usize = 3;
     const TCP_TABLE_OWNER_PID_LISTENER: u32 = 3;
 
     #[repr(C)]
@@ -256,7 +257,7 @@ mod windows_listeners {
         if first != ERROR_INSUFFICIENT_BUFFER {
             return Err(io::Error::from_raw_os_error(first as i32));
         }
-        loop {
+        for _ in 0..MAX_TABLE_READ_ATTEMPTS {
             let word_count = (size as usize).div_ceil(size_of::<u32>());
             let mut buffer = vec![0u32; word_count];
             let result = unsafe {
@@ -291,6 +292,10 @@ mod windows_listeners {
                 })
                 .collect());
         }
+        Err(io::Error::new(
+            io::ErrorKind::WouldBlock,
+            "Windows TCP table kept growing while it was read",
+        ))
     }
 
     fn port(value: u32) -> u16 {
