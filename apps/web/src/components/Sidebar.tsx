@@ -96,7 +96,10 @@ import { isMacPlatform } from "~/lib/utils";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { releaseComposerDraftUploads } from "../lib/composerDraftUploads";
 import { readLocalApi } from "../localApi";
-import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
+import {
+  isSameSidebarThreadRef,
+  useSidebarPendingFileDropStore,
+} from "../sidebarPendingFileDropStore";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import {
   buildSidebarProjectSnapshots,
@@ -2581,7 +2584,6 @@ export default function Sidebar() {
   const handleThreadFileDrop = useCallback(
     async (threadRef: ScopedThreadRef, files: File[]) => {
       setPendingFileDrop({ threadRef, files });
-      const threadKey = scopedThreadKey(threadRef);
       // Key match alone is not "already there": during draft promotion the
       // resolved route key is the server thread while the URL is still the
       // draft route, and its composer would swallow the drop then discard it.
@@ -2601,13 +2603,13 @@ export default function Sidebar() {
             params: buildThreadRouteParams(threadRef),
           }).pathname === router.state.location.pathname;
         const pending = useSidebarPendingFileDropStore.getState().pending;
-        if (!landed && pending !== null && scopedThreadKey(pending.threadRef) === threadKey) {
+        if (!landed && pending !== null && isSameSidebarThreadRef(pending.threadRef, threadRef)) {
           clearPendingFileDrop();
         }
       } catch {
         // Navigation failed outright; nothing will consume this drop.
         const pending = useSidebarPendingFileDropStore.getState().pending;
-        if (pending !== null && scopedThreadKey(pending.threadRef) === threadKey) {
+        if (pending !== null && isSameSidebarThreadRef(pending.threadRef, threadRef)) {
           clearPendingFileDrop();
         }
       }

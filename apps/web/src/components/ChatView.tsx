@@ -170,7 +170,10 @@ import { ThreadPreviewMiniPlayer } from "./preview/ThreadPreviewMiniPlayer";
 import { subscribePreviewAction } from "./preview/previewActionBus";
 import { getConfiguredPreviewUrls } from "./preview/previewEmptyStateLogic";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
-import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
+import {
+  isSameSidebarThreadRef,
+  useSidebarPendingFileDropStore,
+} from "../sidebarPendingFileDropStore";
 import {
   selectThreadPreviewMiniPlayer,
   usePreviewMiniPlayerStore,
@@ -7519,7 +7522,7 @@ export default function ChatView(props: ChatViewProps) {
     // attach there. Only the canonical thread target may consume a drop.
     if (
       typeof composerDraftTarget === "string" ||
-      scopedThreadKey(composerDraftTarget) !== scopedThreadKey(pendingSidebarFileDrop.threadRef)
+      !isSameSidebarThreadRef(composerDraftTarget, pendingSidebarFileDrop.threadRef)
     ) {
       return;
     }
@@ -7531,7 +7534,7 @@ export default function ChatView(props: ChatViewProps) {
         if (latestPending === null) return;
         if (
           typeof composerDraftTarget === "string" ||
-          scopedThreadKey(composerDraftTarget) !== scopedThreadKey(latestPending.threadRef)
+          !isSameSidebarThreadRef(composerDraftTarget, latestPending.threadRef)
         ) {
           return;
         }

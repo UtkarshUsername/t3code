@@ -6,8 +6,10 @@ import { threadHasStarted } from "../components/ChatView.logic";
 import { finalizePromotedDraftThreadByRef, useComposerDraftStore } from "../composerDraftStore";
 import { resolveThreadRouteRef, resolveThreadRouteRenderState } from "../threadRoutes";
 import { resolveThreadSyncPhase } from "../threadSync";
-import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import {
+  isSameSidebarThreadRef,
+  useSidebarPendingFileDropStore,
+} from "../sidebarPendingFileDropStore";
 import { SidebarInset } from "~/components/ui/sidebar";
 import {
   useEnvironmentThreadRefs,
@@ -69,7 +71,7 @@ function ChatThreadRouteView() {
     // never be attached, release it even when there is nowhere to redirect.
     if (renderState === "missing") {
       const { pending, clearPendingFileDrop } = useSidebarPendingFileDropStore.getState();
-      if (pending && scopedThreadKey(pending.threadRef) === scopedThreadKey(threadRef)) {
+      if (pending && isSameSidebarThreadRef(pending.threadRef, threadRef)) {
         clearPendingFileDrop();
       }
       if (environmentHasAnyThreads) {

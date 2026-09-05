@@ -1,7 +1,15 @@
 import { create } from "zustand";
 
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+
+/**
+ * Field-wise ref equality. `scopedThreadKey` joins with `:`, so two distinct
+ * refs can collide when an id itself contains one; drops must never cross
+ * threads on that account.
+ */
+export function isSameSidebarThreadRef(a: ScopedThreadRef, b: ScopedThreadRef): boolean {
+  return a.environmentId === b.environmentId && a.threadId === b.threadId;
+}
 
 /**
  * Files dropped onto a sidebar thread row while another thread was open.
@@ -37,7 +45,7 @@ export const useSidebarPendingFileDropStore = create<SidebarPendingFileDropStore
     },
     consumePendingFileDrop: (threadRef) => {
       const pending = get().pending;
-      if (pending === null || scopedThreadKey(pending.threadRef) !== scopedThreadKey(threadRef)) {
+      if (pending === null || !isSameSidebarThreadRef(pending.threadRef, threadRef)) {
         return null;
       }
       set({ pending: null });

@@ -67,4 +67,13 @@ describe("sidebarPendingFileDropStore", () => {
       useSidebarPendingFileDropStore.getState().consumePendingFileDrop(second.threadRef),
     ).not.toBeNull();
   });
+
+  it("does not confuse refs whose joined keys collide on colons", () => {
+    const entry = makeEntry("a", "b:c", makeFiles(1));
+    useSidebarPendingFileDropStore.getState().setPendingFileDrop(entry);
+
+    const colliding = makeEntry("a:b", "c", []).threadRef;
+    expect(useSidebarPendingFileDropStore.getState().consumePendingFileDrop(colliding)).toBeNull();
+    expect(useSidebarPendingFileDropStore.getState().pending).toEqual(entry);
+  });
 });
