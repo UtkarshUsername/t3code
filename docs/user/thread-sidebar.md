@@ -27,8 +27,9 @@ to reorder them on web and desktop, or use **Move up** and **Move down** on mobi
 The order syncs across devices.
 
 On web and desktop, you can also drag files from your computer onto any thread row:
-the thread opens and the files are attached as images in its composer, ready for
-your next message.
+the thread opens and the files are attached in its composer, ready for
+your next message. The same per-message file limits apply as when attaching
+files directly; see [Attach files](./composer.md#attach-files).
 
 Pinning does not prevent automatic settlement. Settling a thread removes its pin.
 
