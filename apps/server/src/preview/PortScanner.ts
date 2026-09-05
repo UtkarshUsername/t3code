@@ -292,6 +292,15 @@ const windowsListenersToServers = (
   return [...seen.values()].toSorted((left, right) => left.port - right.port);
 };
 
+const withCurrentTerminalOwners = (
+  servers: ReadonlyArray<DiscoveredLocalServer>,
+  terminalByProcessId: ReadonlyMap<number, TerminalProcessOwner>,
+): ReadonlyArray<DiscoveredLocalServer> =>
+  servers.map((server) => ({
+    ...server,
+    terminal: server.pid === null ? null : (terminalByProcessId.get(server.pid) ?? null),
+  }));
+
 export function windowsFallbackRetryDelayMs(failureCount: number): number {
   return Math.min(3_000 * 2 ** Math.max(0, failureCount - 1), WINDOWS_FALLBACK_MAX_RETRY_MS);
 }
@@ -520,7 +529,9 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     const nowMillis = yield* Clock.currentTimeMillis;
     const fallback = yield* Ref.get(windowsFallbackRef);
     if (nowMillis < fallback.nextAttemptAtMillis) {
-      return fallback.lastSnapshot ?? (yield* probeCommonPorts());
+      return fallback.lastSnapshot === null
+        ? yield* probeCommonPorts()
+        : withCurrentTerminalOwners(fallback.lastSnapshot, terminalByProcessId);
     }
 
     const recoverWindowsProbeFailure = recoverProcessProbeFailure("windows-listeners");
@@ -557,7 +568,9 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
       nextAttemptAtMillis: nowMillis + windowsFallbackRetryDelayMs(failureCount),
       lastSnapshot: fallback.lastSnapshot,
     });
-    return fallback.lastSnapshot ?? (yield* probeCommonPorts());
+    return fallback.lastSnapshot === null
+      ? yield* probeCommonPorts()
+      : withCurrentTerminalOwners(fallback.lastSnapshot, terminalByProcessId);
   });
 
   const scanUnlocked = Effect.fn("PortDiscovery.scanUnlocked")(function* (
