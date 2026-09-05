@@ -75,7 +75,7 @@ export class NativeTelemetryHandshakeTimedOut extends Schema.TaggedErrorClass<Na
   }
 }
 
-export class NativeTelemetryRequestTimedOut extends Schema.TaggedErrorClass<NativeTelemetryRequestTimedOut>()(
+class NativeTelemetryRequestTimedOut extends Schema.TaggedErrorClass<NativeTelemetryRequestTimedOut>()(
   "NativeTelemetryRequestTimedOut",
   {
     operation: Schema.Literals(["processTable", "readHistory", "sampleNow"]),
@@ -133,7 +133,7 @@ export class NativeTelemetryExited extends Schema.TaggedErrorClass<NativeTelemet
   }
 }
 
-export class NativeTelemetryStreamClosed extends Schema.TaggedErrorClass<NativeTelemetryStreamClosed>()(
+class NativeTelemetryStreamClosed extends Schema.TaggedErrorClass<NativeTelemetryStreamClosed>()(
   "NativeTelemetryStreamClosed",
   {},
 ) {
@@ -344,10 +344,6 @@ export function retainRecentNativeTelemetryFailures(
 
 function errorMessage(error: NativeTelemetryClientError): string {
   return error.message;
-}
-
-export function nativeTelemetrySupervisorFailureMessage(_cause: Cause.Cause<unknown>): string {
-  return "Resource monitor supervisor stopped unexpectedly.";
 }
 
 export function canRequestNativeTelemetryRetry(
@@ -765,7 +761,7 @@ export const make = Effect.fn("resourceTelemetry.nativeTelemetryClient.make")(fu
             ...current,
             status: "unavailable" as const,
             hello: Option.none(),
-            lastError: Option.some(nativeTelemetrySupervisorFailureMessage(cause)),
+            lastError: Option.some("Resource monitor supervisor stopped unexpectedly."),
           })).pipe(
             Effect.andThen(publishHealth),
             Effect.andThen(

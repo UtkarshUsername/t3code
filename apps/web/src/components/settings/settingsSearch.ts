@@ -105,7 +105,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/appearance",
     searchTerms: ["dev nightly artwork pill label hide none"],
     // The setting is stage-dependent, so its parent section is the stable destination.
-    targetId: "appearance",
+    targetId: "appearance-interface",
   },
   {
     id: "interface-font",
@@ -218,9 +218,11 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "continue-threads-after-server-update",
-    title: "Continue threads after server updates",
+    title: "Continue threads after restarts",
     to: "/settings/general",
-    searchTerms: ["resume running active work restart desktop update automatically"],
+    searchTerms: [
+      "resume running active interrupted work restart reboot machine crash desktop update automatically",
+    ],
   },
   {
     id: "background-activity",
@@ -325,6 +327,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "usage-providers",
+    title: "Usage providers",
+    to: "/settings/providers",
+    searchTerms: [
+      "usage sources CLIProxyAPI CLI proxy hub quota subscription limits management key add remove",
+    ],
+    providerSettingsOnly: true,
+  },
+  {
     id: "provider-health-check-interval",
     title: "Health check interval",
     to: "/settings/providers",
@@ -347,7 +358,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "browser-default-profile",
     title: "Default browser profile",
     to: "/settings/integrations",
-    targetId: "browser",
+    targetId: "browser-profiles",
   },
   {
     id: "browser-default-viewport",
