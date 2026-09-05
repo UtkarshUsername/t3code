@@ -1599,6 +1599,7 @@ export const ClientSettingsPatch = Schema.Struct({
   snapShotSound: Schema.optionalKey(SnapShotSound),
   snapShotFlash: Schema.optionalKey(Schema.Boolean),
   snapShotAnimations: Schema.optionalKey(Schema.Boolean),
+  voiceMicrophone: Schema.optionalKey(Schema.String),
   wordWrap: Schema.optionalKey(Schema.Boolean),
 });
 export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;
