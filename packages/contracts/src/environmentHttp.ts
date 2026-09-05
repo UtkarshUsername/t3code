@@ -69,6 +69,9 @@ export const EnvironmentRequestInvalidReason = Schema.Literals([
   "invalid_scope",
   "scope_not_granted",
   "invalid_command",
+  "invalid_audio",
+  "speech_unavailable",
+  "speech_busy",
 ]);
 export type EnvironmentRequestInvalidReason = typeof EnvironmentRequestInvalidReason.Type;
 
@@ -568,14 +571,14 @@ export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
       headers: OptionalBearerHeaders,
       payload: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
       success: EnvironmentSpeechTranscriptionResult,
-      error: EnvironmentScopedOperationErrors,
+      error: [...EnvironmentScopedOperationErrors, EnvironmentRequestInvalidError],
     }).middleware(EnvironmentAuthenticatedAuth),
   )
   .add(
     HttpApiEndpoint.delete("removeModel", "/api/voice/model", {
       headers: OptionalBearerHeaders,
       success: EnvironmentSpeechStatus,
-      error: EnvironmentScopedOperationErrors,
+      error: [...EnvironmentScopedOperationErrors, EnvironmentRequestInvalidError],
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 
