@@ -249,6 +249,19 @@ export interface TerminalLinkWithRange {
   readonly range: GhosttyCellRange;
 }
 
+function isSameTerminalLink(
+  left: TerminalLinkWithRange,
+  right: TerminalLinkWithRange | null,
+): boolean {
+  return (
+    right?.text === left.text &&
+    right.range.start.x === left.range.start.x &&
+    right.range.start.y === left.range.start.y &&
+    right.range.end.x === left.range.end.x &&
+    right.range.end.y === left.range.end.y
+  );
+}
+
 function terminalColumnAtOffset(row: GhosttySnapshot["rowData"][number], offset: number): number {
   for (let column = 0; column < row.cells.length; column += 1) {
     const nextOffset = terminalColumnOffset(row, column + 1);
@@ -579,6 +592,7 @@ export class GhosttyTerminalSurface {
   private mouseReportingPointerId: number | null = null;
   private mouseReportingButton: number | null = null;
   private linkActivationPointerId: number | null = null;
+  private linkActivationLink: TerminalLinkWithRange | null = null;
   private linkActivationOrigin: { x: number; y: number; time: number } | null = null;
   private hoveredLink: TerminalLinkWithRange | null = null;
   private hoverPointer: { x: number; y: number } | null = null;
@@ -1248,10 +1262,12 @@ export class GhosttyTerminalSurface {
       return;
     }
     if (event.button !== 0) return;
-    if (this.linkAt(event.clientX, event.clientY)) {
+    const link = this.linkAt(event.clientX, event.clientY);
+    if (link) {
       event.preventDefault();
       event.stopPropagation();
       this.linkActivationPointerId = event.pointerId;
+      this.linkActivationLink = link;
       this.linkActivationOrigin = {
         x: event.clientX,
         y: event.clientY,
@@ -1308,6 +1324,7 @@ export class GhosttyTerminalSurface {
       const origin = this.linkActivationOrigin;
       if (origin === null || (event.clientX === origin.x && event.clientY === origin.y)) return;
       this.linkActivationPointerId = null;
+      this.linkActivationLink = null;
       this.linkActivationOrigin = null;
       this.clearHoveredLink();
       this.beginSelection({
@@ -1439,14 +1456,17 @@ export class GhosttyTerminalSurface {
     if (this.linkActivationPointerId === event.pointerId) {
       event.preventDefault();
       event.stopPropagation();
+      const link = this.linkActivationLink;
       this.linkActivationPointerId = null;
+      this.linkActivationLink = null;
       this.linkActivationOrigin = null;
       if (this.canvas.hasPointerCapture(event.pointerId)) {
         this.canvas.releasePointerCapture(event.pointerId);
       }
       if (event.type !== "pointercancel") {
-        const link = this.linkAt(event.clientX, event.clientY);
-        if (link) this.options.onLinkActivate(link.text, event);
+        if (link && isSameTerminalLink(link, this.linkAt(event.clientX, event.clientY))) {
+          this.options.onLinkActivate(link.text, event);
+        }
       }
       return;
     }

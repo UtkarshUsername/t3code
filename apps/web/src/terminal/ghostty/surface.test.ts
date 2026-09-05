@@ -294,6 +294,21 @@ describe("GhosttyTerminalSurface visibility", () => {
     expect(surface.getSelection()).toBe("https");
   });
 
+  it("does not activate a link replaced before pointer release", async () => {
+    const harness = createHarness();
+    const onLinkActivate = vi.fn();
+    const surface = await harness.create({ onLinkActivate });
+    surface.write("https://first.example");
+    harness.flushFrame();
+
+    harness.pointer("pointerdown", 5, 1);
+    surface.write("\x1b[2J\x1b[Hhttps://second.example");
+    harness.flushFrame();
+    harness.pointer("pointerup", 5, 0);
+
+    expect(onLinkActivate).not.toHaveBeenCalled();
+  });
+
   it("stops zero-size mounts and repaints when the same size returns", async () => {
     const harness = createHarness();
     const surface = await harness.create();
