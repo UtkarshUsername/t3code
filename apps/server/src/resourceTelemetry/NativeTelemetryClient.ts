@@ -366,7 +366,7 @@ export function canCommandNativeTelemetrySidecar(
 }
 
 export function runPendingNativeTelemetryRequest<A>(input: {
-  readonly pending: Ref.Ref<ReadonlyMap<string, Deferred.Deferred<A, NativeTelemetryClientError>>>;
+  readonly pending: Ref.Ref<Map<string, Deferred.Deferred<A, NativeTelemetryClientError>>>;
   readonly requestId: string;
   readonly operation: "processTable" | "sampleNow" | "windowsListeners";
   readonly timeout: Duration.Duration;
