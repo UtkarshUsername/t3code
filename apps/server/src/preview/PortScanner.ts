@@ -77,7 +77,7 @@ export const COMMON_DEV_PORTS: ReadonlyArray<number> = Object.freeze([
 
 const POLL_INTERVAL = Duration.seconds(3);
 const LSOF_TIMEOUT_MS = 5_000;
-const WINDOWS_LISTENER_TIMEOUT_MS = 5_000;
+const WINDOWS_LISTENER_TIMEOUT_MS = 15_000;
 const WINDOWS_FALLBACK_MAX_RETRY_MS = 60_000;
 export const WINDOWS_LISTENER_COMMAND =
   '$m = @{}; Get-Process | ForEach-Object { $m[$_.Id] = $_.ProcessName }; Get-NetTCPConnection -State Listen -ErrorAction Stop | ForEach-Object { Write-Output "$($_.LocalAddress)|$($_.LocalPort)|$($_.OwningProcess)|$($m[[int]$_.OwningProcess])" }';
@@ -303,6 +303,13 @@ const withCurrentTerminalOwners = (
 
 export function windowsFallbackRetryDelayMs(failureCount: number): number {
   return Math.min(3_000 * 2 ** Math.max(0, failureCount - 1), WINDOWS_FALLBACK_MAX_RETRY_MS);
+}
+
+export function windowsFallbackSuccessDelayMs(elapsedMs: number): number {
+  return Math.min(
+    Math.max(Duration.toMillis(POLL_INTERVAL), Math.max(0, elapsedMs) * 4),
+    WINDOWS_FALLBACK_MAX_RETRY_MS,
+  );
 }
 
 const serversEqual = (
@@ -535,6 +542,7 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
         : withCurrentTerminalOwners(fallback.lastSnapshot, terminalByProcessId);
     }
 
+    const startedAtMillis = nowMillis;
     const recoverWindowsProbeFailure = recoverProcessProbeFailure("windows-listeners");
     const listeners = yield* processRunner
       .run({
@@ -545,7 +553,20 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
         outputMode: "truncate",
       })
       .pipe(
-        Effect.map((result) => parseWindowsListenerOutput(result.stdout, terminalByProcessId)),
+        Effect.flatMap((result) =>
+          result.code === 0 && !result.timedOut && !result.stdoutTruncated
+            ? Effect.succeed(parseWindowsListenerOutput(result.stdout, terminalByProcessId))
+            : Effect.logDebug(
+                "preview port process probe returned an incomplete result; falling back to common-port probes",
+                {
+                  probe: "windows-listeners",
+                  platform: hostPlatform,
+                  exitCode: result.code,
+                  timedOut: result.timedOut,
+                  stdoutTruncated: result.stdoutTruncated,
+                },
+              ).pipe(Effect.as(null)),
+        ),
         Effect.catchTags({
           ProcessSpawnError: recoverWindowsProbeFailure,
           ProcessStdinError: recoverWindowsProbeFailure,
@@ -555,9 +576,11 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
         }),
       );
     if (listeners !== null) {
+      const completedAtMillis = yield* Clock.currentTimeMillis;
       yield* Ref.set(windowsFallbackRef, {
         failureCount: 0,
-        nextAttemptAtMillis: 0,
+        nextAttemptAtMillis:
+          completedAtMillis + windowsFallbackSuccessDelayMs(completedAtMillis - startedAtMillis),
         lastSnapshot: listeners,
       });
       return listeners;

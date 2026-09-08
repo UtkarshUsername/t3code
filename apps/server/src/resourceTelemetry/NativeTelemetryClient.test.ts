@@ -2,18 +2,23 @@ import type { HostPowerSnapshot } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Ref from "effect/Ref";
 import * as Semaphore from "effect/Semaphore";
+import * as TestClock from "effect/testing/TestClock";
 
 import {
   canCommandNativeTelemetrySidecar,
   canRequestNativeTelemetryRetry,
   commitCollectionControlUpdate,
+  NativeTelemetryExited,
   retainRecentNativeTelemetryFailures,
   resolveNativeSampleIntervalMs,
+  runPendingNativeTelemetryRequest,
   synchronizeCollectionControlOnStart,
+  type NativeTelemetryClientError,
 } from "./NativeTelemetryClient.ts";
 
 const basePower: HostPowerSnapshot = {
@@ -195,6 +200,100 @@ describe("commitCollectionControlUpdate", () => {
 
       expect(appliedIntervals).toEqual([5_000, 1_000]);
       expect(yield* Ref.get(applied)).toEqual(yield* Ref.get(desired));
+    }),
+  );
+});
+
+describe("runPendingNativeTelemetryRequest", () => {
+  const makePending = () =>
+    Ref.make<ReadonlyMap<string, Deferred.Deferred<number, NativeTelemetryClientError>>>(new Map());
+
+  const waitForPending = (
+    pending: Ref.Ref<ReadonlyMap<string, Deferred.Deferred<number, NativeTelemetryClientError>>>,
+  ) =>
+    Effect.gen(function* () {
+      while ((yield* Ref.get(pending)).size === 0) yield* Effect.yieldNow;
+      return [...(yield* Ref.get(pending)).values()][0]!;
+    });
+
+  it.effect("returns a direct response and removes the pending request", () =>
+    Effect.gen(function* () {
+      const pending = yield* makePending();
+      const fiber = yield* runPendingNativeTelemetryRequest({
+        pending,
+        requestId: "response",
+        operation: "processTable",
+        timeout: Duration.seconds(5),
+        write: Effect.void,
+      }).pipe(Effect.forkChild);
+      yield* Deferred.succeed(yield* waitForPending(pending), 42);
+
+      expect(yield* Fiber.join(fiber)).toBe(42);
+      expect((yield* Ref.get(pending)).size).toBe(0);
+    }),
+  );
+
+  it.effect("times out and removes the pending request", () =>
+    Effect.gen(function* () {
+      const pending = yield* makePending();
+      const fiber = yield* runPendingNativeTelemetryRequest({
+        pending,
+        requestId: "timeout",
+        operation: "windowsListeners",
+        timeout: Duration.seconds(5),
+        write: Effect.void,
+      }).pipe(Effect.flip, Effect.forkChild);
+      yield* waitForPending(pending);
+      yield* TestClock.adjust(Duration.seconds(5));
+
+      expect((yield* Fiber.join(fiber))._tag).toBe("NativeTelemetryRequestTimedOut");
+      expect((yield* Ref.get(pending)).size).toBe(0);
+    }),
+  );
+
+  it.effect("removes an interrupted pending request", () =>
+    Effect.gen(function* () {
+      const pending = yield* makePending();
+      const fiber = yield* runPendingNativeTelemetryRequest({
+        pending,
+        requestId: "interrupted",
+        operation: "processTable",
+        timeout: Duration.seconds(5),
+        write: Effect.void,
+      }).pipe(Effect.forkChild);
+      yield* waitForPending(pending);
+      yield* Fiber.interrupt(fiber);
+
+      expect((yield* Ref.get(pending)).size).toBe(0);
+    }),
+  );
+
+  it.effect("accepts a new request after a restart fails the old one", () =>
+    Effect.gen(function* () {
+      const pending = yield* makePending();
+      const first = yield* runPendingNativeTelemetryRequest({
+        pending,
+        requestId: "before-restart",
+        operation: "processTable",
+        timeout: Duration.seconds(5),
+        write: Effect.void,
+      }).pipe(Effect.flip, Effect.forkChild);
+      yield* Deferred.fail(
+        yield* waitForPending(pending),
+        new NativeTelemetryExited({ exitCode: 1 }),
+      );
+      expect((yield* Fiber.join(first))._tag).toBe("NativeTelemetryExited");
+
+      const second = yield* runPendingNativeTelemetryRequest({
+        pending,
+        requestId: "after-restart",
+        operation: "processTable",
+        timeout: Duration.seconds(5),
+        write: Effect.void,
+      }).pipe(Effect.forkChild);
+      yield* Deferred.succeed(yield* waitForPending(pending), 7);
+      expect(yield* Fiber.join(second)).toBe(7);
+      expect((yield* Ref.get(pending)).size).toBe(0);
     }),
   );
 });
