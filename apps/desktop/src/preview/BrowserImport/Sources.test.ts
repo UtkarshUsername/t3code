@@ -710,6 +710,9 @@ describe("Zen", () => {
           zen.userDataDirectory(linuxContext),
           linuxContext.path.join("/home/zen-user", ".config", "zen"),
         );
+        assert.deepEqual(zen.alternateLinuxRoots?.(linuxContext), [
+          linuxContext.path.join("/home/zen-user", ".zen"),
+        ]);
       }),
     ),
   );
@@ -762,6 +765,46 @@ describe("Zen", () => {
           yield* resolveCookieDatabase(zen, context, context.path.join("Profiles", "zen.default")),
           context.path.join(profile, "cookies.sqlite"),
         );
+      }),
+    ),
+  );
+
+  it.effect("discovers Zen profiles in both current and legacy Linux roots", () =>
+    run(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-zen-linux-" });
+        const context = yield* sourcePathContext.pipe(
+          Effect.provideService(HostProcessEnvironment, { HOME: home }),
+          Effect.provideService(HostProcessPlatform, "linux"),
+        );
+        const currentRoot = context.path.join(home, ".config", "zen");
+        const legacyRoot = context.path.join(home, ".zen");
+        const currentProfile = context.path.join(currentRoot, "current.default");
+        const legacyProfile = context.path.join(legacyRoot, "legacy.default");
+
+        for (const [root, profile, name] of [
+          [currentRoot, currentProfile, "Current"],
+          [legacyRoot, legacyProfile, "Legacy"],
+        ] as const) {
+          yield* fileSystem.makeDirectory(profile, { recursive: true });
+          yield* writeFirefoxCookieDatabase(context.path.join(profile, "cookies.sqlite"), 1, 0);
+          yield* fileSystem.writeFileString(
+            context.path.join(root, "profiles.ini"),
+            [
+              "[Profile0]",
+              `Name=${name}`,
+              "IsRelative=1",
+              `Path=${context.path.basename(profile)}`,
+            ].join("\n"),
+          );
+        }
+
+        assert.deepEqual(yield* listSourceProfiles(zen, context), [
+          { directory: "current.default", name: "Current", cookieCount: 1 },
+          { directory: legacyProfile, name: "Legacy", cookieCount: 1 },
+        ]);
+        assert.isTrue(yield* isSourceInstalled(zen, context));
       }),
     ),
   );

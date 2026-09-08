@@ -56,6 +56,8 @@ export interface BrowserImportSourceDefinition {
   /** Platforms the definition has paths for. */
   readonly platforms: ReadonlyArray<NodeJS.Platform>;
   readonly userDataDirectory: (context: BrowserImportPathContext) => string | undefined;
+  /** Parallel Linux roots for package variants or legacy layouts. */
+  readonly alternateLinuxRoots?: (context: BrowserImportPathContext) => ReadonlyArray<string>;
   /** Chromium on macOS only: where the OSCrypt key lives in the keychain. */
   readonly keychainService?: string;
   readonly keychainAccount?: string;
@@ -212,6 +214,9 @@ export const BROWSER_IMPORT_SOURCES: ReadonlyArray<BrowserImportSourceDefinition
       }
       return context.path.join(context.home, ".mozilla", "firefox");
     },
+    alternateLinuxRoots: (context) => [
+      context.path.join(context.home, "snap", "firefox", "common", ".mozilla", "firefox"),
+    ],
   },
   {
     id: "zen",
@@ -225,6 +230,7 @@ export const BROWSER_IMPORT_SOURCES: ReadonlyArray<BrowserImportSourceDefinition
       }
       return context.path.join(context.home, ".config", "zen");
     },
+    alternateLinuxRoots: (context) => [context.path.join(context.home, ".zen")],
   },
 ];
 
@@ -584,24 +590,21 @@ const listSourceProfilesInDirectory = Effect.fnUntraced(function* (
 });
 
 /**
- * Include Firefox's Snap home alongside its native home. Snap profiles use
- * absolute directories so cookie reads and lock checks keep pointing at the
- * installation they came from, even when both installs use the same name.
+ * Include alternate Linux homes alongside the native home. Alternate profiles
+ * use absolute directories so cookie reads and lock checks keep pointing at
+ * the installation they came from, even when both installs use the same name.
  */
 export const listSourceProfiles = Effect.fn("BrowserImportSources.listSourceProfiles")(function* (
   definition: BrowserImportSourceDefinition,
   context: BrowserImportPathContext,
 ): Effect.fn.Return<ReadonlyArray<BrowserImportSourceProfile>, never, FileSystem.FileSystem> {
-  if (definition.id !== "firefox" || context.platform !== "linux") {
+  if (definition.engine !== "firefox" || context.platform !== "linux") {
     return yield* listSourceProfilesInDirectory(definition, context);
   }
 
   const root = definition.userDataDirectory(context);
   if (root === undefined) return [];
-  const roots = [
-    root,
-    context.path.join(context.home, "snap", "firefox", "common", ".mozilla", "firefox"),
-  ];
+  const roots = [root, ...(definition.alternateLinuxRoots?.(context) ?? [])];
   const profiles = new Map<string, BrowserImportSourceProfile>();
   for (const directory of roots) {
     const found = yield* listSourceProfilesInDirectory(
