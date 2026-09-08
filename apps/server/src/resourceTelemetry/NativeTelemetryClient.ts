@@ -76,7 +76,7 @@ export class NativeTelemetryHandshakeTimedOut extends Schema.TaggedError<NativeT
   }
 }
 
-export class NativeTelemetryRequestTimedOut extends Schema.TaggedError<NativeTelemetryRequestTimedOut>()(
+class NativeTelemetryRequestTimedOut extends Schema.TaggedError<NativeTelemetryRequestTimedOut>()(
   "NativeTelemetryRequestTimedOut",
   {
     operation: Schema.Literals(["processTable", "readHistory", "sampleNow", "windowsListeners"]),
