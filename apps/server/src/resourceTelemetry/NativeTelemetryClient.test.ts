@@ -206,10 +206,10 @@ describe("commitCollectionControlUpdate", () => {
 
 describe("runPendingNativeTelemetryRequest", () => {
   const makePending = () =>
-    Ref.make<ReadonlyMap<string, Deferred.Deferred<number, NativeTelemetryClientError>>>(new Map());
+    Ref.make<Map<string, Deferred.Deferred<number, NativeTelemetryClientError>>>(new Map());
 
   const waitForPending = (
-    pending: Ref.Ref<ReadonlyMap<string, Deferred.Deferred<number, NativeTelemetryClientError>>>,
+    pending: Ref.Ref<Map<string, Deferred.Deferred<number, NativeTelemetryClientError>>>,
   ) =>
     Effect.gen(function* () {
       while ((yield* Ref.get(pending)).size === 0) yield* Effect.yieldNow;
