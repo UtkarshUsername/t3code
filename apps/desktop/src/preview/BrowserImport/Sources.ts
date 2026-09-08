@@ -213,6 +213,19 @@ export const BROWSER_IMPORT_SOURCES: ReadonlyArray<BrowserImportSourceDefinition
       return context.path.join(context.home, ".mozilla", "firefox");
     },
   },
+  {
+    id: "zen",
+    name: "Zen",
+    engine: "firefox",
+    platforms: ["darwin", "win32", "linux"],
+    userDataDirectory: (context) => {
+      if (context.platform === "darwin") return macApplicationSupport(context, "zen");
+      if (context.platform === "win32") {
+        return context.appData ? context.path.join(context.appData, "zen") : undefined;
+      }
+      return context.path.join(context.home, ".config", "zen");
+    },
+  },
 ];
 
 /**
@@ -579,7 +592,7 @@ export const listSourceProfiles = Effect.fn("BrowserImportSources.listSourceProf
   definition: BrowserImportSourceDefinition,
   context: BrowserImportPathContext,
 ): Effect.fn.Return<ReadonlyArray<BrowserImportSourceProfile>, never, FileSystem.FileSystem> {
-  if (definition.engine !== "firefox" || context.platform !== "linux") {
+  if (definition.id !== "firefox" || context.platform !== "linux") {
     return yield* listSourceProfilesInDirectory(definition, context);
   }
 
