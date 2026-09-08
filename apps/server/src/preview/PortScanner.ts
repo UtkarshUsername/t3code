@@ -79,7 +79,7 @@ const POLL_INTERVAL = Duration.seconds(3);
 const LSOF_TIMEOUT_MS = 5_000;
 const WINDOWS_LISTENER_TIMEOUT_MS = 15_000;
 const WINDOWS_FALLBACK_MAX_RETRY_MS = 60_000;
-export const WINDOWS_LISTENER_COMMAND =
+const WINDOWS_LISTENER_COMMAND =
   '$m = @{}; Get-Process | ForEach-Object { $m[$_.Id] = $_.ProcessName }; Get-NetTCPConnection -State Listen -ErrorAction Stop | ForEach-Object { Write-Output "$($_.LocalAddress)|$($_.LocalPort)|$($_.OwningProcess)|$($m[[int]$_.OwningProcess])" }';
 const WEB_PROBE_TIMEOUT = Duration.seconds(1);
 const WEB_PROBE_CACHE_TTL_MS = Duration.toMillis(Duration.seconds(15));
@@ -301,11 +301,11 @@ const withCurrentTerminalOwners = (
     terminal: server.pid === null ? null : (terminalByProcessId.get(server.pid) ?? null),
   }));
 
-export function windowsFallbackRetryDelayMs(failureCount: number): number {
+function windowsFallbackRetryDelayMs(failureCount: number): number {
   return Math.min(3_000 * 2 ** Math.max(0, failureCount - 1), WINDOWS_FALLBACK_MAX_RETRY_MS);
 }
 
-export function windowsFallbackSuccessDelayMs(elapsedMs: number): number {
+function windowsFallbackSuccessDelayMs(elapsedMs: number): number {
   return Math.min(
     Math.max(Duration.toMillis(POLL_INTERVAL), Math.max(0, elapsedMs) * 4),
     WINDOWS_FALLBACK_MAX_RETRY_MS,
