@@ -20,6 +20,7 @@ import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 import { expect } from "vite-plus/test";
 import { FetchHttpClient } from "effect/unstable/http";
+import { ChildProcessSpawner } from "effect/unstable/process";
 
 import * as ProcessRunner from "../processRunner.ts";
 import * as NativeTelemetryClient from "../resourceTelemetry/NativeTelemetryClient.ts";
@@ -335,6 +336,76 @@ effectIt.effect("backs off every failed Windows PowerShell fallback", () => {
   }).pipe(Effect.provide(layer));
 });
 
+effectIt.effect("keeps the cached Windows snapshot after a nonzero fallback exit", () => {
+  let fallbackRuns = 0;
+  const layer = makeWindowsScannerLayer({
+    windowsListeners: Effect.fail(
+      new NativeTelemetryClient.NativeTelemetryUnavailable({ reason: "test" }),
+    ),
+    run: () => {
+      fallbackRuns += 1;
+      return Effect.succeed({
+        stdout: fallbackRuns === 1 ? `127.0.0.1|${LSOF_TEST_PORT}|4242|node\n` : "",
+        stderr: "",
+        code: ChildProcessSpawner.ExitCode(fallbackRuns === 1 ? 0 : 1),
+        timedOut: false,
+        stdoutTruncated: false,
+        stderrTruncated: false,
+        stdoutInvalidUtf8: false,
+        stderrInvalidUtf8: false,
+      });
+    },
+    fetch: ((_input: Parameters<typeof globalThis.fetch>[0]) =>
+      Promise.resolve(
+        new Response("app", { headers: { "content-type": "text/html" } }),
+      )) as typeof globalThis.fetch,
+  });
+
+  return Effect.gen(function* () {
+    const scanner = yield* PortScanner.PortDiscovery;
+    expect(yield* scanner.scan()).toHaveLength(1);
+    yield* TestClock.adjust(Duration.seconds(3));
+    expect(yield* scanner.scan()).toHaveLength(1);
+    expect(yield* scanner.scan()).toHaveLength(1);
+    expect(fallbackRuns).toBe(2);
+  }).pipe(Effect.provide(layer));
+});
+
+effectIt.effect("keeps the cached Windows snapshot after truncated fallback output", () => {
+  let fallbackRuns = 0;
+  const layer = makeWindowsScannerLayer({
+    windowsListeners: Effect.fail(
+      new NativeTelemetryClient.NativeTelemetryUnavailable({ reason: "test" }),
+    ),
+    run: () => {
+      fallbackRuns += 1;
+      return Effect.succeed({
+        stdout: `127.0.0.1|${LSOF_TEST_PORT}|4242|node\n`,
+        stderr: "",
+        code: ChildProcessSpawner.ExitCode(0),
+        timedOut: false,
+        stdoutTruncated: fallbackRuns > 1,
+        stderrTruncated: false,
+        stdoutInvalidUtf8: false,
+        stderrInvalidUtf8: false,
+      });
+    },
+    fetch: ((_input: Parameters<typeof globalThis.fetch>[0]) =>
+      Promise.resolve(
+        new Response("app", { headers: { "content-type": "text/html" } }),
+      )) as typeof globalThis.fetch,
+  });
+
+  return Effect.gen(function* () {
+    const scanner = yield* PortScanner.PortDiscovery;
+    expect(yield* scanner.scan()).toHaveLength(1);
+    yield* TestClock.adjust(Duration.seconds(3));
+    expect(yield* scanner.scan()).toHaveLength(1);
+    expect(yield* scanner.scan()).toHaveLength(1);
+    expect(fallbackRuns).toBe(2);
+  }).pipe(Effect.provide(layer));
+});
+
 effectIt.effect("keeps the last Windows fallback snapshot when a retry fails", () => {
   let fallbackRuns = 0;
   const layer = makeWindowsScannerLayer({
@@ -347,7 +418,7 @@ effectIt.effect("keeps the last Windows fallback snapshot when a retry fails", (
       return Effect.succeed({
         stdout: `127.0.0.1|${LSOF_TEST_PORT}|4242|node\n`,
         stderr: "",
-        code: null,
+        code: ChildProcessSpawner.ExitCode(0),
         timedOut: false,
         stdoutTruncated: false,
         stderrTruncated: false,
@@ -384,7 +455,7 @@ effectIt.effect("refreshes terminal ownership when reusing a Windows fallback sn
       return Effect.succeed({
         stdout: `127.0.0.1|${LSOF_TEST_PORT}|4242|node\n`,
         stderr: "",
-        code: null,
+        code: ChildProcessSpawner.ExitCode(0),
         timedOut: false,
         stdoutTruncated: false,
         stderrTruncated: false,
@@ -439,7 +510,7 @@ effectIt.effect("runs a later Windows scan normally after an interrupted scan", 
         : Effect.succeed({
             stdout: `127.0.0.1|${LSOF_TEST_PORT}|4242|node\n`,
             stderr: "",
-            code: null,
+            code: ChildProcessSpawner.ExitCode(0),
             timedOut: false,
             stdoutTruncated: false,
             stderrTruncated: false,

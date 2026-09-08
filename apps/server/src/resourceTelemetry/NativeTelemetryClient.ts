@@ -76,7 +76,7 @@ export class NativeTelemetryHandshakeTimedOut extends Schema.TaggedError<NativeT
   }
 }
 
-class NativeTelemetryRequestTimedOut extends Schema.TaggedError<NativeTelemetryRequestTimedOut>()(
+export class NativeTelemetryRequestTimedOut extends Schema.TaggedError<NativeTelemetryRequestTimedOut>()(
   "NativeTelemetryRequestTimedOut",
   {
     operation: Schema.Literals(["processTable", "readHistory", "sampleNow", "windowsListeners"]),
@@ -363,6 +363,50 @@ export function canCommandNativeTelemetrySidecar(
   hasHandle: boolean,
 ): boolean {
   return hasHandle && (status === "healthy" || status === "degraded");
+}
+
+export function runPendingNativeTelemetryRequest<A>(input: {
+  readonly pending: Ref.Ref<ReadonlyMap<string, Deferred.Deferred<A, NativeTelemetryClientError>>>;
+  readonly requestId: string;
+  readonly operation: "processTable" | "sampleNow" | "windowsListeners";
+  readonly timeout: Duration.Duration;
+  readonly write: Effect.Effect<void, NativeTelemetryClientError>;
+}): Effect.Effect<A, NativeTelemetryClientError> {
+  return Effect.gen(function* () {
+    const deferred = yield* Deferred.make<A, NativeTelemetryClientError>();
+    yield* Ref.update(input.pending, (pending) => {
+      const next = new Map(pending);
+      next.set(input.requestId, deferred);
+      return next;
+    });
+    return yield* input.write.pipe(
+      Effect.andThen(
+        Deferred.await(deferred).pipe(
+          Effect.timeoutOption(input.timeout),
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new NativeTelemetryRequestTimedOut({
+                    operation: input.operation,
+                    timeoutMs: Duration.toMillis(input.timeout),
+                  }),
+                ),
+              onSome: Effect.succeed,
+            }),
+          ),
+        ),
+      ),
+    );
+  }).pipe(
+    Effect.ensuring(
+      Ref.update(input.pending, (pending) => {
+        const next = new Map(pending);
+        next.delete(input.requestId);
+        return next;
+      }),
+    ),
+  );
 }
 
 /** @public Service construction is part of the canonical Effect module API. */
@@ -971,42 +1015,17 @@ export const make = Effect.fn("resourceTelemetry.nativeTelemetryClient.make")(fu
           }),
       ),
     );
-    const deferred = yield* Deferred.make<NativeTelemetrySnapshot, NativeTelemetryClientError>();
-    yield* Ref.update(pendingSamples, (pending) => {
-      const next = new Map(pending);
-      next.set(requestId, deferred);
-      return next;
-    });
-    return yield* writeCommand(Option.getOrThrow(current.handle), {
-      version: RESOURCE_MONITOR_PROTOCOL_VERSION,
-      type: "sampleNow",
+    return yield* runPendingNativeTelemetryRequest({
+      pending: pendingSamples,
       requestId,
-    }).pipe(
-      Effect.andThen(
-        Deferred.await(deferred).pipe(
-          Effect.timeoutOption(SAMPLE_REQUEST_TIMEOUT),
-          Effect.flatMap(
-            Option.match({
-              onNone: () =>
-                Effect.fail(
-                  new NativeTelemetryRequestTimedOut({
-                    operation: "sampleNow",
-                    timeoutMs: Duration.toMillis(SAMPLE_REQUEST_TIMEOUT),
-                  }),
-                ),
-              onSome: Effect.succeed,
-            }),
-          ),
-        ),
-      ),
-      Effect.ensuring(
-        Ref.update(pendingSamples, (pending) => {
-          const next = new Map(pending);
-          next.delete(requestId);
-          return next;
-        }),
-      ),
-    );
+      operation: "sampleNow",
+      timeout: SAMPLE_REQUEST_TIMEOUT,
+      write: writeCommand(Option.getOrThrow(current.handle), {
+        version: RESOURCE_MONITOR_PROTOCOL_VERSION,
+        type: "sampleNow",
+        requestId,
+      }),
+    });
   });
 
   const processTable: NativeTelemetryClient["Service"]["processTable"] = Effect.gen(function* () {
@@ -1022,45 +1041,17 @@ export const make = Effect.fn("resourceTelemetry.nativeTelemetryClient.make")(fu
         (cause) => new NativeTelemetryCommandFailed({ operation: "createRequestId", cause }),
       ),
     );
-    const deferred = yield* Deferred.make<
-      ReadonlyArray<ResourceMonitorProcessTableEntry>,
-      NativeTelemetryClientError
-    >();
-    yield* Ref.update(pendingProcessTables, (pending) => {
-      const next = new Map(pending);
-      next.set(requestId, deferred);
-      return next;
-    });
-    return yield* writeCommand(Option.getOrThrow(current.handle), {
-      version: RESOURCE_MONITOR_PROTOCOL_VERSION,
-      type: "processTable",
+    return yield* runPendingNativeTelemetryRequest({
+      pending: pendingProcessTables,
       requestId,
-    }).pipe(
-      Effect.andThen(
-        Deferred.await(deferred).pipe(
-          Effect.timeoutOption(PROCESS_TABLE_REQUEST_TIMEOUT),
-          Effect.flatMap(
-            Option.match({
-              onNone: () =>
-                Effect.fail(
-                  new NativeTelemetryRequestTimedOut({
-                    operation: "processTable",
-                    timeoutMs: Duration.toMillis(PROCESS_TABLE_REQUEST_TIMEOUT),
-                  }),
-                ),
-              onSome: Effect.succeed,
-            }),
-          ),
-        ),
-      ),
-      Effect.ensuring(
-        Ref.update(pendingProcessTables, (pending) => {
-          const next = new Map(pending);
-          next.delete(requestId);
-          return next;
-        }),
-      ),
-    );
+      operation: "processTable",
+      timeout: PROCESS_TABLE_REQUEST_TIMEOUT,
+      write: writeCommand(Option.getOrThrow(current.handle), {
+        version: RESOURCE_MONITOR_PROTOCOL_VERSION,
+        type: "processTable",
+        requestId,
+      }),
+    });
   });
 
   const windowsListeners: NativeTelemetryClient["Service"]["windowsListeners"] = Effect.gen(
@@ -1077,45 +1068,17 @@ export const make = Effect.fn("resourceTelemetry.nativeTelemetryClient.make")(fu
           (cause) => new NativeTelemetryCommandFailed({ operation: "createRequestId", cause }),
         ),
       );
-      const deferred = yield* Deferred.make<
-        ReadonlyArray<ResourceMonitorWindowsListener>,
-        NativeTelemetryClientError
-      >();
-      yield* Ref.update(pendingWindowsListeners, (pending) => {
-        const next = new Map(pending);
-        next.set(requestId, deferred);
-        return next;
-      });
-      return yield* writeCommand(Option.getOrThrow(current.handle), {
-        version: RESOURCE_MONITOR_PROTOCOL_VERSION,
-        type: "windowsListeners",
+      return yield* runPendingNativeTelemetryRequest({
+        pending: pendingWindowsListeners,
         requestId,
-      }).pipe(
-        Effect.andThen(
-          Deferred.await(deferred).pipe(
-            Effect.timeoutOption(PROCESS_TABLE_REQUEST_TIMEOUT),
-            Effect.flatMap(
-              Option.match({
-                onNone: () =>
-                  Effect.fail(
-                    new NativeTelemetryRequestTimedOut({
-                      operation: "windowsListeners",
-                      timeoutMs: Duration.toMillis(PROCESS_TABLE_REQUEST_TIMEOUT),
-                    }),
-                  ),
-                onSome: Effect.succeed,
-              }),
-            ),
-          ),
-        ),
-        Effect.ensuring(
-          Ref.update(pendingWindowsListeners, (pending) => {
-            const next = new Map(pending);
-            next.delete(requestId);
-            return next;
-          }),
-        ),
-      );
+        operation: "windowsListeners",
+        timeout: PROCESS_TABLE_REQUEST_TIMEOUT,
+        write: writeCommand(Option.getOrThrow(current.handle), {
+          version: RESOURCE_MONITOR_PROTOCOL_VERSION,
+          type: "windowsListeners",
+          requestId,
+        }),
+      });
     },
   );
 
