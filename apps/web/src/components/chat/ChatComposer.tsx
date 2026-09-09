@@ -1356,6 +1356,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 });
 
 const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
+  showActions?: boolean;
   compact: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
   reserveContextWindowMeter: boolean;
@@ -1404,6 +1405,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
       ) : props.reserveContextWindowMeter ? (
         <ContextWindowMeterPlaceholder />
       ) : null}
+      {props.showActions !== false ? (
       <ComposerPrimaryActions
         compact={props.compact}
         pendingAction={props.pendingAction}
@@ -1428,6 +1430,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         onInterrupt={props.onInterrupt}
         onImplementPlanInNewThread={props.onImplementPlanInNewThread}
       />
+      ) : null}
     </>
   );
 });
@@ -7569,8 +7572,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       />
                     </>
                   ) : null}
-                  {speechPresentation.showsSend ? (
                   <ComposerFooterPrimaryActions
+                    showActions={speechPresentation.showsSend}
                     compact={isComposerResting || isComposerPrimaryActionsCompact}
                     activeContextWindow={
                       settings.contextWindowMeterEnabled ? activeContextWindow : null
@@ -7620,7 +7623,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     compactDisabledReason={resolvedCompactDisabledReason}
                     {...(compactCommandAvailable ? { onCompactContext: compactThreadContext } : {})}
                   />
-                  ) : null}
                 </div>
               </div>
             )}
