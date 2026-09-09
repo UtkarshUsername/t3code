@@ -587,9 +587,10 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     }
 
     const failureCount = fallback.failureCount + 1;
+    const completedAtMillis = yield* Clock.currentTimeMillis;
     yield* Ref.set(windowsFallbackRef, {
       failureCount,
-      nextAttemptAtMillis: nowMillis + windowsFallbackRetryDelayMs(failureCount),
+      nextAttemptAtMillis: completedAtMillis + windowsFallbackRetryDelayMs(failureCount),
       lastSnapshot: fallback.lastSnapshot,
     });
     return fallback.lastSnapshot === null
@@ -619,7 +620,11 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
       const listeners =
         nativeListeners === null
           ? yield* probeWindowsFallback(terminalByProcessId)
-          : nativeListeners;
+          : yield* Ref.set(windowsFallbackRef, {
+              failureCount: 0,
+              nextAttemptAtMillis: 0,
+              lastSnapshot: nativeListeners,
+            }).pipe(Effect.as(nativeListeners));
       return yield* probeWebServers(listeners, configuredUrls);
     }
     const recoverLsofProbeFailure = recoverProcessProbeFailure("lsof");
