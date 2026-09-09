@@ -99,6 +99,7 @@ export const executeAuthenticatedEnvironmentHttpRequest = Effect.fn(
   readonly url: (httpBaseUrl: string) => string;
   readonly timeoutMs: number;
   readonly group: Group;
+  readonly validateUrl?: (url: string) => Effect.Effect<void, RemoteEnvironmentRequestError>;
   readonly request: (input: {
     readonly client: Effect.Success<ReturnType<typeof makeEnvironmentHttpApiGroupClient<Group>>>;
     readonly headers: EnvironmentHttpAuthHeaders;
@@ -141,6 +142,7 @@ export const executeAuthenticatedEnvironmentHttpRequest = Effect.fn(
         authorization = current.httpAuthorization;
       }
 
+      if (input.validateUrl) yield* input.validateUrl(httpBaseUrl);
       const requestUrl = input.url(httpBaseUrl);
       const client = yield* makeEnvironmentHttpApiGroupClient(httpBaseUrl, input.group);
       const headers = yield* buildEnvironmentAuthHeaders(
