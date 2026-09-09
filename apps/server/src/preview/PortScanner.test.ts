@@ -385,7 +385,9 @@ effectIt.effect("starts the Windows fallback cooldown after a slow failure compl
       Effect.sync(() => {
         fallbackRuns += 1;
       }).pipe(
-        Effect.andThen(fallbackStarted === null ? Effect.void : Deferred.succeed(fallbackStarted, undefined)),
+        Effect.andThen(
+          fallbackStarted === null ? Effect.void : Deferred.succeed(fallbackStarted, undefined),
+        ),
         Effect.andThen(Effect.sleep(Duration.seconds(15))),
         Effect.andThen(processProbeFailure(input)),
       ),
