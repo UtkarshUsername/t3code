@@ -1,4 +1,9 @@
-import { RESOURCE_MONITOR_PROTOCOL_VERSION, type HostPowerSnapshot } from "@t3tools/contracts";
+import {
+  RESOURCE_MONITOR_PROTOCOL_VERSION,
+  ResourceMonitorCommand as ResourceMonitorCommandSchema,
+  ResourceMonitorEvent as ResourceMonitorEventSchema,
+  type HostPowerSnapshot,
+} from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
@@ -10,6 +15,7 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Semaphore from "effect/Semaphore";
+import * as Schema from "effect/Schema";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -43,6 +49,11 @@ const basePower: HostPowerSnapshot = {
   stale: false,
   updatedAt: DateTime.makeUnsafe("2026-06-17T12:00:00.000Z"),
 };
+
+const decodeMonitorCommand = Schema.decodeUnknownSync(
+  Schema.fromJsonString(ResourceMonitorCommandSchema),
+);
+const encodeMonitorEvent = Schema.encodeSync(Schema.fromJsonString(ResourceMonitorEventSchema));
 
 describe("resolveNativeSampleIntervalMs", () => {
   it("keeps a recovery cadence while suspended and backs off under host constraints", () => {
@@ -323,7 +334,7 @@ describe("NativeTelemetryClient", () => {
           Effect.gen(function* () {
             const instance = spawnCount++;
             const events = yield* Queue.unbounded<Uint8Array>();
-            const hello = JSON.stringify({
+            const hello = encodeMonitorEvent({
               version: RESOURCE_MONITOR_PROTOCOL_VERSION,
               type: "hello",
               sidecarVersion: "test",
@@ -342,10 +353,7 @@ describe("NativeTelemetryClient", () => {
             });
             const stdin = Sink.forEach((chunk: Uint8Array) =>
               Effect.gen(function* () {
-                const command = JSON.parse(new TextDecoder().decode(chunk)) as {
-                  readonly type: string;
-                  readonly requestId?: string;
-                };
+                const command = decodeMonitorCommand(new TextDecoder().decode(chunk));
                 if (command.type === "configure") {
                   yield* Deferred.succeed(instance === 0 ? firstReady : secondReady, undefined);
                 }
@@ -357,7 +365,7 @@ describe("NativeTelemetryClient", () => {
                 yield* Queue.offer(
                   events,
                   new TextEncoder().encode(
-                    `${JSON.stringify({
+                    `${encodeMonitorEvent({
                       version: RESOURCE_MONITOR_PROTOCOL_VERSION,
                       type: "processTable",
                       requestId: command.requestId,
