@@ -10,6 +10,7 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Net from "@t3tools/shared/Net";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -312,6 +313,43 @@ effectIt.effect("uses native Windows listeners without spawning PowerShell", () 
   }).pipe(Effect.provide(layer));
 });
 
+effectIt.effect("keeps a native Windows snapshot when both discovery paths later fail", () => {
+  let nativeCalls = 0;
+  let fallbackRuns = 0;
+  const layer = makeWindowsScannerLayer({
+    windowsListeners: Effect.suspend(() => {
+      nativeCalls += 1;
+      return nativeCalls === 1
+        ? Effect.succeed([{ port: 43_123, pid: 4_242, processName: "node" }])
+        : Effect.fail(new NativeTelemetryClient.NativeTelemetryUnavailable({ reason: "test" }));
+    }),
+    run: (input) => {
+      fallbackRuns += 1;
+      return processProbeFailure(input);
+    },
+    fetch: ((_input: Parameters<typeof globalThis.fetch>[0]) =>
+      Promise.resolve(
+        new Response("app", { headers: { "content-type": "text/html" } }),
+      )) as typeof globalThis.fetch,
+  });
+
+  return Effect.gen(function* () {
+    const scanner = yield* PortScanner.PortDiscovery;
+    expect((yield* scanner.scan())[0]?.port).toBe(43_123);
+
+    yield* scanner.registerTerminalProcesses({
+      threadId: "thread-1",
+      terminalId: "default",
+      processIds: [4_242],
+    });
+    const retained = yield* scanner.scan();
+
+    expect(retained[0]?.port).toBe(43_123);
+    expect(retained[0]?.terminal).toEqual({ threadId: "thread-1", terminalId: "default" });
+    expect(fallbackRuns).toBe(1);
+  }).pipe(Effect.provide(layer));
+});
+
 effectIt.effect("backs off every failed Windows PowerShell fallback", () => {
   let fallbackRuns = 0;
   const layer = makeWindowsScannerLayer({
@@ -333,6 +371,36 @@ effectIt.effect("backs off every failed Windows PowerShell fallback", () => {
     yield* TestClock.adjust(Duration.seconds(3));
     yield* scanner.scan();
     expect(fallbackRuns).toBe(2);
+  }).pipe(Effect.provide(layer));
+});
+
+effectIt.effect("starts the Windows fallback cooldown after a slow failure completes", () => {
+  let fallbackRuns = 0;
+  let fallbackStarted: Deferred.Deferred<void> | null = null;
+  const layer = makeWindowsScannerLayer({
+    windowsListeners: Effect.fail(
+      new NativeTelemetryClient.NativeTelemetryUnavailable({ reason: "test" }),
+    ),
+    run: (input) =>
+      Effect.sync(() => {
+        fallbackRuns += 1;
+      }).pipe(
+        Effect.andThen(fallbackStarted === null ? Effect.void : Deferred.succeed(fallbackStarted, undefined)),
+        Effect.andThen(Effect.sleep(Duration.seconds(15))),
+        Effect.andThen(processProbeFailure(input)),
+      ),
+  });
+
+  return Effect.gen(function* () {
+    const scanner = yield* PortScanner.PortDiscovery;
+    fallbackStarted = yield* Deferred.make<void>();
+    const firstScan = yield* scanner.scan().pipe(Effect.forkChild);
+    yield* Deferred.await(fallbackStarted);
+    yield* TestClock.adjust(Duration.seconds(15));
+    yield* Fiber.join(firstScan);
+
+    yield* scanner.scan();
+    expect(fallbackRuns).toBe(1);
   }).pipe(Effect.provide(layer));
 });
 
