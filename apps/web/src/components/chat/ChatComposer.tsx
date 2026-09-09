@@ -313,6 +313,7 @@ import { PierreEntryIcon } from "./PierreEntryIcon";
 import { pendingDraftWork } from "./pendingDraftWork";
 import {
   ComposerSpeechButton,
+  ComposerSpeechCancelButton,
   ComposerSpeechStatus,
   resolveSpeechPresentation,
 } from "./ComposerSpeechButton";
@@ -6958,16 +6959,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isComposerResting && "hidden",
                   )}
                 >
+                  {composerControlsInStrip ? null : composerControls}
                   {speechPresentation.status ? (
                     <ComposerSpeechStatus
                       state={speechInput.state}
                       progress={speechInput.progress}
                       level={speechInput.level}
-                      onCancel={() => void speechInput.cancel()}
                     />
-                  ) : composerControlsInStrip ? null : (
-                    composerControls
-                  )}
+                  ) : null}
                 </div>
 
                 {/* Right side: send / stop button */}
@@ -7017,16 +7016,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     </>
                   ) : null}
                   {speechInput.available ? (
-                    <ComposerSpeechButton
-                      state={speechInput.state}
-                      progress={speechInput.progress}
-                      disabled={
-                        isConnecting || projectSelectionRequired || pendingUserInputs.length > 0
-                      }
-                      onStart={() => void speechInput.start()}
-                      onStop={() => void speechInput.stop()}
-                      onCancel={() => void speechInput.cancel()}
-                    />
+                    <>
+                      <ComposerSpeechCancelButton
+                        state={speechInput.state}
+                        onCancel={() => void speechInput.cancel()}
+                      />
+                      <ComposerSpeechButton
+                        state={speechInput.state}
+                        progress={speechInput.progress}
+                        disabled={
+                          isConnecting || projectSelectionRequired || pendingUserInputs.length > 0
+                        }
+                        onStart={() => void speechInput.start()}
+                        onStop={() => void speechInput.stop()}
+                        onCancel={() => void speechInput.cancel()}
+                      />
+                    </>
                   ) : null}
                   {speechPresentation.showsSend ? (
                     <ComposerFooterPrimaryActions
