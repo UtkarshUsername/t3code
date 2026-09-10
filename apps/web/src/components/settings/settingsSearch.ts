@@ -51,7 +51,6 @@ export interface SettingsSearchAvailability {
  */
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/general": "General",
-  "/settings/voice": "Voice",
   "/settings/appearance": "Appearance",
   "/settings/projects": "Projects",
   "/settings/keybindings": "Keybindings",
@@ -60,6 +59,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/integrations": "Integrations",
   "/settings/source-control": "Source Control",
   "/settings/connections": "Connections",
+  "/settings/voice": "Voice",
   "/settings/archived": "Archive",
 };
 
