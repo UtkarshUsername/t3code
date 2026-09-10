@@ -19,7 +19,11 @@ export {
   type VoiceTranscriptionOptions,
 } from "./transcription.ts";
 export {
+  cancelEnvironmentSpeechModelDownload,
+  downloadEnvironmentSpeechModel,
+  getEnvironmentSpeechModels,
   getEnvironmentSpeechStatus,
   removeEnvironmentSpeechModel,
+  selectEnvironmentSpeechModel,
   transcribeEnvironmentPcm,
 } from "./environment.ts";
