@@ -160,6 +160,14 @@ describe("ClientSettings microphone", () => {
   });
 });
 
+describe("ServerSettings speech model", () => {
+  it("uses the recommended local transcription model by default", () => {
+    expect(DEFAULT_SERVER_SETTINGS.speechModelId).toBe(
+      "handy-computer/parakeet-unified-en-0.6b-gguf",
+    );
+  });
+});
+
 describe("ClientSettings load balancing", () => {
   it("requires opt-in when settings are new or omit load balancing", () => {
     expect(decodeClientSettings({}).loadBalancingEnabled).toBe(false);
