@@ -317,6 +317,7 @@ import {
   ComposerSpeechStatus,
   ComposerSpeechRecordingPill,
   resolveSpeechPresentation,
+  shouldShowComposerFooter,
 } from "./ComposerSpeechButton";
 import { useEnvironmentSpeechInput } from "../../speech/useEnvironmentSpeechInput";
 import {
@@ -6950,7 +6951,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             ) : null}
 
             {/* Bottom toolbar */}
-            {isComposerCollapsedMobile || isComposerApprovalState ? null : (
+            {!shouldShowComposerFooter(
+              isComposerCollapsedMobile,
+              isComposerApprovalState,
+              speechInput.state.phase,
+            ) ? null : (
               <div
                 data-chat-composer-footer="true"
                 data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
@@ -6958,7 +6963,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3 pb-3 sm:px-4 sm:pb-4",
                   pendingUserInputs.length > 0 && "pt-2",
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
-                  showMobilePendingAnswerActions && "hidden sm:flex",
+                  showMobilePendingAnswerActions &&
+                    speechInput.state.phase === "idle" &&
+                    "hidden sm:flex",
                   isComposerResting &&
                     "absolute bottom-px right-px z-10 h-12 w-auto gap-0 py-0 sm:gap-0 sm:py-0",
                 )}
