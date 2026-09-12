@@ -171,6 +171,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["combine matching repositories environments sidebar"],
   },
   {
+    id: "transcription-environment",
+    title: "Transcription environment",
+    to: "/settings/voice",
+    desktopOnly: true,
+    searchTerms: ["speech voice stt server machine device"],
+  },
+  {
     id: "local-voice-input",
     title: "Transcription models",
     to: "/settings/voice",

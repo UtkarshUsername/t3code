@@ -2839,7 +2839,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [composerCursor, composerTerminalContexts, promptRef]);
 
   const speechInput = useEnvironmentSpeechInput({
-    environmentId,
     ownerKey: JSON.stringify(composerDraftTarget),
     draftText: prompt,
     readDraft: () => {
