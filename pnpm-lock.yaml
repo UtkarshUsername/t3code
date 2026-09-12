@@ -525,8 +525,8 @@ importers:
         specifier: 3.6.0
         version: 3.6.0
       transcribe-cpp:
-        specifier: 0.2.1
-        version: 0.2.1
+        specifier: 0.2.3
+        version: 0.2.3
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -5399,30 +5399,30 @@ packages:
     peerDependencies:
       '@testing-library/dom': '>=7.21.4'
 
-  '@transcribe-cpp/darwin-arm64-metal@0.2.1':
-    resolution: {integrity: sha512-StvvbrSGNDwMN8UC03muvZkECdchyW8CRjtpj3eP1Wi9JGfxQcUE8PRCH1raDMdAorp0L9lmXMnNKt/aMIo+mA==}
+  '@transcribe-cpp/darwin-arm64-metal@0.2.3':
+    resolution: {integrity: sha512-Ha1fvOHhCpPzCE40o1/Ub0M9QMIy0Ec9IXhCQrqsKW8XqOuSExnnTD1wUWljHC6FlB/hQjBlP0PTE/bFyue0iQ==}
     cpu: [arm64]
     os: [darwin]
 
-  '@transcribe-cpp/darwin-x64-cpu@0.2.1':
-    resolution: {integrity: sha512-dk+snKC7ENo4nQfSwjkWW9Ptv2aSmJA02LRDX26FERc+K6bL9R7eiQst+JET/JfT1sVn8UESnrBOF1oBKyxUJQ==}
+  '@transcribe-cpp/darwin-x64-cpu@0.2.3':
+    resolution: {integrity: sha512-ObdPJo53DtmfrVsx9y1P5BGPD1EYqpmkEBreIW1PKL3JRMabfZVSaW1CtRCLd6RI/zZlnr9MSlBHrEqoTiTf3g==}
     cpu: [x64]
     os: [darwin]
 
-  '@transcribe-cpp/linux-arm64-cpu-vulkan@0.2.1':
-    resolution: {integrity: sha512-c/wSkZfbQmsjqHnu2AXZT81uUpHPJW1Hxu35xp8hZiHpVbUw94zds0xbBtY8c66Nw5dFU2Y+XwhgEDil28cXqA==}
+  '@transcribe-cpp/linux-arm64-cpu-vulkan@0.2.3':
+    resolution: {integrity: sha512-grwFOA02qD28Y/vaP+gvrY9vue3WX6xJaNEJSaObbHHxF0+5IpC8gQxL31tKnn4S2rZxQ6oMpmgrkxEKvsdx6w==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@transcribe-cpp/linux-x64-cpu-vulkan@0.2.1':
-    resolution: {integrity: sha512-0sCMolWceToa9QYN5AizAn0cCserEPM7hRf1zETHKY4UQgVZzeRaFJETLrz6YLhgEiIRpr9d7osV8mp7O4e/Ww==}
+  '@transcribe-cpp/linux-x64-cpu-vulkan@0.2.3':
+    resolution: {integrity: sha512-zCI5x6uqTdPLV9SBC7PCXtukroOB7OJfhimrJbsEijhyD0ECqnSKZIqw6WZTuGuEIZbgUeZLLGb9cW7yteeM+A==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@transcribe-cpp/win32-x64-cpu-vulkan@0.2.1':
-    resolution: {integrity: sha512-wHaKJY2XRjL/J2p6YNvLE1Oy+b0MejdyHmx1PvksRQssIivkWSITdHMpd6VseokJsYO+pKj+OwqVrIycJas0yw==}
+  '@transcribe-cpp/win32-x64-cpu-vulkan@0.2.3':
+    resolution: {integrity: sha512-j/DnABYXf/7kAQXIpV1psBGD4MNhHGr3HT5iTnNHK3eqQOF95MbLTC3uVZ3r37w55HojulWePLkk31y29zKsQA==}
     cpu: [x64]
     os: [win32]
 
@@ -10687,8 +10687,8 @@ packages:
     resolution: {integrity: sha512-hdF5ZgjTqgAntKkklYw0R03MG2x/bSzTtkxmIRw/sTNV8YXsCJ1tfLAX23lhxhHJlEf3CRCOCGGWw3vI3GaSPw==}
     engines: {node: '>=18'}
 
-  transcribe-cpp@0.2.1:
-    resolution: {integrity: sha512-Vr5saZu2fI9L8pch2WujCZbmz25OjXp96CbAxwXd6DJUgxqSZmnCaDlNB5MtYCd6AgstocoZWayYQxXumks3Gg==}
+  transcribe-cpp@0.2.3:
+    resolution: {integrity: sha512-7SLtSAsZs82VwhoNHILCPwz+suMjYn8trTI7+1oAHQR9YwgkZuO48qB/fHvF7pEXR3URdpNupt8hkGTZnVhUXA==}
     engines: {node: '>=22'}
 
   trim-lines@3.0.1:
@@ -15966,19 +15966,19 @@ snapshots:
     dependencies:
       '@testing-library/dom': 10.4.1
 
-  '@transcribe-cpp/darwin-arm64-metal@0.2.1':
+  '@transcribe-cpp/darwin-arm64-metal@0.2.3':
     optional: true
 
-  '@transcribe-cpp/darwin-x64-cpu@0.2.1':
+  '@transcribe-cpp/darwin-x64-cpu@0.2.3':
     optional: true
 
-  '@transcribe-cpp/linux-arm64-cpu-vulkan@0.2.1':
+  '@transcribe-cpp/linux-arm64-cpu-vulkan@0.2.3':
     optional: true
 
-  '@transcribe-cpp/linux-x64-cpu-vulkan@0.2.1':
+  '@transcribe-cpp/linux-x64-cpu-vulkan@0.2.3':
     optional: true
 
-  '@transcribe-cpp/win32-x64-cpu-vulkan@0.2.1':
+  '@transcribe-cpp/win32-x64-cpu-vulkan@0.2.3':
     optional: true
 
   '@tybys/wasm-util@0.10.3':
@@ -22339,15 +22339,15 @@ snapshots:
       punycode: 2.3.1
     optional: true
 
-  transcribe-cpp@0.2.1:
+  transcribe-cpp@0.2.3:
     dependencies:
       koffi: 3.2.1
     optionalDependencies:
-      '@transcribe-cpp/darwin-arm64-metal': 0.2.1
-      '@transcribe-cpp/darwin-x64-cpu': 0.2.1
-      '@transcribe-cpp/linux-arm64-cpu-vulkan': 0.2.1
-      '@transcribe-cpp/linux-x64-cpu-vulkan': 0.2.1
-      '@transcribe-cpp/win32-x64-cpu-vulkan': 0.2.1
+      '@transcribe-cpp/darwin-arm64-metal': 0.2.3
+      '@transcribe-cpp/darwin-x64-cpu': 0.2.3
+      '@transcribe-cpp/linux-arm64-cpu-vulkan': 0.2.3
+      '@transcribe-cpp/linux-x64-cpu-vulkan': 0.2.3
+      '@transcribe-cpp/win32-x64-cpu-vulkan': 0.2.3
 
   trim-lines@3.0.1: {}
 
