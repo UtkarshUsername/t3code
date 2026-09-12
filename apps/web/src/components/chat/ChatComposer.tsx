@@ -315,6 +315,7 @@ import {
   ComposerSpeechButton,
   ComposerSpeechCancelButton,
   ComposerSpeechStatus,
+  ComposerSpeechRecordingPill,
   resolveSpeechPresentation,
 } from "./ComposerSpeechButton";
 import { useEnvironmentSpeechInput } from "../../speech/useEnvironmentSpeechInput";
@@ -6995,7 +6996,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       </Tooltip>
                     </>
                   ) : null}
-                  {speechPresentation.status ? (
+                  {speechInput.state.phase === "error" ? (
                     <ComposerSpeechStatus
                       state={speechInput.state}
                       progress={speechInput.progress}
@@ -7059,13 +7060,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           isConnecting || projectSelectionRequired || pendingUserInputs.length > 0
                         }
                         onStart={() => void speechInput.start()}
-                        onStop={() => void speechInput.stop()}
                         onCancel={() => void speechInput.cancel()}
                       />
-                      <ComposerSpeechCancelButton
-                        state={speechInput.state}
-                        onCancel={() => void speechInput.cancel()}
-                      />
+                      {speechInput.state.phase === "error" ? (
+                        <ComposerSpeechCancelButton
+                          state={speechInput.state}
+                          onCancel={() => void speechInput.cancel()}
+                        />
+                      ) : null}
                     </>
                   ) : null}
                   <ComposerFooterPrimaryActions
@@ -7102,6 +7104,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     compactDisabledReason={resolvedCompactDisabledReason}
                     {...(compactCommandAvailable ? { onCompactContext: compactThreadContext } : {})}
                   />
+                  {speechInput.available ? (
+                    <ComposerSpeechRecordingPill
+                      state={speechInput.state}
+                      progress={speechInput.progress}
+                      level={speechInput.level}
+                      onStop={() => void speechInput.stop()}
+                      onCancel={() => void speechInput.cancel()}
+                    />
+                  ) : null}
                 </div>
               </div>
             )}
