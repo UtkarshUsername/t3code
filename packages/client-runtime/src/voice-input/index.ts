@@ -24,6 +24,7 @@ export {
   getEnvironmentSpeechModels,
   getEnvironmentSpeechStatus,
   updateEnvironmentSpeechCustomWords,
+  updateEnvironmentSpeechFillerWordRemoval,
   getEnvironmentSpeechStreamUrl,
   removeEnvironmentSpeechModel,
   selectEnvironmentSpeechModel,

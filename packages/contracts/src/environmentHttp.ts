@@ -37,6 +37,7 @@ import {
   EnvironmentSpeechModels,
   EnvironmentSpeechStatus,
   EnvironmentSpeechCustomWordsRequest,
+  EnvironmentSpeechFillerWordsRequest,
   EnvironmentSpeechTranscriptionResult,
 } from "./speech.ts";
 import {
@@ -613,6 +614,14 @@ export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
     HttpApiEndpoint.post("updateCustomWords", "/api/voice/custom-words", {
       headers: OptionalBearerHeaders,
       payload: EnvironmentSpeechCustomWordsRequest,
+      success: EnvironmentSpeechStatus,
+      error: [...EnvironmentScopedOperationErrors, EnvironmentRequestInvalidError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("updateFillerWordRemoval", "/api/voice/filler-word-removal", {
+      headers: OptionalBearerHeaders,
+      payload: EnvironmentSpeechFillerWordsRequest,
       success: EnvironmentSpeechStatus,
       error: [...EnvironmentScopedOperationErrors, EnvironmentRequestInvalidError],
     }).middleware(EnvironmentAuthenticatedAuth),
