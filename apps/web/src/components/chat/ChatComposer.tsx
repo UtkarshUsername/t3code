@@ -3534,6 +3534,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [composerCursor, promptRef]);
 
   const speechInput = useEnvironmentSpeechInput({
+    environmentId,
     ownerKey: JSON.stringify(composerDraftTarget),
     draftText: prompt,
     readDraft: () => {
@@ -7101,6 +7102,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       level={speechInput.level}
                       onStop={() => void speechInput.stop()}
                       onCancel={() => void speechInput.cancel()}
+                      onSkipPostProcessing={() => speechInput.skipPostProcessing()}
                     />
                   ) : null}
                 </div>
