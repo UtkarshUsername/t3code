@@ -82,6 +82,7 @@ export interface ThreadTitleGenerationResult {
 }
 
 export interface TranscriptionPostProcessingInput {
+  cwd: string;
   prompt: string;
   modelSelection: ModelSelection;
 }

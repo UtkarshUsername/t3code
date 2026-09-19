@@ -103,7 +103,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateTranscriptionPostProcessing",
     value: unknown,
     detail: string,
   ): Effect.Effect<string, TextGenerationError> =>

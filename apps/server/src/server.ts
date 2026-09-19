@@ -659,7 +659,6 @@ const makeRoutesLayer = Layer.mergeAll(
   // and mutations observed on WebSocket invalidate patches subsequently read over HTTP.
   Layer.provide(PullRequestServiceLive),
   Layer.provide(SpeechService.layer.pipe(Layer.provide(ServerSettingsLayerLive))),
-  Layer.provide(TextGeneration.layer),
   Layer.provide(ServerSettingsLayerLive),
   Layer.provide(PreviewAutomationBroker.layer),
   Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(DesktopAppUpdateLayerLive))),
