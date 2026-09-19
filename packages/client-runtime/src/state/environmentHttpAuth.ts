@@ -104,7 +104,6 @@ export const executeAuthenticatedEnvironmentHttpRequest = Effect.fn(
   readonly method: HttpMethod.HttpMethod;
   readonly url: (httpBaseUrl: string) => string;
   readonly timeoutMs: number;
-  readonly group: Group;
   readonly requestInit?: RequestInit;
   readonly validateUrl?: (url: string) => Effect.Effect<void, RemoteEnvironmentRequestError>;
   readonly group: Group;

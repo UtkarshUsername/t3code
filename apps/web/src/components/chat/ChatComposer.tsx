@@ -328,9 +328,6 @@ import {
   suppressActiveComposerScrollGesture,
 } from "./composerScrollGesture";
 import { prepareVideoFirstFrame } from "../../lib/videoFirstFrame";
-import { ComposerSpeechButton } from "./ComposerSpeechButton";
-import { useEnvironmentSpeechInput } from "../../speech/useEnvironmentSpeechInput";
-
 
 function ComposerVideoThumbnail({ file }: { file: File }) {
   const setVideo = useCallback(

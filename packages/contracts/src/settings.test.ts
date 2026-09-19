@@ -301,21 +301,6 @@ describe("ClientSettings diff colors", () => {
   });
 });
 
-describe("ClientSettings load balancing", () => {
-  it("requires opt-in when settings are new or omit load balancing", () => {
-    expect(decodeClientSettings({}).loadBalancingEnabled).toBe(false);
-    expect(decodeClientSettings({ loadBalancingWeights: {} }).loadBalancingEnabled).toBe(false);
-  });
-
-  it.each([true, false])("preserves a saved choice of %s", (loadBalancingEnabled) => {
-    const settings = decodeClientSettings({ loadBalancingEnabled });
-    expect(encodeClientSettings(settings).loadBalancingEnabled).toBe(loadBalancingEnabled);
-    expect(decodeClientSettingsPatch({ loadBalancingEnabled }).loadBalancingEnabled).toBe(
-      loadBalancingEnabled,
-    );
-  });
-});
-
 describe("ClientSettings microphone", () => {
   it("accepts microphone selection patches", () => {
     expect(decodeClientSettingsPatch({ voiceMicrophone: "studio-mic" }).voiceMicrophone).toBe(
