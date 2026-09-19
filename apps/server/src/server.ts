@@ -515,6 +515,12 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   // `providerInstances` hydration merges `settings.providers.<kind>`
   // with explicit `providerInstances` entries on boot.
   Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
+  Layer.provideMerge(
+    TextGeneration.layer.pipe(
+      Layer.provide(SourceControlProviderRegistryLayerLive),
+      Layer.provide(ProviderInstanceRegistryHydrationLive),
+    ),
+  ),
 ).pipe(
   Layer.provideMerge(AntigravityInstallation.layer),
   // Shared native/canonical NDJSON writers used by both the per-instance
@@ -597,7 +603,6 @@ export const makeRoutesLayer = Layer.mergeAll(
   // and mutations observed on WebSocket invalidate patches subsequently read over HTTP.
   Layer.provide(PullRequestServiceLive),
   Layer.provide(SpeechService.layer.pipe(Layer.provide(ServerSettingsLayerLive))),
-  Layer.provide(TextGeneration.layer),
   Layer.provide(ServerSettingsLayerLive),
   Layer.provide(PreviewAutomationBroker.layer),
   Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(DesktopAppUpdateLayerLive))),
