@@ -575,28 +575,30 @@ export const make = Effect.fn("resourceTelemetry.nativeTelemetryClient.make")(fu
           Effect.asVoid,
         );
       case "windowsListeners":
-        return Ref.modify(pendingWindowsListeners, (pending) => {
-          const next = new Map(pending);
-          const deferred = next.get(event.requestId);
-          next.delete(event.requestId);
-          return [Option.fromUndefinedOr(deferred), next] as const;
-        }).pipe(
-          Effect.flatMap(
-            Option.match({
-              onNone: () => Effect.void,
-              onSome: (deferred) =>
-                event.error === null
-                  ? Deferred.succeed(deferred, event.listeners)
-                  : Deferred.fail(
-                      deferred,
-                      new NativeTelemetryCommandFailed({
-                        operation: "windowsListeners",
-                        cause: event.error,
-                      }),
-                    ),
-            }),
+        return Effect.uninterruptible(
+          Ref.modify(pendingWindowsListeners, (pending) => {
+            const next = new Map(pending);
+            const deferred = next.get(event.requestId);
+            next.delete(event.requestId);
+            return [Option.fromUndefinedOr(deferred), next] as const;
+          }).pipe(
+            Effect.flatMap(
+              Option.match({
+                onNone: () => Effect.void,
+                onSome: (deferred) =>
+                  event.error === null
+                    ? Deferred.succeed(deferred, event.listeners)
+                    : Deferred.fail(
+                        deferred,
+                        new NativeTelemetryCommandFailed({
+                          operation: "windowsListeners",
+                          cause: event.error,
+                        }),
+                      ),
+              }),
+            ),
+            Effect.asVoid,
           ),
-          Effect.asVoid,
         );
       case "historyChunk":
         return Effect.gen(function* () {

@@ -357,7 +357,7 @@ describe("NativeTelemetryClient", () => {
                 if (command.type === "configure") {
                   yield* Deferred.succeed(instance === 0 ? firstReady : secondReady, undefined);
                 }
-                if (command.type !== "processTable") return;
+                if (command.type !== "windowsListeners") return;
                 if (instance === 0) {
                   yield* Deferred.succeed(firstRequest, undefined);
                   return;
@@ -367,9 +367,10 @@ describe("NativeTelemetryClient", () => {
                   new TextEncoder().encode(
                     `${encodeMonitorEvent({
                       version: RESOURCE_MONITOR_PROTOCOL_VERSION,
-                      type: "processTable",
+                      type: "windowsListeners",
                       requestId: command.requestId,
-                      processes: [{ pid: 42, ppid: 1, name: "replacement-child" }],
+                      listeners: [{ port: 43123, pid: 42, processName: "replacement-child" }],
+                      error: null,
                     })}\n`,
                   ),
                 );
@@ -411,7 +412,7 @@ describe("NativeTelemetryClient", () => {
 
         yield* Deferred.await(firstReady);
         yield* client.capabilities;
-        const first = yield* client.processTable.pipe(Effect.flip, Effect.forkChild);
+        const first = yield* client.windowsListeners.pipe(Effect.flip, Effect.forkChild);
         yield* Deferred.await(firstRequest);
         yield* Deferred.succeed(firstExit, ChildProcessSpawner.ExitCode(1));
         expect((yield* Fiber.join(first))._tag).toBe("NativeTelemetryExited");
@@ -420,8 +421,8 @@ describe("NativeTelemetryClient", () => {
         yield* Deferred.await(secondSpawned);
         yield* Deferred.await(secondReady);
 
-        expect(yield* client.processTable).toEqual([
-          { pid: 42, ppid: 1, name: "replacement-child" },
+        expect(yield* client.windowsListeners).toEqual([
+          { port: 43123, pid: 42, processName: "replacement-child" },
         ]);
       }),
     ),

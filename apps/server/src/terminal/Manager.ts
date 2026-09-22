@@ -1499,9 +1499,16 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           }),
         ),
       )
-    : fallbackProcessTableSnapshot.pipe(
-        Effect.map((snapshot) => ({ snapshot, snapshotSucceeded: true, fallbackElapsedMs: 0 })),
-      );
+    : Effect.suspend(() => {
+        const startedAtMillis = performance.now();
+        return fallbackProcessTableSnapshot.pipe(
+          Effect.map((snapshot) => ({
+            snapshot,
+            snapshotSucceeded: true,
+            fallbackElapsedMs: performance.now() - startedAtMillis,
+          })),
+        );
+      });
   const customSubprocessInspector = options.subprocessInspector;
   const acquireSubprocessInspector: Effect.Effect<
     {

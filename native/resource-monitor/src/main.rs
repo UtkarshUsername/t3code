@@ -302,14 +302,16 @@ mod windows_listeners {
         u16::from_be(value as u16)
     }
 
+    fn is_local_ipv4(address: u32) -> bool {
+        address == 0 || address.to_ne_bytes() == [127, 0, 0, 1]
+    }
+
     pub fn read() -> io::Result<Vec<(u16, u32)>> {
         let ipv4 = unsafe { rows::<TcpRow>(AF_INET)? };
         let ipv6 = unsafe { rows::<Tcp6Row>(AF_INET6)? };
         let mut listeners = ipv4
             .into_iter()
-            .filter(|row| {
-                row.local_address == 0 || row.local_address.to_ne_bytes().first() == Some(&127)
-            })
+            .filter(|row| is_local_ipv4(row.local_address))
             .map(|row| (port(row.local_port), row.owning_pid))
             .chain(
                 ipv6.into_iter()
@@ -324,6 +326,19 @@ mod windows_listeners {
         listeners.sort_unstable();
         listeners.dedup();
         Ok(listeners)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::is_local_ipv4;
+
+        #[test]
+        fn accepts_only_wildcard_and_localhost_ipv4() {
+            assert!(is_local_ipv4(0));
+            assert!(is_local_ipv4(u32::from_ne_bytes([127, 0, 0, 1])));
+            assert!(!is_local_ipv4(u32::from_ne_bytes([127, 0, 0, 2])));
+            assert!(!is_local_ipv4(u32::from_ne_bytes([192, 168, 0, 1])));
+        }
     }
 }
 
