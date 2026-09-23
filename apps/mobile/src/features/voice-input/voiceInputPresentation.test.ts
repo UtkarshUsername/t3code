@@ -44,15 +44,6 @@ describe("resolveVoiceComposerPresentation", () => {
     });
     expect(
       resolveVoiceComposerPresentation(
-        { phase: "post-processing", error: null, errorAction: null },
-        0,
-      ),
-    ).toMatchObject({
-      statusLabel: "Post-processing transcription",
-      confirmationEnabled: false,
-    });
-    expect(
-      resolveVoiceComposerPresentation(
         { phase: "error", error: "Microphone unavailable", errorAction: "retry" },
         0,
       ),

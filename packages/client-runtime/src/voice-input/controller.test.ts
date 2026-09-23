@@ -52,14 +52,14 @@ function draft(overrides: Partial<VoiceDraftSnapshot> = {}): VoiceDraftSnapshot 
 }
 
 function createHarness(
-  overrides: Partial<VoiceInputControllerDependencies> = {},
+  overrides: Partial<VoiceInputControllerDependencies<true>> = {},
   initialDraft = draft(),
 ) {
   const recorder = new TestRecorder();
   let currentDraft: VoiceDraftSnapshot | null = initialDraft;
   const commits: Array<{ text: string; selection: { start: number; end: number } }> = [];
   const deleted: string[] = [];
-  const dependencies: VoiceInputControllerDependencies = {
+  const dependencies: VoiceInputControllerDependencies<true> = {
     recorder,
     getTranscriber: () => ({ prepare: async () => preparedTranscription() }),
     requestPermission: async () => ({ granted: true, canAskAgain: true }),
@@ -72,7 +72,7 @@ function createHarness(
     ...overrides,
   };
   return {
-    controller: new VoiceInputController(dependencies),
+    controller: new VoiceInputController<true>(dependencies),
     recorder,
     commits,
     deleted,
