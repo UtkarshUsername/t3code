@@ -28,6 +28,7 @@ export {
   updateEnvironmentSpeechCustomWords,
   updateEnvironmentSpeechFillerWordRemoval,
   updateEnvironmentSpeechAcceleration,
+  updateEnvironmentSpeechModelUnloadTimeout,
   updateEnvironmentSpeechLanguage,
   getEnvironmentSpeechStreamUrl,
   removeEnvironmentSpeechModel,
