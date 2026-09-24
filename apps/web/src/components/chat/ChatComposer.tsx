@@ -5,6 +5,7 @@ import { runtimeModeConfig, runtimeModeOptions } from "./runtimeModeConfig";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { AttachmentFilePreview } from "../files/AttachmentFilePreview";
 import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
+import { VoiceInputSetup } from "./VoiceInputSetup";
 import { filterComposerPullRequestMatches } from "@t3tools/shared/composerPullRequestMatches";
 import { importPastedComposerText, readPastedComposerContext } from "../composerInlineTokenPaste";
 import { elementContextToPreviewAnnotation } from "../../lib/elementContext";
@@ -7095,6 +7096,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       ) : null}
                     </>
                   ) : null}
+                  <VoiceInputSetup
+                    open={speechInput.setup.open}
+                    step={speechInput.setup.step}
+                    status={speechInput.status}
+                    model={speechInput.setup.model}
+                    downloading={speechInput.setup.downloading}
+                    error={speechInput.setup.error}
+                    onOpenChange={speechInput.setup.setOpen}
+                    onDownload={() => void speechInput.setup.download()}
+                    onCancelDownload={() => void speechInput.setup.cancelDownload()}
+                    onStartRecording={() => void speechInput.setup.startRecording()}
+                  />
                   <div
                     className={cn("contents", speechPresentation.showsConfirm && "[&>*]:-order-1")}
                   >
