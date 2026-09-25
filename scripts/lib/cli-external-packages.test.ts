@@ -52,6 +52,7 @@ describe("shouldBundleCliDependency", () => {
       "transcribe-cpp",
       "@transcribe-cpp/win32-x64-cpu-vulkan",
       "koffi",
+      "@napi-rs/keyring",
       "@clerk/electron-passkeys",
       "node-addon-api",
     ]) {
@@ -87,7 +88,7 @@ describe("selectCliRuntimeExternalDependencies", () => {
   it("selects every external root declared by the server", () => {
     assert.deepStrictEqual(
       Object.keys(selectCliRuntimeExternalDependencies(serverPackageJson.dependencies)).sort(),
-      ["@ff-labs/fff-node", "node-pty", "transcribe-cpp"],
+      ["@ff-labs/fff-node", "@napi-rs/keyring", "node-pty", "transcribe-cpp"],
     );
   });
 });
