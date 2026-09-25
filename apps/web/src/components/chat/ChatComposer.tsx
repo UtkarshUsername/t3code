@@ -3593,7 +3593,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
   });
   const speechPresentation = resolveSpeechPresentation(speechInput.state, speechInput.progress);
-  const dictationShortcuts = useDictationShortcut({
+  const dictationShortcutLabel = useDictationShortcut({
     keybindings,
     speech: speechInput,
     disabled: isConnecting || projectSelectionRequired || pendingUserInputs.length > 0,
@@ -7092,7 +7092,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       <ComposerSpeechButton
                         state={speechInput.state}
                         progress={speechInput.progress}
-                        shortcutLabel={dictationShortcuts.dictation}
+                        shortcutLabel={dictationShortcutLabel}
                         disabled={
                           isConnecting || projectSelectionRequired || pendingUserInputs.length > 0
                         }
@@ -7102,7 +7102,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       {speechInput.state.phase === "error" ? (
                         <ComposerSpeechCancelButton
                           state={speechInput.state}
-                          shortcutLabel={dictationShortcuts.cancel}
+                          shortcutLabel="Esc"
                           onCancel={() => void speechInput.cancel()}
                         />
                       ) : null}
@@ -7164,8 +7164,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     <ComposerSpeechRecordingPill
                       state={speechInput.state}
                       progress={speechInput.progress}
-                      finishShortcutLabel={dictationShortcuts.dictation}
-                      cancelShortcutLabel={dictationShortcuts.cancel}
+                      finishShortcutLabel={dictationShortcutLabel}
+                      cancelShortcutLabel="Esc"
                       level={speechInput.level}
                       onStop={() => void speechInput.stop()}
                       onCancel={() => void speechInput.cancel()}
