@@ -518,7 +518,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "speech-correction-word",
-    title: "Correction word",
+    title: "Explicit correction cue",
     to: "/settings/voice",
     searchTerms: ["speech voice self correction revise err"],
     desktopOnly: true,
