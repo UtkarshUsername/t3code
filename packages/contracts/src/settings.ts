@@ -485,6 +485,9 @@ export const ClientSettingsSchema = Schema.Struct({
   // Desktop-local input device name. An empty string follows the operating
   // system default, which remains stable when devices are added or removed.
   voiceMicrophone: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  voiceShortcutMode: Schema.Literals(["auto", "hold", "toggle"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("auto")),
+  ),
   // Null follows the primary environment. A concrete ID pins transcription to
   // that environment across every thread opened by this client.
   voiceTranscriptionEnvironmentId: Schema.NullOr(EnvironmentId).pipe(
@@ -1718,6 +1721,7 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarThreadPreviewCount: Schema.optionalKey(SidebarThreadPreviewCount),
   timestampFormat: Schema.optionalKey(TimestampFormat),
   voiceMicrophone: Schema.optionalKey(Schema.String),
+  voiceShortcutMode: Schema.optionalKey(Schema.Literals(["auto", "hold", "toggle"])),
   voiceTranscriptionEnvironmentId: Schema.optionalKey(Schema.NullOr(EnvironmentId)),
   snapShotEnabled: Schema.optionalKey(Schema.Boolean),
   snapShotIncludeAccessibility: Schema.optionalKey(Schema.Boolean),

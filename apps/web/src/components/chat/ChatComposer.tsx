@@ -178,6 +178,7 @@ import {
 } from "../../lib/attachmentUploadState";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { getTerminalFocusOwner } from "../../lib/terminalFocus";
+import { useDictationShortcut } from "../../speech/useDictationShortcut";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../../keybindings";
 import {
@@ -3592,6 +3593,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
   });
   const speechPresentation = resolveSpeechPresentation(speechInput.state, speechInput.progress);
+  const dictationShortcuts = useDictationShortcut({
+    keybindings,
+    speech: speechInput,
+    disabled: isConnecting || projectSelectionRequired || pendingUserInputs.length > 0,
+    terminalOpen,
+    modelPickerOpen: isComposerModelPickerOpen,
+  });
   const voiceSendDisabledReason = speechInput.blocksSubmission
     ? "Finish or discard voice input before sending"
     : sendDisabledReason;
@@ -7084,6 +7092,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       <ComposerSpeechButton
                         state={speechInput.state}
                         progress={speechInput.progress}
+                        shortcutLabel={dictationShortcuts.dictation}
                         disabled={
                           isConnecting || projectSelectionRequired || pendingUserInputs.length > 0
                         }
@@ -7093,6 +7102,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       {speechInput.state.phase === "error" ? (
                         <ComposerSpeechCancelButton
                           state={speechInput.state}
+                          shortcutLabel={dictationShortcuts.cancel}
                           onCancel={() => void speechInput.cancel()}
                         />
                       ) : null}
@@ -7154,6 +7164,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     <ComposerSpeechRecordingPill
                       state={speechInput.state}
                       progress={speechInput.progress}
+                      finishShortcutLabel={dictationShortcuts.dictation}
+                      cancelShortcutLabel={dictationShortcuts.cancel}
                       level={speechInput.level}
                       onStop={() => void speechInput.stop()}
                       onCancel={() => void speechInput.cancel()}
