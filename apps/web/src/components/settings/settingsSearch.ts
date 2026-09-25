@@ -301,6 +301,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["hide fold running monitoring threads inbox sidebar shelf"],
   },
   {
+    id: "dictation-shortcut-mode",
+    title: "Dictation shortcut mode",
+    to: "/settings/voice",
+    searchTerms: ["speech voice keyboard hotkey hold toggle auto"],
+  },
+  {
     id: "transcription-environment",
     title: "Transcription environment",
     to: "/settings/voice",
