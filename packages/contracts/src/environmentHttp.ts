@@ -46,6 +46,7 @@ import {
   EnvironmentSpeechAccelerationRequest,
   EnvironmentSpeechModelUnloadTimeoutRequest,
   EnvironmentSpeechLanguageRequest,
+  EnvironmentSpeechTranslationRequest,
   EnvironmentSpeechPostProcessingRequest,
   EnvironmentSpeechPostProcessingResult,
   EnvironmentSpeechTranscriptionResult,
@@ -695,6 +696,14 @@ export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
     HttpApiEndpoint.post("updateLanguage", "/api/voice/language", {
       headers: OptionalBearerHeaders,
       payload: EnvironmentSpeechLanguageRequest,
+      success: EnvironmentSpeechStatus,
+      error: [...EnvironmentScopedOperationErrors, EnvironmentRequestInvalidError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("updateTranslation", "/api/voice/translation", {
+      headers: OptionalBearerHeaders,
+      payload: EnvironmentSpeechTranslationRequest,
       success: EnvironmentSpeechStatus,
       error: [...EnvironmentScopedOperationErrors, EnvironmentRequestInvalidError],
     }).middleware(EnvironmentAuthenticatedAuth),
