@@ -406,6 +406,11 @@ export function applyServerSettingsPatch(
   const nextWithReplacements = {
     ...nextWithReplacementsBase,
     ...deriveLegacyProjectOverrides(nextWithReplacementsBase),
+    speechPostProcessingPrompt:
+      nextWithReplacementsBase.speechPostProcessingPrompt.mode === "custom" &&
+      !nextWithReplacementsBase.speechPostProcessingPrompt.customInstructions.trim()
+        ? { mode: "default" as const, customInstructions: "" }
+        : nextWithReplacementsBase.speechPostProcessingPrompt,
     backgroundActivity: normalizedBackgroundActivity,
     automaticGitFetchInterval: resolvedBackgroundActivity.automaticGitFetchInterval,
     providerHealthRefreshInterval: resolvedBackgroundActivity.providerHealthRefreshInterval,
