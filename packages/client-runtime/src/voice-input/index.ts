@@ -30,6 +30,7 @@ export {
   updateEnvironmentSpeechAcceleration,
   updateEnvironmentSpeechModelUnloadTimeout,
   updateEnvironmentSpeechLanguage,
+  updateEnvironmentSpeechTranslation,
   getEnvironmentSpeechStreamUrl,
   removeEnvironmentSpeechModel,
   selectEnvironmentSpeechModel,
