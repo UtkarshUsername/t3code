@@ -1537,6 +1537,7 @@ export interface ChatComposerProps {
   isLocalDraftThread: boolean;
   forceExpandedOnMobile: boolean;
   projectSelectionRequired: boolean;
+  projectName?: string | undefined;
 
   // Session phase
   phase: SessionPhase;
@@ -3861,6 +3862,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const speechInput = useEnvironmentSpeechInput({
     environmentId,
+    projectName: props.projectName,
     ownerKey: JSON.stringify(composerDraftTarget),
     draftText: prompt,
     readDraft: () => {
