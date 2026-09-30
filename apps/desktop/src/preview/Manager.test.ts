@@ -3833,6 +3833,7 @@ describe("PreviewManager", () => {
           preview: null,
           freezesEditor: true,
           blocksSubmission: true,
+          level: 0,
           draft: { text: "Tighten spacing", cursor: 15 },
         };
         yield* manager.updateAnnotationVoice(state);
