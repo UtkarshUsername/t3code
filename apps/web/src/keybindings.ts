@@ -6,12 +6,12 @@ import {
   resolveKeybindingCommand,
   type ShortcutEventLike,
   type ShortcutModifierStateLike,
-} from "@t3tools/shared/keybindings";
+} from "@t3tools/shared/keybindingMatching";
 export {
   shortcutKeyFromEvent,
   type ShortcutEventLike,
   type ShortcutModifierStateLike,
-} from "@t3tools/shared/keybindings";
+} from "@t3tools/shared/keybindingMatching";
 import {
   type KeybindingCommand,
   type KeybindingShortcut,
