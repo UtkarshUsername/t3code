@@ -703,6 +703,8 @@ function startAnnotation(voice?: DesktopPreviewAnnotationVoiceConfig): void {
   ) => {
     if (state.sessionId !== voice?.sessionId || finished) return;
     const phaseChanged = voicePhase !== state.phase;
+    const submissionChanged = voiceBusy !== state.blocksSubmission;
+    const previewChanged = voicePreview.textContent !== (state.preview ?? "");
     voicePhase = state.phase;
     voiceSettings = state.errorAction === "settings";
     voiceBusy = state.blocksSubmission;
@@ -767,7 +769,7 @@ function startAnnotation(voice?: DesktopPreviewAnnotationVoiceConfig): void {
     else if (phaseChanged) voicePill.append(voiceCancel, voiceStatus, voiceSkip, voiceFinish);
     voicePreview.textContent = state.preview;
     voicePreview.hidden = !state.preview;
-    updateStatus();
+    if (phaseChanged || submissionChanged || previewChanged || state.draft) updateStatus();
   };
 
   const dragHandle = document.createElement("button");
