@@ -11,7 +11,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 
 vi.mock("~/speech/useTextFieldSpeech", () => ({
-  useTextFieldSpeech: () => ({ blocksSubmission: false, freezesEditor: false }),
+  useTextFieldSpeech: () => ({
+    blocksSubmission: false,
+    freezesEditor: false,
+    setup: { open: false },
+  }),
   TextFieldSpeechControls: () => null,
 }));
 
