@@ -6,7 +6,9 @@
  */
 import type { EnvironmentId, PullRequestRef, PullRequestReviewVerdict } from "@t3tools/contracts";
 import { CheckIcon, MessageSquareIcon, XCircleIcon } from "lucide-react";
-import { useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useState, type ReactNode, type RefObject } from "react";
+
+import { useTextFieldSpeech, TextFieldSpeechControls } from "~/speech/useTextFieldSpeech";
 
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -49,6 +51,7 @@ const VERDICTS: ReadonlyArray<{
 
 export function PullRequestReviewForm({
   environmentId,
+  active,
   reference,
   verdicts,
   requestChangesSummaryRequired,
@@ -58,6 +61,7 @@ export function PullRequestReviewForm({
   onSubmitted,
 }: {
   environmentId: EnvironmentId;
+  active: boolean;
   reference: PullRequestRef;
   verdicts: ReadonlyArray<PullRequestReviewVerdict>;
   requestChangesSummaryRequired: boolean;
@@ -75,6 +79,22 @@ export function PullRequestReviewForm({
   const body = usePullRequestReviewStore((store) => store.summaries[reviewKey] ?? "");
   const removeComments = usePullRequestReviewStore((store) => store.removeComments);
   const setSummary = usePullRequestReviewStore((store) => store.setSummary);
+  const speech = useTextFieldSpeech({
+    environmentId,
+    ownerKey: JSON.stringify(["pr-review", environmentId, reviewKey]),
+    text: body,
+    textareaRef,
+    onTextChange: (text) => setSummary(reviewKey, text),
+    disabled: !active || pending,
+  });
+  const { cancel } = speech;
+  const closeSetup = speech.setup.setOpen;
+  useEffect(() => {
+    if (!active) {
+      cancel();
+      closeSetup(false);
+    }
+  }, [active, cancel, closeSetup]);
   const clearSummary = usePullRequestReviewStore((store) => store.clearSummary);
   const submitReview = useAtomCommand(pullRequestEnvironment.submitReview, {
     reportFailure: false,
@@ -85,7 +105,7 @@ export function PullRequestReviewForm({
     offered.find((verdict) => verdict.value === requestedVerdict) ?? offered[0];
 
   const submit = async (verdict: (typeof VERDICTS)[number]) => {
-    if (pending) return;
+    if (pending || speech.blocksSubmission) return;
     const submittedBody = body;
     const submittedComments = comments;
     onPendingChange(true);
@@ -126,6 +146,7 @@ export function PullRequestReviewForm({
       <Textarea
         ref={textareaRef}
         rows={3}
+        readOnly={speech.freezesEditor}
         value={body}
         placeholder={
           requestChangesSummaryRequired && verdicts.includes("request-changes")
@@ -135,7 +156,8 @@ export function PullRequestReviewForm({
         aria-label="Review summary"
         onChange={(event) => setSummary(reviewKey, event.target.value)}
       />
-      <div className="mt-2 flex justify-between gap-2">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <TextFieldSpeechControls speech={speech} disabled={pending} />
         <Select
           value={selectedVerdict?.value ?? null}
           disabled={pending}
@@ -162,7 +184,12 @@ export function PullRequestReviewForm({
         </Select>
         <Button
           size="xs"
-          disabled={pending || selectedVerdict === undefined || !canSubmit(selectedVerdict.value)}
+          disabled={
+            pending ||
+            speech.blocksSubmission ||
+            selectedVerdict === undefined ||
+            !canSubmit(selectedVerdict.value)
+          }
           onClick={() => {
             if (selectedVerdict !== undefined) void submit(selectedVerdict);
           }}
