@@ -156,46 +156,50 @@ export function PullRequestReviewForm({
         aria-label="Review summary"
         onChange={(event) => setSummary(reviewKey, event.target.value)}
       />
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <TextFieldSpeechControls speech={speech} disabled={pending} />
-        <Select
-          value={selectedVerdict?.value ?? null}
-          disabled={pending}
-          onValueChange={(value) => {
-            if (value !== null) setRequestedVerdict(value);
-          }}
-        >
-          <SelectTrigger size="xs" className="w-auto min-w-0" aria-label="Review verdict">
-            <span className="flex items-center gap-1.5">
-              {selectedVerdict?.icon}
-              {selectedVerdict?.label}
-            </span>
-          </SelectTrigger>
-          <SelectPopup side="top" alignItemWithTrigger={false}>
-            {offered.map((verdict) => (
-              <SelectItem key={verdict.value} value={verdict.value}>
-                <span className="flex items-center gap-1.5">
-                  {verdict.icon}
-                  {verdict.label}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
-        <Button
-          size="xs"
-          disabled={
-            pending ||
-            speech.blocksSubmission ||
-            selectedVerdict === undefined ||
-            !canSubmit(selectedVerdict.value)
-          }
-          onClick={() => {
-            if (selectedVerdict !== undefined) void submit(selectedVerdict);
-          }}
-        >
-          {pending ? "Submitting..." : "Submit review"}
-        </Button>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          <TextFieldSpeechControls speech={speech} disabled={pending} />
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <Select
+            value={selectedVerdict?.value ?? null}
+            disabled={pending}
+            onValueChange={(value) => {
+              if (value !== null) setRequestedVerdict(value);
+            }}
+          >
+            <SelectTrigger size="xs" className="w-auto min-w-0" aria-label="Review verdict">
+              <span className="flex items-center gap-1.5">
+                {selectedVerdict?.icon}
+                {selectedVerdict?.label}
+              </span>
+            </SelectTrigger>
+            <SelectPopup side="top" alignItemWithTrigger={false}>
+              {offered.map((verdict) => (
+                <SelectItem key={verdict.value} value={verdict.value}>
+                  <span className="flex items-center gap-1.5">
+                    {verdict.icon}
+                    {verdict.label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+          <Button
+            size="xs"
+            disabled={
+              pending ||
+              speech.blocksSubmission ||
+              selectedVerdict === undefined ||
+              !canSubmit(selectedVerdict.value)
+            }
+            onClick={() => {
+              if (selectedVerdict !== undefined) void submit(selectedVerdict);
+            }}
+          >
+            {pending ? "Submitting..." : "Submit review"}
+          </Button>
+        </div>
       </div>
     </>
   );
