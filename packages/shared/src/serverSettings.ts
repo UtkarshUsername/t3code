@@ -338,7 +338,6 @@ export function applyServerSettingsPatch(
     usagePriceOverrides: usagePriceOverridesPatch,
     // Entry replacement: deepMerge would keep keys the client meant to clear.
     projectSettingsOverrides: projectSettingsOverridesPatch,
-    speechProjectCustomWords: speechProjectCustomWordsPatch,
     // Already translated into `projectSettingsOverrides` above; the legacy
     // maps are derived views and must never be merged directly.
     projectAgentBrowserAccessOverrides: _legacyBrowserAccess,
@@ -420,14 +419,6 @@ export function applyServerSettingsPatch(
     ...(patch.providerInstances !== undefined
       ? { providerInstances: patch.providerInstances }
       : {}),
-    ...(speechProjectCustomWordsPatch !== undefined
-      ? {
-          speechProjectCustomWords: mergeSettingsEntries(
-            current.speechProjectCustomWords,
-            speechProjectCustomWordsPatch,
-          ),
-        }
-      : {}),
     ...(projectSettingsOverridesPatch !== undefined
       ? {
           projectSettingsOverrides: Object.fromEntries(
@@ -474,11 +465,6 @@ export function applyServerSettingsPatch(
   const nextWithReplacements = {
     ...nextWithReplacementsBase,
     ...deriveLegacyProjectOverrides(nextWithReplacementsBase),
-    speechPostProcessingPrompt:
-      nextWithReplacementsBase.speechPostProcessingPrompt.mode === "custom" &&
-      !nextWithReplacementsBase.speechPostProcessingPrompt.customInstructions.trim()
-        ? { mode: "default" as const, customInstructions: "" }
-        : nextWithReplacementsBase.speechPostProcessingPrompt,
     backgroundActivity: normalizedBackgroundActivity,
     automaticGitFetchInterval: resolvedBackgroundActivity.automaticGitFetchInterval,
     providerHealthRefreshInterval: resolvedBackgroundActivity.providerHealthRefreshInterval,
