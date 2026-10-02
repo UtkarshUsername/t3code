@@ -1538,6 +1538,7 @@ export interface ChatComposerProps {
   forceExpandedOnMobile: boolean;
   projectSelectionRequired: boolean;
   projectName?: string | undefined;
+  projectId?: ProjectId | undefined;
 
   // Session phase
   phase: SessionPhase;
@@ -1882,6 +1883,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerContextActions = useMemo(
     () => ({
       environmentId,
+      projectId: props.projectId,
       expandImage: (imageId: string) => {
         const preview = buildExpandedImagePreview(composerImages, imageId);
         if (preview) onExpandImage(preview);
@@ -1912,7 +1914,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         openPrLink(event, url);
       },
     }),
-    [composerFiles, composerImages, environmentId, onExpandImage, openPrLink, routeThreadRef],
+    [
+      composerFiles,
+      composerImages,
+      environmentId,
+      props.projectId,
+      onExpandImage,
+      openPrLink,
+      routeThreadRef,
+    ],
   );
   const composerContextRecords = useMemo(
     () =>
@@ -3863,6 +3873,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const speechInput = useEnvironmentSpeechInput({
     environmentId,
     projectName: props.projectName,
+    projectId: props.projectId,
     ownerKey: JSON.stringify([composerDraftTarget, activePendingProgress?.activeQuestion?.id]),
     draftText: prompt,
     readDraft: () => {
