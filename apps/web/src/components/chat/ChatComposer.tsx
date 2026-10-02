@@ -3890,6 +3890,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const dictationDisabled =
     isConnecting ||
     projectSelectionRequired ||
+    isComposerApprovalState ||
+    activePendingIsResponding ||
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
   const dictationShortcutLabel = useDictationShortcut({
     keybindings,

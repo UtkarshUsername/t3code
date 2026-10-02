@@ -552,3 +552,20 @@ describe("settings sidebar scope", () => {
     expect(isSettingsOverviewVisible({ project: "project", checkout: "checkout" })).toBe(true);
   });
 });
+
+it("finds browser voice settings through search", () => {
+  const ids = [
+    "transcription-environment",
+    "local-voice-input",
+    "dictionary",
+    "remove-filler-words",
+    "speech-post-processing",
+    "speech-post-processing-model",
+    "speech-correction-word",
+    "speech-post-processing-prompt",
+  ];
+  for (const id of ids) {
+    const item = SETTINGS_SEARCH_ITEMS.find((entry) => entry.id === id)!;
+    expect(searchSettings(item.title).map((entry) => entry.id)).toContain(id);
+  }
+});
