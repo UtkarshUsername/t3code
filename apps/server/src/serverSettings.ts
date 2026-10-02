@@ -445,10 +445,11 @@ function selectionSupportsTextGeneration(
 }
 
 function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
-  const resolved = isModelSelectionProviderEnabled(settings, settings.textGenerationModelSelection) &&
+  const resolved =
+    isModelSelectionProviderEnabled(settings, settings.textGenerationModelSelection) &&
     selectionSupportsTextGeneration(settings, settings.textGenerationModelSelection)
-    ? settings
-    : fallbackTextGenerationProvider(settings);
+      ? settings
+      : fallbackTextGenerationProvider(settings);
   const speechPostProcessingModelSelection = resolveSpeechPostProcessingModelSelection(resolved);
   return speechPostProcessingModelSelection === resolved.speechPostProcessingModelSelection
     ? resolved
