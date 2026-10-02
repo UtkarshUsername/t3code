@@ -81,6 +81,7 @@ export function PullRequestReviewForm({
   const setSummary = usePullRequestReviewStore((store) => store.setSummary);
   const speech = useTextFieldSpeech({
     environmentId,
+    projectId: reference.projectId,
     ownerKey: JSON.stringify(["pr-review", environmentId, reviewKey]),
     text: body,
     textareaRef,
