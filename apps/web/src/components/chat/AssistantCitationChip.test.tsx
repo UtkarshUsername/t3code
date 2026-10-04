@@ -11,7 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 
 vi.mock("~/speech/useTextFieldSpeech", () => ({
-  useTextFieldSpeech: () => ({
+  useTextFieldSpeech: (input: { text: string }) => ({
+    submitAfterDictation: (submit: (text: string) => void) => submit(input.text),
     blocksSubmission: false,
     freezesEditor: false,
     setup: { open: false },

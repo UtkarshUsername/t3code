@@ -51,15 +51,16 @@ export function AssistantCitationCommentEditor({
     return () => onVoiceSetupOpenChange(false);
   }, [onVoiceSetupOpenChange, speech.setup.open]);
   const submit = () => {
-    if (!commentTooLong && !speech.blocksSubmission) onSubmit(comment);
+    speech.submitAfterDictation((text) => {
+      if (text.length <= ASSISTANT_CITATION_MAX_COMMENT_LENGTH) onSubmit(text);
+    });
   };
   const submitAndSend = () => {
-    if (commentTooLong || speech.blocksSubmission) return;
-    if (onSubmitAndSend) {
-      onSubmitAndSend(comment);
-    } else {
-      onSubmit(comment);
-    }
+    speech.submitAfterDictation((text) => {
+      if (text.length <= ASSISTANT_CITATION_MAX_COMMENT_LENGTH) {
+        (onSubmitAndSend ?? onSubmit)(text);
+      }
+    });
   };
 
   return (
@@ -121,7 +122,7 @@ export function AssistantCitationCommentEditor({
         </Button>
         <Button
           size="xs"
-          disabled={commentTooLong || speech.blocksSubmission}
+          disabled={commentTooLong && !speech.blocksSubmission}
           onPointerDown={(event) => event.preventDefault()}
           onClick={submit}
         >

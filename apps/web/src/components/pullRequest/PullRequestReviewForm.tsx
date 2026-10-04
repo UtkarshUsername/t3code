@@ -105,9 +105,9 @@ export function PullRequestReviewForm({
   const selectedVerdict =
     offered.find((verdict) => verdict.value === requestedVerdict) ?? offered[0];
 
-  const submit = async (verdict: (typeof VERDICTS)[number]) => {
-    if (pending || speech.blocksSubmission) return;
-    const submittedBody = body;
+  const submit = async (verdict: (typeof VERDICTS)[number], text: string) => {
+    if (pending || !canSubmit(verdict.value, text)) return;
+    const submittedBody = text;
     const submittedComments = comments;
     onPendingChange(true);
     const result = await submitReview({
@@ -137,10 +137,10 @@ export function PullRequestReviewForm({
   };
 
   // Forgejo requires a summary when requesting changes, even with inline comments.
-  const canSubmit = (verdict: PullRequestReviewVerdict) =>
+  const canSubmit = (verdict: PullRequestReviewVerdict, text = body) =>
     verdict === "request-changes" && requestChangesSummaryRequired
-      ? body.trim().length > 0
-      : verdict === "approve" || body.trim().length > 0 || comments.length > 0;
+      ? text.trim().length > 0
+      : verdict === "approve" || text.trim().length > 0 || comments.length > 0;
 
   return (
     <>
@@ -190,12 +190,12 @@ export function PullRequestReviewForm({
             size="xs"
             disabled={
               pending ||
-              speech.blocksSubmission ||
               selectedVerdict === undefined ||
-              !canSubmit(selectedVerdict.value)
+              (!canSubmit(selectedVerdict.value) && !speech.blocksSubmission)
             }
             onClick={() => {
-              if (selectedVerdict !== undefined) void submit(selectedVerdict);
+              if (selectedVerdict !== undefined)
+                speech.submitAfterDictation((text) => void submit(selectedVerdict, text));
             }}
           >
             {pending ? "Submitting..." : "Submit review"}

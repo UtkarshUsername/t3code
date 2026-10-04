@@ -591,6 +591,8 @@ function startAnnotation(voice?: DesktopPreviewAnnotationVoiceConfig): void {
   let voicePhase = "idle";
   let voiceSettings = false;
   let voiceBusy = false;
+  let pendingVoiceSubmission: PreviewAnnotationSubmission | null = null;
+  let voiceSubmissionReady = false;
   let voiceAvailable = false;
   let voiceKeyCode: string | null = null;
   const microphoneIcon =
@@ -688,14 +690,17 @@ function startAnnotation(voice?: DesktopPreviewAnnotationVoiceConfig): void {
     const action = voicePhase === "recording" ? "stop" : "start";
     voiceBusy = true;
     comment.readOnly = true;
-    submit.disabled = true;
+    updateStatus();
     sendVoice(action);
   });
   voiceFinish.addEventListener("pointerdown", (event) => event.preventDefault());
   voiceFinish.addEventListener("click", () => sendVoice("stop"));
   voiceCancel.addEventListener("pointerdown", (event) => event.preventDefault());
   voiceSkip.addEventListener("pointerdown", (event) => event.preventDefault());
-  voiceCancel.addEventListener("click", () => sendVoice("cancel"));
+  voiceCancel.addEventListener("click", () => {
+    pendingVoiceSubmission = null;
+    sendVoice("cancel");
+  });
   voiceSkip.addEventListener("click", () => sendVoice("skip"));
   const onVoiceState = (
     _event: Electron.IpcRendererEvent,
@@ -711,6 +716,7 @@ function startAnnotation(voice?: DesktopPreviewAnnotationVoiceConfig): void {
     voiceAvailable = state.available;
     comment.readOnly = state.freezesEditor;
     if (state.draft) {
+      voiceSubmissionReady = pendingVoiceSubmission !== null;
       comment.value = state.draft.text;
       comment.setSelectionRange(state.draft.cursor, state.draft.cursor);
       resizeComment();
@@ -772,6 +778,16 @@ function startAnnotation(voice?: DesktopPreviewAnnotationVoiceConfig): void {
     voicePreview.textContent = state.preview;
     voicePreview.hidden = !state.preview;
     if (phaseChanged || submissionChanged || previewChanged || state.draft) updateStatus();
+    if (pendingVoiceSubmission !== null) {
+      if (state.phase === "recording") sendVoice("stop");
+      if (state.phase === "error") pendingVoiceSubmission = null;
+      if (state.phase === "idle") {
+        const submission = pendingVoiceSubmission;
+        pendingVoiceSubmission = null;
+        if (voiceSubmissionReady && submission !== null) submitAnnotation(submission);
+        voiceSubmissionReady = false;
+      }
+    }
   };
 
   const dragHandle = document.createElement("button");
@@ -824,9 +840,12 @@ function startAnnotation(voice?: DesktopPreviewAnnotationVoiceConfig): void {
 
   const updateStatus = (): void => {
     const hasTargets = selected.size > 0 || regions.length > 0 || strokes.length > 0;
-    if (!hasTargets && voiceBusy) sendVoice("cancel");
+    if (!hasTargets && voiceBusy) {
+      pendingVoiceSubmission = null;
+      sendVoice("cancel");
+    }
     editor.style.display = hasTargets ? "flex" : "none";
-    submit.disabled = !hasTargets || voiceBusy || pendingCapture;
+    submit.disabled = !hasTargets || pendingCapture;
     submit.style.opacity = hasTargets ? "1" : "0.45";
     adjust.disabled = !hasTargets;
     stylePanel.style.display = editorExpanded && selected.size > 0 ? "grid" : "none";
@@ -1544,6 +1563,7 @@ function startAnnotation(voice?: DesktopPreviewAnnotationVoiceConfig): void {
         event.preventDefault();
         event.stopImmediatePropagation();
         voiceKeyCode = null;
+        pendingVoiceSubmission = null;
         sendVoice("cancel");
         return;
       }
@@ -1564,7 +1584,7 @@ function startAnnotation(voice?: DesktopPreviewAnnotationVoiceConfig): void {
         if (!event.repeat && !voiceBusy) {
           voiceBusy = true;
           comment.readOnly = true;
-          submit.disabled = true;
+          updateStatus();
         }
         sendVoice("key", event);
         return;
@@ -1586,11 +1606,15 @@ function startAnnotation(voice?: DesktopPreviewAnnotationVoiceConfig): void {
   };
 
   const submitAnnotation = (submission: PreviewAnnotationSubmission): void => {
-    if (
-      voiceBusy ||
-      pendingCapture ||
-      (selected.size === 0 && regions.length === 0 && strokes.length === 0)
-    )
+    if (voiceBusy) {
+      if (pendingVoiceSubmission === null) {
+        pendingVoiceSubmission = submission;
+        voiceSubmissionReady = false;
+        if (voicePhase === "recording") sendVoice("stop");
+      }
+      return;
+    }
+    if (pendingCapture || (selected.size === 0 && regions.length === 0 && strokes.length === 0))
       return;
     pendingCapture = true;
     submit.disabled = true;

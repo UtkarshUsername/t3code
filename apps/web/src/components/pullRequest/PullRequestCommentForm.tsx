@@ -71,10 +71,9 @@ export function PullRequestCommentForm({
         ? ("reopen" as const)
         : null;
 
-  const submit = async (action: "comment" | "close" | "reopen") => {
-    const trimmed = body.trim();
-    if (trimmed.length === 0 || submitting !== null || actionPending || speech.blocksSubmission)
-      return;
+  const submit = async (action: "comment" | "close" | "reopen", text: string) => {
+    const trimmed = text.trim();
+    if (trimmed.length === 0 || submitting !== null || actionPending) return;
     setSubmitting(action);
     if (action !== "comment") {
       const result = await onCommentAction(trimmed, action);
@@ -126,7 +125,7 @@ export function PullRequestCommentForm({
           ) {
             event.preventDefault();
             event.stopPropagation();
-            if (!event.repeat) void submit("comment");
+            if (!event.repeat) speech.submitAfterDictation((text) => void submit("comment", text));
           }
         }}
       />
@@ -142,12 +141,11 @@ export function PullRequestCommentForm({
             size="xs"
             variant={followUpAction === "close" ? "destructive-outline" : "outline"}
             disabled={
-              body.trim().length === 0 ||
+              (body.trim().length === 0 && !speech.blocksSubmission) ||
               submitting !== null ||
-              actionPending ||
-              speech.blocksSubmission
+              actionPending
             }
-            onClick={() => void submit(followUpAction)}
+            onClick={() => speech.submitAfterDictation((text) => void submit(followUpAction, text))}
           >
             {followUpAction === "close" ? (
               <PullRequestGlyph.closed className="size-3.5" />
@@ -167,12 +165,11 @@ export function PullRequestCommentForm({
           size="xs"
           variant="outline"
           disabled={
-            body.trim().length === 0 ||
+            (body.trim().length === 0 && !speech.blocksSubmission) ||
             submitting !== null ||
-            actionPending ||
-            speech.blocksSubmission
+            actionPending
           }
-          onClick={() => void submit("comment")}
+          onClick={() => speech.submitAfterDictation((text) => void submit("comment", text))}
         >
           <SendIcon className="size-3.5" />
           {submitting === "comment" ? "Posting..." : "Comment"}
