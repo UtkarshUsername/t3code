@@ -1273,6 +1273,7 @@ export const DesktopPreviewAnnotationVoiceEventSchema = Schema.Struct({
   sessionId: Schema.String,
   text: Schema.String,
   cursor: Schema.Number,
+  selectionEnd: Schema.optional(Schema.Number),
   action: Schema.Literals(["sync", "start", "stop", "cancel", "skip", "settings", "key", "blur"]),
   keyboard: Schema.optional(
     Schema.Struct({

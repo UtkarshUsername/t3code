@@ -664,6 +664,7 @@ function startAnnotation(voice?: DesktopPreviewAnnotationVoiceConfig): void {
       sessionId: voice.sessionId,
       text: comment.value,
       cursor: comment.selectionStart,
+      selectionEnd: comment.selectionEnd,
       action,
       ...(keyboard
         ? {
