@@ -328,8 +328,6 @@ import { pendingDraftWork } from "./pendingDraftWork";
 import { isTimelineScrollTarget } from "./timelineScrollTarget";
 import {
   ComposerSpeechButton,
-  ComposerSpeechCancelButton,
-  ComposerSpeechStatus,
   ComposerSpeechRecordingPill,
   resolveSpeechPresentation,
   shouldShowComposerFooter,
@@ -7546,13 +7544,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   )}
                 >
                   {composerControlsCollapsed ? null : composerControls}
-                  {speechInput.state.phase === "error" ? (
-                    <ComposerSpeechStatus
-                      state={speechInput.state}
-                      progress={speechInput.progress}
-                      level={speechInput.level}
-                    />
-                  ) : null}
                 </div>
 
                 {/* Right side: send / stop button */}
@@ -7611,13 +7602,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         onStart={() => void speechInput.start()}
                         onCancel={() => void speechInput.cancel()}
                       />
-                      {speechInput.state.phase === "error" ? (
-                        <ComposerSpeechCancelButton
-                          state={speechInput.state}
-                          shortcutLabel="Esc"
-                          onCancel={() => void speechInput.cancel()}
-                        />
-                      ) : null}
                     </>
                   ) : null}
                   <VoiceInputSetup
@@ -7640,6 +7624,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       finishShortcutLabel={dictationShortcutLabel}
                       cancelShortcutLabel="Esc"
                       level={speechInput.level}
+                      onStart={() => void speechInput.start()}
+                      disabled={dictationDisabled}
                       onStop={() => void speechInput.stop()}
                       onCancel={() => void speechInput.cancel()}
                       onSkipPostProcessing={() => speechInput.skipPostProcessing()}
