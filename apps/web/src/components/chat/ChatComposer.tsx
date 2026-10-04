@@ -3893,6 +3893,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
   });
   const { blocksSubmission: voiceInputActive, submitAfterDictation } = speechInput;
+  const voiceSendDisabledReason =
+    sendDisabledReason ?? (speechInput.preparing ? "Preparing voice input" : null);
   const speechPresentation = resolveSpeechPresentation(speechInput.state, speechInput.progress);
   const dictationDisabled =
     isConnecting ||
@@ -6765,7 +6767,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               showPlanFollowUpPrompt={false}
                               promptHasText={false}
                               isSendBusy={isSendBusy}
-                              sendDisabledReason={sendDisabledReason}
+                              sendDisabledReason={voiceSendDisabledReason}
                               isConnecting={isConnecting}
                               isEnvironmentUnavailable={
                                 environmentUnavailable !== null ||
@@ -7451,7 +7453,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       showPlanFollowUpPrompt={false}
                       promptHasText={false}
                       isSendBusy={isSendBusy}
-                      sendDisabledReason={sendDisabledReason}
+                      sendDisabledReason={voiceSendDisabledReason}
                       isConnecting={isConnecting}
                       isEnvironmentUnavailable={
                         environmentUnavailable !== null ||
@@ -7603,9 +7605,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onCancelDownload={() => void speechInput.setup.cancelDownload()}
                     onStartRecording={() => void speechInput.setup.startRecording()}
                   />
-                  <div
-                    className={cn("contents", speechPresentation.showsConfirm && "[&>*]:-order-1")}
-                  >
+                  {speechInput.available ? (
+                    <ComposerSpeechRecordingPill
+                      state={speechInput.state}
+                      progress={speechInput.progress}
+                      finishShortcutLabel={dictationShortcutLabel}
+                      cancelShortcutLabel="Esc"
+                      level={speechInput.level}
+                      onStop={() => void speechInput.stop()}
+                      onCancel={() => void speechInput.cancel()}
+                      onSkipPostProcessing={() => speechInput.skipPostProcessing()}
+                    />
+                  ) : null}
+                  <div className="contents">
                     <ComposerFooterPrimaryActions
                       showActions={speechPresentation.showsSend || phase === "running"}
                       compact={isComposerResting || isComposerPrimaryActionsCompact}
@@ -7635,7 +7647,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       promptHasText={prompt.trim().length > 0 || speechInput.blocksSubmission}
                       voiceInputActive={voiceInputActive}
                       isSendBusy={isSendBusy}
-                      sendDisabledReason={sendDisabledReason}
+                      sendDisabledReason={voiceSendDisabledReason}
                       isConnecting={isConnecting}
                       isEnvironmentUnavailable={
                         environmentUnavailable !== null ||
@@ -7663,18 +7675,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         : {})}
                     />
                   </div>
-                  {speechInput.available ? (
-                    <ComposerSpeechRecordingPill
-                      state={speechInput.state}
-                      progress={speechInput.progress}
-                      finishShortcutLabel={dictationShortcutLabel}
-                      cancelShortcutLabel="Esc"
-                      level={speechInput.level}
-                      onStop={() => void speechInput.stop()}
-                      onCancel={() => void speechInput.cancel()}
-                      onSkipPostProcessing={() => speechInput.skipPostProcessing()}
-                    />
-                  ) : null}
                 </div>
               </div>
             )}

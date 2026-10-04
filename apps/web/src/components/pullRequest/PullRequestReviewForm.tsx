@@ -189,6 +189,7 @@ export function PullRequestReviewForm({
           <Button
             size="xs"
             disabled={
+              speech.preparing ||
               pending ||
               selectedVerdict === undefined ||
               (!canSubmit(selectedVerdict.value) && !speech.blocksSubmission)

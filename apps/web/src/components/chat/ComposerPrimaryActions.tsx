@@ -180,6 +180,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           {...pointerFocusProps}
           disabled={
             isEnvironmentUnavailable ||
+            isSendDisabled ||
             pendingAction.isResponding ||
             (!voiceInputActive &&
               (pendingAction.isLastQuestion
