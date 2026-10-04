@@ -140,18 +140,28 @@ export function resolveTranscriptCommit(
   };
 }
 
-let activeSession: symbol | null = null;
+type VoiceInputSession = {
+  abandoned: boolean;
+  readonly released: Promise<void>;
+  readonly release: () => void;
+};
+
+let activeSession: VoiceInputSession | null = null;
 let activeTranscriptionOperation: Promise<unknown> | null = null;
 
-function acquireSession(): symbol | null {
+function acquireSession(): VoiceInputSession | null {
   if (activeSession) return null;
-  const token = Symbol("voice-input-session");
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const token = { abandoned: false, released: promise, release: resolve };
   activeSession = token;
   return token;
 }
 
-function releaseSession(token: symbol | null): void {
-  if (token && activeSession === token) activeSession = null;
+function releaseSession(token: VoiceInputSession | null): void {
+  if (token && activeSession === token) {
+    activeSession = null;
+    token.release();
+  }
 }
 
 async function runTranscriptionOperation<T>(operation: () => Promise<T>): Promise<T> {
@@ -203,7 +213,7 @@ export class VoiceInputController<WithPostProcessing extends boolean = false> {
   private readonly dependencies: VoiceInputControllerDependencies<WithPostProcessing>;
   private state: VoiceInputState<true> = IDLE_STATE;
   private operationToken = 0;
-  private sessionToken: symbol | null = null;
+  private sessionToken: VoiceInputSession | null = null;
   private transcription: PreparedVoiceTranscription | null = null;
   private transcriptionAbortController: AbortController | null = null;
   private postProcessingAbortController: AbortController | null = null;
@@ -234,19 +244,28 @@ export class VoiceInputController<WithPostProcessing extends boolean = false> {
       this.setError("This draft is no longer available.", "retry");
       return;
     }
-    const sessionToken = acquireSession();
-    if (!sessionToken) {
-      this.setError("Another voice recording is already active.", "retry");
-      return;
-    }
-
-    this.sessionToken = sessionToken;
+    let sessionToken: VoiceInputSession | null = null;
     const operationToken = ++this.operationToken;
-    const abortController = new AbortController();
-    this.transcriptionAbortController = abortController;
     this.setState({ phase: "preparing", error: null, errorAction: null });
 
     try {
+      for (
+        let previousSession = activeSession;
+        previousSession?.abandoned;
+        previousSession = activeSession
+      ) {
+        await previousSession.released;
+        if (!this.isCurrent(operationToken)) return;
+      }
+      sessionToken = acquireSession();
+      if (!sessionToken) {
+        this.setError("Another voice recording is already active.", "retry");
+        return;
+      }
+      this.sessionToken = sessionToken;
+      const abortController = new AbortController();
+      this.transcriptionAbortController = abortController;
+
       if (this.retryRecording) {
         this.recordingUri = this.retryRecording.uri;
         this.capturedDraft = this.retryRecording.draft;
@@ -301,10 +320,12 @@ export class VoiceInputController<WithPostProcessing extends boolean = false> {
       if (this.isCurrent(operationToken))
         this.setError("Could not start voice recording.", "retry");
     } finally {
-      if (this.isCurrent(operationToken) && this.state.phase === "error") {
-        await this.releaseResources();
-      } else if (!this.isCurrent(operationToken) && !this.finishing) {
-        await this.releaseResources();
+      if (sessionToken && this.sessionToken === sessionToken) {
+        if (this.isCurrent(operationToken) && this.state.phase === "error") {
+          await this.releaseResources();
+        } else if (!this.isCurrent(operationToken) && !this.finishing) {
+          await this.releaseResources();
+        }
       }
     }
   }
@@ -527,9 +548,7 @@ export class VoiceInputController<WithPostProcessing extends boolean = false> {
     );
     try {
       await this.dependencies.recorder.stop();
-      this.rememberRecordingUri(this.dependencies.recorder.uri);
     } catch {
-      this.rememberRecordingUri(this.dependencies.recorder.uri);
     } finally {
       await this.releaseResources();
     }
@@ -539,7 +558,9 @@ export class VoiceInputController<WithPostProcessing extends boolean = false> {
     this.transcriptionAbortController?.abort();
     this.postProcessingAbortController?.abort();
     this.rememberRecordingUri(this.recordingUri);
-    this.rememberRecordingUri(this.dependencies.recorder.uri);
+    try {
+      this.rememberRecordingUri(this.dependencies.recorder.uri);
+    } catch {}
     this.recordingUri = null;
     this.deleteOwnedRecordings();
     await this.releaseAudioSession();
@@ -581,6 +602,7 @@ export class VoiceInputController<WithPostProcessing extends boolean = false> {
 
   private invalidateOperation(): void {
     this.operationToken += 1;
+    if (this.sessionToken) this.sessionToken.abandoned = true;
     this.transcriptionAbortController?.abort();
     this.postProcessingAbortController?.abort();
   }
