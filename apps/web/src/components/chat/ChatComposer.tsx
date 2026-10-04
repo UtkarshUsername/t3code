@@ -3868,12 +3868,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     };
   }, [composerCursor, promptRef]);
 
+  const dictationDisabled =
+    isConnecting ||
+    projectSelectionRequired ||
+    isComposerApprovalState ||
+    activePendingIsResponding ||
+    activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
   const speechInput = useEnvironmentSpeechInput({
     environmentId,
     projectName: props.projectName,
     projectId: props.projectId,
     ownerKey: JSON.stringify([composerDraftTarget, activePendingProgress?.activeQuestion?.id]),
     draftText: prompt,
+    disabled: dictationDisabled,
     readDraft: () => {
       const snapshot = readComposerSnapshot();
       return {
@@ -3900,12 +3907,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const voiceSendDisabledReason =
     sendDisabledReason ?? (speechInput.preparing ? "Preparing voice input" : null);
   const speechPresentation = resolveSpeechPresentation(speechInput.state, speechInput.progress);
-  const dictationDisabled =
-    isConnecting ||
-    projectSelectionRequired ||
-    isComposerApprovalState ||
-    activePendingIsResponding ||
-    activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
   const dictationShortcutLabel = useDictationShortcut({
     keybindings,
     speech: speechInput,
