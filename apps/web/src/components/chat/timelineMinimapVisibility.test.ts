@@ -1,6 +1,7 @@
 import { it, expect } from "vite-plus/test";
 import {
   isTimelineMinimapRowVisible,
+  resolveTimelineMinimapVisibleRange,
   resolveTimelineMinimapCurrentIndex,
 } from "./MessagesTimeline.logic";
 
@@ -27,4 +28,31 @@ it("resolves minimap navigation from the visible rows", () => {
   expect(
     resolveTimelineMinimapCurrentIndex({ visibleStart: 0, visibleEnd: 5, rowIndices: [] }),
   ).toBeNull();
+});
+
+it("refreshes visibility while scrolling within the same rendered buffer", () => {
+  const state = {
+    startBuffered: 0,
+    endBuffered: 4,
+    scroll: 200,
+    scrollLength: 150,
+    positionAtIndex: (index: number) => index * 100,
+    sizeAtIndex: () => 100,
+  };
+  expect(resolveTimelineMinimapVisibleRange(state)).toEqual({ start: 2, end: 3 });
+  expect(resolveTimelineMinimapVisibleRange({ ...state, scroll: 0 })).toEqual({ start: 0, end: 1 });
+});
+
+it("ignores stale offscreen positions outside the rendered buffer", () => {
+  const range = resolveTimelineMinimapVisibleRange({
+    startBuffered: 10,
+    endBuffered: 14,
+    scroll: 1000,
+    scrollLength: 200,
+    // Earlier rows have stale coordinates that overlap the viewport.
+    positionAtIndex: (index) => (index < 10 ? 1000 : index * 100),
+    sizeAtIndex: () => 100,
+  });
+  expect(range).toEqual({ start: 10, end: 11 });
+  expect(isTimelineMinimapRowVisible(0, range.start, range.end)).toBe(false);
 });

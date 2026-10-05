@@ -339,6 +339,39 @@ export function resolveTimelineMinimapIndexFromPointer(input: {
   return Math.max(0, Math.min(input.itemCount - 1, Math.round(progress * (input.itemCount - 1))));
 }
 
+/** Recheck the rendered buffer: LegendList's unbuffered range can lag during scrolling. */
+export function resolveTimelineMinimapVisibleRange(state: {
+  readonly startBuffered: number | null | undefined;
+  readonly endBuffered: number | null | undefined;
+  readonly scroll: number;
+  readonly scrollLength: number;
+  readonly positionAtIndex: (index: number) => number | undefined;
+  readonly sizeAtIndex: (index: number) => number | undefined;
+}) {
+  let start: number | null = null;
+  let end: number | null = null;
+  if (state.startBuffered == null || state.endBuffered == null || state.startBuffered < 0) {
+    return { start, end };
+  }
+  const bottom = state.scroll + state.scrollLength;
+  for (let index = state.startBuffered; index <= state.endBuffered; index += 1) {
+    const top = state.positionAtIndex(index);
+    const height = state.sizeAtIndex(index);
+    if (
+      top != null &&
+      Number.isFinite(top) &&
+      height != null &&
+      Number.isFinite(height) &&
+      top < bottom &&
+      top + height > state.scroll
+    ) {
+      start ??= index;
+      end = index;
+    }
+  }
+  return { start, end };
+}
+
 export function isTimelineMinimapRowVisible(
   rowIndex: number,
   visibleStart: number | null | undefined,

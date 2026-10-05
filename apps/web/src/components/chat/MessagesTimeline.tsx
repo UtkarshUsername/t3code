@@ -198,6 +198,7 @@ import {
   resolveTimelineMinimapHasPersistentGutter,
   resolveTimelineMinimapCurrentIndex,
   isTimelineMinimapRowVisible,
+  resolveTimelineMinimapVisibleRange,
   resolveTimelineMinimapHeightStyle,
   resolveTimelineMinimapHitStripWidth,
   resolveTimelineMinimapIndexFromPointer,
@@ -1060,18 +1061,23 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       return;
     }
 
+    const visibleRange = resolveTimelineMinimapVisibleRange(state);
     for (const item of minimapItems) {
       const strip = minimapStripMap.get(item.id);
       // Offscreen position caches can lag behind row size changes.
-      const inView = isTimelineMinimapRowVisible(item.rowIndex, state.start, state.end);
+      const inView = isTimelineMinimapRowVisible(
+        item.rowIndex,
+        visibleRange.start,
+        visibleRange.end,
+      );
       const next = inView ? "true" : "false";
       if (strip && strip.dataset.inView !== next) {
         strip.dataset.inView = next;
       }
     }
     const nextCurrentIndex = resolveTimelineMinimapCurrentIndex({
-      visibleStart: state.start,
-      visibleEnd: state.end,
+      visibleStart: visibleRange.start,
+      visibleEnd: visibleRange.end,
       rowIndices: minimapItems.map((item) => item.rowIndex),
     });
     setMinimapCurrentIndex((current) =>
