@@ -1099,6 +1099,27 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     reportContentOverflow,
   ]);
 
+  const itemMeasurementFrameRef = useRef<number | null>(null);
+  const handleItemSizeChanged = useCallback(() => {
+    reportContentOverflow();
+    if (itemMeasurementFrameRef.current !== null) return;
+    // Read after LegendList has applied all row measurements for this frame.
+    itemMeasurementFrameRef.current = requestAnimationFrame(() => {
+      itemMeasurementFrameRef.current = null;
+      handleScroll();
+    });
+  }, [handleScroll, reportContentOverflow]);
+
+  useEffect(
+    () => () => {
+      if (itemMeasurementFrameRef.current !== null) {
+        cancelAnimationFrame(itemMeasurementFrameRef.current);
+        itemMeasurementFrameRef.current = null;
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     const frame = requestAnimationFrame(handleScroll);
     return () => cancelAnimationFrame(frame);
@@ -1362,7 +1383,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             }
             maintainScrollAtEndThreshold={1}
             onScroll={handleScroll}
-            onItemSizeChanged={reportContentOverflow}
+            onItemSizeChanged={handleItemSizeChanged}
             className={cn(
               "messages-timeline-scroll scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain [overflow-anchor:none]",
               topFadeEnabled && "topbar-scroll-fade",

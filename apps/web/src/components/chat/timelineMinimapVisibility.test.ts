@@ -56,3 +56,23 @@ it("ignores stale offscreen positions outside the rendered buffer", () => {
   expect(range).toEqual({ start: 10, end: 11 });
   expect(isTimelineMinimapRowVisible(0, range.start, range.end)).toBe(false);
 });
+
+it("keeps unmeasured markers visible and includes measured rows crossing the viewport", () => {
+  const state = {
+    startBuffered: 0,
+    endBuffered: 2,
+    scroll: 100,
+    scrollLength: 200,
+    positionAtIndex: (index: number) => [50, 150, 300][index],
+    sizeAtIndex: (_index: number): number | undefined => undefined,
+  };
+  expect(resolveTimelineMinimapVisibleRange(state)).toEqual({ start: 1, end: 1 });
+  expect(resolveTimelineMinimapVisibleRange({ ...state, sizeAtIndex: () => 100 })).toEqual({
+    start: 0,
+    end: 1,
+  });
+  expect(resolveTimelineMinimapVisibleRange({ ...state, sizeAtIndex: () => Number.NaN })).toEqual({
+    start: 1,
+    end: 1,
+  });
+});

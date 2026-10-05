@@ -360,10 +360,8 @@ export function resolveTimelineMinimapVisibleRange(state: {
     if (
       top != null &&
       Number.isFinite(top) &&
-      height != null &&
-      Number.isFinite(height) &&
       top < bottom &&
-      top + height > state.scroll
+      top + Math.max(1, height != null && Number.isFinite(height) ? height : 1) > state.scroll
     ) {
       start ??= index;
       end = index;
