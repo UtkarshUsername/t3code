@@ -227,7 +227,6 @@ export function useCopyToClipboard<TContext = void>({
       },
       (error) => {
         console.error(error);
-        setIsCopied(false);
         onError?.(error, ctx);
       },
     );
