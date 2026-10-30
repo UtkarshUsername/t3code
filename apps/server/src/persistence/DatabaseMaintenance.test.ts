@@ -77,8 +77,14 @@ it.layer(DatabaseMaintenance.layer.pipe(Layer.provideMerge(NodeServices.layer)))
             ...fs,
             remove: (target, options) =>
               Effect.gen(function* () {
-                // SQLite has closed here; these sidecars must be removed by Doctor itself.
                 if (target === legacy) {
+                  yield* Effect.gen(function* () {
+                    const sql = yield* SqlClient.SqlClient;
+                    yield* sql`PRAGMA busy_timeout = 0`;
+                    yield* sql`BEGIN EXCLUSIVE`;
+                    yield* sql`COMMIT`;
+                  }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: legacy })));
+                  // Create sidecars after the probe closes so only Doctor can remove them.
                   yield* fs.writeFileString(`${legacy}-wal`, "leftover WAL");
                   yield* fs.writeFileString(`${legacy}-shm`, "leftover SHM");
                 }
