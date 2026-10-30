@@ -44,6 +44,7 @@ it.layer(DatabaseMaintenance.layer.pipe(Layer.provideMerge(NodeServices.layer)))
         yield* Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           yield* sql`CREATE TABLE retained_data (value TEXT)`;
+          yield* sql`INSERT INTO retained_data VALUES ('keep')`;
         }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: dbPath })));
         assert.isNull((yield* maintenance.inspect(dbPath)).legacyDatabaseBytes);
 
@@ -52,13 +53,16 @@ it.layer(DatabaseMaintenance.layer.pipe(Layer.provideMerge(NodeServices.layer)))
           const sql = yield* SqlClient.SqlClient;
           yield* sql`PRAGMA journal_mode = WAL`;
           yield* sql`CREATE TABLE v1_data (value TEXT)`;
+          yield* sql`INSERT INTO v1_data VALUES ('rollback')`;
         }).pipe(Effect.provide(openLegacy));
         assert.isAbove((yield* maintenance.inspect(dbPath)).legacyDatabaseBytes ?? 0, 0);
 
         const refused = yield* Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           yield* sql`SELECT value FROM v1_data`;
-          return yield* Effect.flip(maintenance.removeLegacyDatabase(dbPath));
+          const failure = yield* Effect.flip(maintenance.removeLegacyDatabase(dbPath));
+          assert.deepEqual(yield* sql`SELECT value FROM v1_data`, [{ value: "rollback" }]);
+          return failure;
         }).pipe(Effect.provide(openLegacy));
         assert.equal(refused._tag, "DatabaseInUseError");
         assert.isTrue(yield* fs.exists(legacy));
@@ -66,7 +70,12 @@ it.layer(DatabaseMaintenance.layer.pipe(Layer.provideMerge(NodeServices.layer)))
         yield* maintenance.removeLegacyDatabase(dbPath);
         assert.isFalse(yield* fs.exists(legacy));
         assert.isFalse(yield* fs.exists(`${legacy}-wal`));
+        assert.isFalse(yield* fs.exists(`${legacy}-shm`));
         assert.isTrue(yield* fs.exists(dbPath));
+        yield* Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          assert.deepEqual(yield* sql`SELECT value FROM retained_data`, [{ value: "keep" }]);
+        }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: dbPath, readonly: true })));
         assert.isNull((yield* maintenance.inspect(dbPath)).legacyDatabaseBytes);
       }).pipe(Effect.scoped),
     );
