@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
@@ -67,7 +68,24 @@ it.layer(DatabaseMaintenance.layer.pipe(Layer.provideMerge(NodeServices.layer)))
         assert.equal(refused._tag, "DatabaseInUseError");
         assert.isTrue(yield* fs.exists(legacy));
 
-        yield* maintenance.removeLegacyDatabase(dbPath);
+        yield* Effect.flatMap(DatabaseMaintenance.DatabaseMaintenance, (service) =>
+          service.removeLegacyDatabase(dbPath),
+        ).pipe(
+          Effect.provide(Layer.fresh(DatabaseMaintenance.layer)),
+          Effect.provideService(HostProcess.Platform, "win32"),
+          Effect.provideService(FileSystem.FileSystem, {
+            ...fs,
+            remove: (target, options) =>
+              Effect.gen(function* () {
+                // SQLite has closed here; these sidecars must be removed by Doctor itself.
+                if (target === legacy) {
+                  yield* fs.writeFileString(`${legacy}-wal`, "leftover WAL");
+                  yield* fs.writeFileString(`${legacy}-shm`, "leftover SHM");
+                }
+                yield* fs.remove(target, options);
+              }),
+          }),
+        );
         assert.isFalse(yield* fs.exists(legacy));
         assert.isFalse(yield* fs.exists(`${legacy}-wal`));
         assert.isFalse(yield* fs.exists(`${legacy}-shm`));
